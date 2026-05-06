@@ -1,0 +1,9 @@
+{
+  "name": "issue-worker",
+  "description": "Autonomous issue-worker workflow: danx-start, danx-next, danx-ideate, danx-triage, danx-epic-link. Workspace-only.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Dan Newman",
+    "email": "newms87@gmail.com"
+  }
+}

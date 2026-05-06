@@ -1,0 +1,45 @@
+{
+  "name": "newms-plugins",
+  "owner": {
+    "name": "Dan Newman",
+    "email": "newms87@gmail.com"
+  },
+  "description": "Personal plugin set: discipline, dev pipeline, danxbot orchestration, issue-worker autonomy",
+  "plugins": [
+    {
+      "name": "base",
+      "source": "./base",
+      "description": "Universal discipline: bash exit capture, sub-agent delegation, tool usage, process kill, monitor polling. Install everywhere."
+    },
+    {
+      "name": "investigate",
+      "source": "./investigate",
+      "description": "Read-only investigation methodology. Hypothesis → evidence → findings → options. NEVER applies fixes. For diagnostic agents (slack, dashboards, dev sessions before fix-writing)."
+    },
+    {
+      "name": "dev",
+      "source": "./dev",
+      "description": "Code-writing discipline: TDD, debugging-with-fix, code quality, git safety. Install on instances that write code."
+    },
+    {
+      "name": "pipeline",
+      "source": "./pipeline",
+      "description": "Human-in-loop dev pipeline: flow-* skills, plan mode, collaboration. NOT for autonomous dispatched agents."
+    },
+    {
+      "name": "issues",
+      "source": "./issues",
+      "description": "Issue card workflow: YAML schema, tracker contract, danx-issue MCP usage. Install where cards are read or written."
+    },
+    {
+      "name": "danxbot",
+      "source": "./danxbot",
+      "description": "Danxbot orchestrator domain knowledge: dispatch architecture, runtime modes, deploy. Install on danxbot-aware instances."
+    },
+    {
+      "name": "issue-worker",
+      "source": "./issue-worker",
+      "description": "Autonomous issue-worker workflow: danx-start, danx-next, danx-ideate, danx-triage, danx-epic-link. Workspace-only."
+    }
+  ]
+}

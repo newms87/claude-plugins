@@ -1,0 +1,9 @@
+{
+  "name": "pipeline",
+  "description": "Human-in-loop dev pipeline: flow-* skills, plan mode, collaboration discipline. Not for autonomous dispatched agents.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Dan Newman",
+    "email": "newms87@gmail.com"
+  }
+}
