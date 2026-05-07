@@ -1,6 +1,6 @@
 ---
 name: issue-card-workflow
-description: 'MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards) as TodoWrite checklist. Triggers — touching `<repo>/.danxbot/issues/`, calling `mcp__danx-issue__*`, picking up an `ISS-N`, terminal save with retro.'
+description: 'MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist. Triggers — touching `<repo>/.danxbot/issues/`, calling `mcp__danx-issue__*`, picking up an `ISS-N`, terminal save with retro, ANY user request that contains the word "epic" or "phase" or "split into phases" or "make a card for", ANY plan to write a YAML under `.danxbot/issues/`. NO "I already know the schema" exemption — schema knowledge does not equal lifecycle knowledge. NO "just one card" exemption — one card is exactly when the epic-without-phases trap fires. If the request is "create an epic for X", you MUST load this skill BEFORE writing the epic YAML, because creating an epic without same-turn phase cards is a workflow violation the body of this skill is the only place that spells out.'
 ---
 
 # Issue Workflow
