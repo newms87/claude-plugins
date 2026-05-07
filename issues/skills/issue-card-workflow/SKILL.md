@@ -77,6 +77,45 @@ Two different states for "this card cannot proceed right now":
 
 When the unblock work needs a human, the right shape is: keep this card Blocked, and put the human task in a NEW Needs Help card referenced from `blocked.by[]`. The original card unblocks the moment the human-task card moves to Done / Cancelled.
 
+**Picking up a Needs Help / Blocked card → invoke the `unblock` skill first.** Same applies if the card you are about to start **overlaps** an existing Needs Help card (same parent epic, same key files, same domain) — surface the dependency before doing work that the upstream resolution may invalidate. `unblock` produces the operator playbook; once the human acts and reports back, resume normal `issue-card-workflow` for the AC update.
+
+## Needs Help — Hard Gate Before Saving
+
+Before saving `status: "Needs Help"` you MUST name the **specific human-only resource** that blocks completion. Pick exactly one:
+
+| Allowed reason | Example |
+|---|---|
+| Credential / secret rotation | API key only humans hold |
+| Deploy access | Push to a write-only / human-only environment |
+| Write-only repo / external tracker | No agent path to mutate |
+| Design / product decision | Ambiguous AC needs human spec call |
+| Physical / OOB action | Reset hardware, contact vendor, sign legal doc |
+
+If you cannot name one — **status stays `In Progress` and you do the work.** "Operator should verify in production", "human should run these commands and report back", "live operator-driven runs are the only honest way" are NOT valid reasons. If the verification step is `.env` edit + `artisan` + `make` + `yarn` + log grep, the agent runs it.
+
+**Rationalization detector — if your Needs Help comment contains any of these phrases, you are punting:**
+- "operator-driven verification"
+- "production-shaped infra"
+- "honest way to verify"
+- "intermittent — needs more samples" (run more samples yourself)
+- "needs to be tested in production / staging"
+
+Strip the punt, run the steps, report the result, update the AC.
+
+## Local-First Execution Rule
+
+**Cards execute + validate in the local Sail environment by default.** Local is intended to be identical to production in every meaningful way. Code, schema, migrations, config defaults, queue, Octane, MCP servers, Pusher, danxbot — all reproducible locally.
+
+A card may target staging / production ONLY when the card's scope IS environment-specific:
+- Deploy infra change (Dockerfile, compose, k8s manifest, CI/CD)
+- Secret / credential rotation
+- Production data migration that cannot run on local fixtures
+- Monitoring / alerting wiring that consumes the production telemetry pipe
+
+Reproducing a bug, validating a fix, running an artisan suite, capturing logs, running Pint / vitest / phpunit — all local. If you find yourself writing "verify in staging" on a card whose subject is application code, rewrite the verification step against local.
+
+If local genuinely cannot reproduce, that is a SEPARATE bug — file an action-item card to fix the local-vs-prod divergence rather than punt the original card to staging verification.
+
 ## Needs Approval vs Needs Help
 
 `Needs Approval` and `Needs Help` are both non-dispatchable parking statuses — neither status is dispatched by the poller, and the YAML stays in `open/`. They differ in **what kind of human action** unblocks the card:
