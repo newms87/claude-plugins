@@ -41,12 +41,12 @@ Quick reference:
 | `external_id` | string | Tracker-native id. Sync-layer only — never expose, never edit. |
 | `parent_id` | `string \| null` | Child card → parent's `id`. On phases of an epic = epic's `id`. Reverse linkage to `children[]`. |
 | `children` | `string[]` (ids) | Ordered list of child issue ids (`ISS-N`). Available on every card type. On `type: Epic` = the ordered phase cards (UI label "Phases"). On non-epic = sub-cards (UI label "Children"). One field, two labels. Phases MUST be cards — there is no in-card phase checklist (ISS-81 retired the old `phases[]` field). Maintained by `danx-epic-link` skill (human-created phase cards) and by `danx_issue_create` (drafts with `parent_id` set). |
-| `dispatch_id` | `string \| null` | Poller-managed. Don't touch. |
+| `dispatch` | `{id, pid, host, kind, started_at, ttl_seconds} \| null` | Poller-managed dispatch record (replaces the bare `dispatch_id`). `null` when no agent is running on the card; non-null is a structured snapshot of the active dispatch (UUID, OS PID + host for cross-host correlation, kind = `"work"` \| `"triage"`, ISO start, liveness TTL in seconds). Don't touch. |
 | `status` | `Review` \| `ToDo` \| `In Progress` \| `Needs Help` \| `Needs Approval` \| `Done` \| `Cancelled` | Editing this field IS how you "move" the card. `Needs Approval` is a fifth non-dispatchable status — see "Needs Approval vs Needs Help" below. |
 | `type` | `Bug` \| `Feature` \| `Epic` | Required. |
 | `title` | string | Card name (no `#ISS-N:` prefix — worker prefixes when pushing). |
 | `description` | string | Full markdown body. |
-| `triaged` | `{timestamp, status, explain}` | Triage agent owns this. Leave alone. |
+| `triage` | `{expires_at, reassess_hint, last_status, last_explain, ice, history[]}` | Triage agent owns this. Replaces the legacy flat `triaged` block. `expires_at` is the ISO timestamp at which the poller re-triages the card (`""` forces re-triage on next tick). `last_status` / `last_explain` mirror the most recent `history[]` entry for fast read. `ice = {total, i, c, e}` is the most recent ICE score (`total = i × c × e`). `history[]` is an append-only audit (capped at 10 entries). Leave alone unless you're the triage agent. |
 | `ac` | `[{check_item_id, title, checked}]` | Acceptance Criteria. New items: `check_item_id: ""` (worker assigns). |
 | `comments` | `[{id?, author, timestamp, text}]` | Append `{author, timestamp, text}` (no `id`) — worker pushes. |
 | `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Needs Help only. Worker auto-renders ONE `## Retro` comment. `action_item_ids[]` is a `string[]` of `ISS-N` references (e.g., `["ISS-12", "ISS-14"]`). Create each action item card first via `danx_issue_create`, then push its returned `id` here. Unknown or malformed `ISS-N` values render as `<ISS-N: unknown>` in the retro comment. |
@@ -158,7 +158,7 @@ Always read full context before starting:
 - ALL `comments[]` (every entry, oldest first)
 - `ac[]` (with verification status)
 - `children[]` (look up each child YAML — those are the phase cards on epics, sub-cards otherwise)
-- `triaged` (if non-empty)
+- `triage.last_status` / `triage.last_explain` (if non-empty — the most recent triage decision)
 
 `mcp__danx-issue__danx_issue_get({id})` returns the full parsed object. Never work from title alone.
 
@@ -188,7 +188,18 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 **When to split into epic:** Each phase looks like substantial work (multiple files, own tests, full session). Smaller related tasks → keep as `ac[]` items on one card.
 
-**Epic mechanics:** Set epic's `type: Epic`, then IMMEDIATELY spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type`. Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`. Planning agent has full context — capture into phase cards NOW, not later. Stamp `blocked.by` on phase 2..N referencing the prior phase so the poller dispatches them in order (default sequential — skip only when phases are genuinely independent).
+**CRITICAL: An epic without its phase cards is INVALID and a workflow violation.** A `type: Epic` YAML with empty `children[]` is never an acceptable end-state for any turn. The instant you create the epic, you create every phase card in the SAME response — no "phases sketched in description, will split later," no "wait for user to confirm phases," no "user only asked for the epic." Phase split lives in your head while you wrote the epic body; persist it to disk before the turn ends.
+
+If a user prompt looks like it asks for "just an epic," it does not. Read it as "epic + every phase card" — that is the unit of work. Asking the user "want me split phases now?" after writing the epic is the violation; do not do that.
+
+**Epic mechanics:** Set epic's `type: Epic`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type`. Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`. Stamp `blocked.by` on phase 2..N referencing the prior phase so the poller dispatches them in order (default sequential — skip only when phases are genuinely independent). Planning agent has full context — capture into phase cards NOW, not later.
+
+**Forbidden end-states for any turn that creates an epic:**
+- Epic written, `children: []`, no phase YAMLs on disk.
+- Epic written, phase split listed only in description prose, no phase YAMLs on disk.
+- Epic written, "phases TBD" / "left for triage" / "will split next session" anywhere in the response.
+
+If you find yourself about to end a turn in any of those states — stop and write the phase cards first.
 
 **Where phase cards go:** Same `status` as parent epic at creation time. Epic in Review → phase cards Review. Epic In Progress → phase cards In Progress. Phase cards move with the epic through lifecycle.
 
