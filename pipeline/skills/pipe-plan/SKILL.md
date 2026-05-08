@@ -1,6 +1,6 @@
 ---
 name: pipe-plan
-description: 'MANDATORY before EnterPlanMode, before checking off any AC item, before declaring a phase complete, before any commit closing a phase. Loads card-overrides-plan-mode, prose-only plans, zero-context test, phase-boundary audit (no stopgap scaffolding), pipeline auto-execution discipline as TodoWrite checklist. ALSO MANDATORY when picking up a card whose path is NOT clear after initial investigation — this skill carries the "complex card escape hatch" autonomous workers use to expand under-specified cards or escalate architectural unknowns to Needs Help.'
+description: 'MANDATORY before EnterPlanMode, before checking off any AC item, before declaring a phase complete, before any commit closing a phase. Loads card-overrides-plan-mode, prose-only plans, zero-context test, phase-boundary audit (no stopgap scaffolding), pipeline auto-execution discipline as TodoWrite checklist. ALSO MANDATORY when picking up a card whose path is NOT clear after initial investigation — this skill carries the "complex card escape hatch" autonomous workers use to expand under-specified cards or escalate architectural unknowns to Blocked.'
 ---
 
 # Pipe-Plan — Planning Rules + Complex-Card Escape Hatch
@@ -30,7 +30,7 @@ The decision is one the agent CAN make, but the card needs more detail to track 
 4. Save: `mcp__danx-issue__danx_issue_save({id})`.
 5. Resume implementation against the expanded card.
 
-### Move B — Needs Help Escalation (when the decision is OUT of scope)
+### Move B — Blocked Escalation (when the decision is OUT of scope)
 
 The decision is one the agent SHOULD NOT make alone. This applies when:
 
@@ -41,14 +41,14 @@ The decision is one the agent SHOULD NOT make alone. This applies when:
 
 When any of those hold:
 
-1. Edit the card YAML — set `status: Needs Help`, set `blocked.reason` to a one-paragraph crisp blocker description, set `blocked.action_required` to the specific decision the human must make (with the agent's recommended option + tradeoffs of each candidate).
+1. Edit the card YAML — set `status: Blocked`, set `blocked: {reason, timestamp}` where `reason` is a one-paragraph crisp blocker description naming the specific decision the human must make (with the agent's recommended option + tradeoffs of each candidate). Append the same content as a `comments[]` entry so it surfaces in the dashboard drawer. The schema's invariant `status === "Blocked" ⟺ blocked !== null` requires both edits in the same save.
 2. Save: `mcp__danx-issue__danx_issue_save({id})`.
-3. Stop work. Signal completion via `danxbot_complete({status: "completed", summary: "Escalated to Needs Help — awaiting decision on <X>"})`.
+3. Stop work. Signal completion via `danxbot_complete({status: "completed", summary: "Escalated to Blocked — awaiting decision on <X>"})`.
 4. Do NOT speculatively implement against the unclear option — the next agent (after human input) re-picks the card with a resolved spec.
 
 ### What Move B is NOT for
 
-Needs Help is a LAST RESORT. It is NOT for:
+Blocked is a LAST RESORT. It is NOT for:
 
 - "Too complex, want a human to confirm" — implement the card.
 - "I'm not sure if my approach is right" — implement, then defend in `/pipe-review`.

@@ -118,8 +118,8 @@ The worker process on Machine B runs a poller per connected repo (`src/poller/in
 1. Lists Trello cards on the configured board and reconciles them against `<repo>/.danxbot/issues/{open,closed}/*.yml` via `external_id` (inbound mirror — new cards + human comments only).
 2. Pushes any local YAML edits to Trello (status moves, AC checks, comments, retro rendering).
 3. **Active-dispatch check** — reattaches via the structured `dispatch{}` block (PID + host + kind + TTL) so a worker restart does not redispatch a card whose original session is still alive.
-4. **Work-ready dispatch** — picks one ToDo card with `blocked: null`, sorted **untriaged first** (`triage.expires_at === ""`) then by `triage.ice.total` DESC. Spawns the Claude Code CLI on the chosen card.
-5. **Triage dispatch** — if no work-ready card was dispatched, picks one card with `status` ∈ {Review, Needs Help} OR `blocked != null` whose `triage.expires_at <= now` and dispatches `/danx-triage-card <ISS-N>` (per-card direct triage agent). Default TTLs: Review 24h, Needs Help 3h, Blocked 1h.
+4. **Work-ready dispatch** — picks one ToDo card with `waiting_on: null`, sorted **untriaged first** (`triage.expires_at === ""`) then by `triage.ice.total` DESC. Spawns the Claude Code CLI on the chosen card.
+5. **Triage dispatch** — if no work-ready card was dispatched, picks one card with `status` ∈ {Review, Blocked} OR `waiting_on != null` whose `triage.expires_at <= now` and dispatches `/danx-triage-card <ISS-N>` (per-card direct triage agent). Default TTLs: Review 24h, Blocked 3h, Waiting On 1h.
 6. **Action Items items** — the worker spawns one fresh issue per `retro.action_item_ids[]` string on terminal save.
 
 The Trello "Action Items" list is **not** a separate status — cards on that list hydrate as `status: "Review"` so the per-card triage agent picks them up alongside the Review list. The list itself stays on the board as a UX bucket.

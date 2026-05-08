@@ -1,6 +1,6 @@
 ---
 name: danx-ideate
-description: 'Launch the ideator agent to explore the repo, build knowledge, and generate feature cards.'
+description: Launch the ideator agent to explore the repo, build knowledge, and generate feature cards.
 ---
 
 # Danx Ideate
@@ -15,6 +15,39 @@ Current repo only.
 |------------|-------|
 | `/danx-ideate` | Current repo |
 
+## /loop and ScheduleWakeup — narrow contract
+
+Ideation is a single-shot dispatch (explore → score → draft → complete).
+You have NO legitimate reason to arm `/loop` or `ScheduleWakeup` in this
+skill. The contract below applies anyway because every dispatched-agent
+skill shares it (ISS-135 / ISS-136).
+
+**ALLOWED:**
+
+- Polling an async pipeline whose result IS part of this card's AC (e.g.
+  dispatch a build, `/loop` every 5 min until it finishes, then verify the
+  artifact and proceed).
+- Monitoring a long-running test whose pass/fail is the AC under test.
+- Watching for the next state of an external system you triggered AS PART
+  OF THIS CARD's WORK.
+
+**FORBIDDEN:**
+
+- Waiting for a human to reply (use `status: Blocked` instead — the
+  operator opens the card, answers, moves it back).
+- Waiting for the next card to land (the poller dispatches; you exit when
+  this card is done).
+- "Let me check on this in N minutes" for anything outside this card's
+  scope.
+- Arming `/loop` and then calling `danxbot_complete` in the same dispatch.
+  Loop owns completion timing — if you call complete, disarm the loop
+  first; if a loop is active, do not call complete.
+
+**RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
+during this dispatch must be disarmed (or have already fired and exited).
+Active loop + complete signal = workflow violation; the next resume will
+re-fire the loop after the dispatch is logically over.
+
 ## Steps
 
 1. Launch the ideator subagent via `Task` with `mode: "bypassPermissions"`.
@@ -27,20 +60,20 @@ Current repo only.
    - Checks `<repo>/.danxbot/issues/open/*.yml` for duplicates (search by title / keywords).
    - Generates 3-5 prioritized feature drafts.
    - For each draft, writes a YAML at `<repo>/.danxbot/issues/open/<filename>.yml` with:
-     - `id: ""` (worker assigns the next `ISS-N` — drafts with non-empty `id` are REJECTED)
+     - `id: ""` (worker assigns the next `<PREFIX>-N` — drafts with non-empty `id` are REJECTED)
      - `parent_id: null`
      - `children: []`
-     - `dispatch_id: null`
+     - `dispatch: null`
      - `status: "Review"`
      - `type: "Feature"` (or `"Bug"` for bug drafts)
      - `title`, `description` populated
-     - `triaged: {timestamp: "", status: "", explain: ""}`
+     - `triage: {expires_at: "", reassess_hint: "", last_status: "", last_explain: "", ice: {total: 0, i: 0, c: 0, e: 0}, history: []}`
      - `ac: [{check_item_id: "", title: "...", checked: false}, ...]`
      - `comments: []`
      - `retro: {good: "", bad: "", action_item_ids: [], commits: []}`
      - `schema_version: 3`
      - `tracker: "memory"` (or whichever tracker the repo uses — leave the value the parent YAML carries)
-   - Calls `danx_issue_create({filename: "<filename>"})` for each draft. The worker validates, allocates the next `ISS-N`, stamps it back into the YAML, and renames the file to `<id>.yml`. Captures the returned `id`.
+   - Calls `danx_issue_create({filename: "<filename>"})` for each draft. The worker validates, allocates the next `<PREFIX>-N`, stamps it back into the YAML, and renames the file to `<id>.yml`. Captures the returned `id`.
    - Saves discoveries back to `docs/features.md`.
 
 3. Report what the ideator produced:

@@ -1,6 +1,6 @@
 ---
 name: danx-epic-link
-description: 'Wire two-way parent_id ↔ children[] linkage between an Epic card and its phase cards already on the tracker. Triggered the FIRST time an agent picks up an Epic whose `children[]` is empty. Never creates new cards — only links existing ones.'
+description: Wire two-way parent_id ↔ children[] linkage between an Epic card and its phase cards already on the tracker. Triggered the FIRST time an agent picks up an Epic whose `children[]` is empty. Never creates new cards — only links existing ones.
 ---
 
 # Danx Epic Link
@@ -8,7 +8,7 @@ description: 'Wire two-way parent_id ↔ children[] linkage between an Epic card
 You are running because the orchestrator picked up an Epic-typed card whose
 local YAML's `children: []` is empty. That means one of two things happened:
 
-1. **A human created phase cards directly on the Trello UI** without going
+1. **A human created phase cards directly on the tracker UI** without going
    through `danx_issue_create`. The phase YAMLs were bulk-synced into local
    `issues/open/` by the poller on a previous tick, but no `parent_id` was
    set on them and no `children[]` was set on the epic.
@@ -23,6 +23,13 @@ edit any phase card content beyond `parent_id`.**
 
 If `children[]` is already non-empty when this skill is invoked, exit
 immediately — the epic is already linked.
+
+Blocked / Waiting On: This skill uses terminology borrowed from the old
+schema. When linking, you edit the `parent_id` and `children[]` fields only;
+you do NOT set `waiting_on` on phase cards unless they're already split and
+you're stamping serial ordering in Step 3.5 (which uses `waiting_on`, not
+the old `blocked` field). The field has been renamed from `blocked` (the
+old dep-chain field) to `waiting_on`.
 
 ---
 
@@ -109,25 +116,36 @@ After all phase YAMLs are saved, edit the epic's YAML:
 
 ---
 
-## Step 3.5 — Stamp `blocked` on phase 2..N for serial ordering
+## Step 3.5 — Stamp `waiting_on` on phase 2..N for serial ordering
 
 Phase cards picked up by the poller dispatch in tracker-list-top order, NOT
 phase order. To force serial dispatch (Phase 1 → Phase 2 → ... → Phase N),
-stamp `blocked.by` on every phase except the first:
+stamp `waiting_on.by` on every phase except the first:
 
 For each phase YAML at index `i >= 1` in the ordered `children[]`:
 
 1. `Read <repo>/.danxbot/issues/open/<phase-id>.yml`.
-2. Edit: set `blocked: {reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete.", timestamp: "<current ISO>", by: ["<children[i-1]>"]}`.
+2. Edit: set `waiting_on: {reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete.", timestamp: "<current ISO>", by: ["<children[i-1]>"]}`.
 3. `danx_issue_save({id: "<phase-id>"})`.
 
-Phase 1 (`children[0]`) stays `blocked: null` — it dispatches first. The
-poller auto-clears `blocked` and releases phase N+1 once phase N reaches
+Phase 1 (`children[0]`) stays `waiting_on: null` — it dispatches first. The
+poller auto-clears `waiting_on` and releases phase N+1 once phase N reaches
 Done / Cancelled.
 
 **Skip this step ONLY when phases are genuinely independent** (different
 domains, no shared state, can ship in any order). Default = sequential.
 If you skip, explain in a comment on the epic.
+
+### `waiting_on.by[]` is the IMMEDIATE blocker only — never list transitive blockers
+
+Phase 3 lists `["children[1]"]` (Phase 2). It does NOT list Phase 1, even
+though Phase 1 must ship before Phase 2 can ship. The chain Phase 3 → Phase
+2 → Phase 1 is computed automatically by the poller + dashboard from each
+card's direct blocker; restating the upstream chain in `by[]` is redundant
+data that drifts the moment the chain is reorganized.
+
+Same rule applies outside epics: when card A is waiting on card B which is
+waiting on card C, A's `waiting_on.by[]` is `["B"]` only — NOT `["B", "C"]`.
 
 ---
 
@@ -169,7 +187,7 @@ that up via the normal pipeline.
 
 If the candidate set is ambiguous (e.g. two cards could be Phase 1 of
 different epics, or a candidate's title doesn't clearly belong to this
-epic), abort and let the orchestrator move the epic to Needs Help.
+epic), abort and let the orchestrator move the epic to Blocked.
 Append a comment to the epic's YAML describing the ambiguity:
 
 ```
@@ -181,5 +199,5 @@ Human review needed to set `parent_id` on the right children + the
 matching `children[]` on this epic.
 ```
 
-Then save and signal Needs Help via the normal `danx-next` Step 10
+Then save and signal Blocked via the normal `danx-next` Step 10
 flow.

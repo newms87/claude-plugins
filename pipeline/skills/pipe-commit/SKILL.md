@@ -125,7 +125,7 @@ After every commit:
 
    **g. Check if epic is complete.** If every entry in the epic's `phases[]` is `status: Complete` AND every `ac[i].checked: true`, set the epic's `status: Done` and fill its `retro.*` (see step 5). Do not leave the epic In Progress or ToDo when all phases are Done. Save once more: `mcp__danx-issue__danx_issue_save({id: "<parent-id>"})`. The worker handles the retro comment + closed/ move on its next poll.
 
-5. **Filling `retro` on terminal save** (Done / Cancelled / Needs Help). The worker auto-renders the retro comment AND auto-spawns a fresh issue per `retro.action_items[]` entry on terminal save. So:
+5. **Filling `retro` on terminal save** (Done / Cancelled / Blocked). The worker auto-renders the retro comment AND auto-spawns a fresh issue per `retro.action_items[]` entry on terminal save. So:
 
    - `retro.good`: short bullets — what worked.
    - `retro.bad`: short bullets — what didn't.

@@ -9,7 +9,7 @@ Universal workflow rules for issue cards tracked as YAML files at `<repo>/.danxb
 
 ## Source of Truth
 
-**Local YAML is the single source of truth.** Title, description, status, AC, children, comments, retro, blocked, labels — every field on the `Issue` schema lives canonically in `<repo>/.danxbot/issues/{open,closed}/<id>.yml`. The poller dispatches off the local YAML. The danxbot agent path reads + writes the YAML.
+**Local YAML is the single source of truth.** Title, description, status, AC, children, comments, retro, blocked, waiting_on, labels — every field on the `Issue` schema lives canonically in `<repo>/.danxbot/issues/{open,closed}/<id>.yml`. The poller dispatches off the local YAML. The danxbot agent path reads + writes the YAML.
 
 **The backend tracker (Trello) is a one-way mirror with two narrow inbound exceptions.**
 
@@ -35,22 +35,23 @@ Quick reference:
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema_version` | `3` | Never change. |
+| `schema_version` | `4` | Never change. v3 YAMLs auto-migrate to v4 on read (split `blocked` → `waiting_on` for dep-chain entries; rename status `Needs Help` → `Blocked`); always emitted as `4` on write. |
 | `tracker` | string | Don't change. Implementation-managed. |
 | `id` | string (`ISS-N`) | Internal primary key. Filename is `<id>.yml`. Don't change. |
 | `external_id` | string | Tracker-native id. Sync-layer only — never expose, never edit. |
 | `parent_id` | `string \| null` | Child card → parent's `id`. On phases of an epic = epic's `id`. Reverse linkage to `children[]`. |
 | `children` | `string[]` (ids) | Ordered list of child issue ids (`ISS-N`). Available on every card type. On `type: Epic` = the ordered phase cards (UI label "Phases"). On non-epic = sub-cards (UI label "Children"). One field, two labels. Phases MUST be cards — there is no in-card phase checklist (ISS-81 retired the old `phases[]` field). Maintained by `danx-epic-link` skill (human-created phase cards) and by `danx_issue_create` (drafts with `parent_id` set). |
 | `dispatch` | `{id, pid, host, kind, started_at, ttl_seconds} \| null` | Poller-managed dispatch record (replaces the bare `dispatch_id`). `null` when no agent is running on the card; non-null is a structured snapshot of the active dispatch (UUID, OS PID + host for cross-host correlation, kind = `"work"` \| `"triage"`, ISO start, liveness TTL in seconds). Don't touch. |
-| `status` | `Review` \| `ToDo` \| `In Progress` \| `Needs Help` \| `Needs Approval` \| `Done` \| `Cancelled` | Editing this field IS how you "move" the card. `Needs Approval` is a fifth non-dispatchable status — see "Needs Approval vs Needs Help" below. |
+| `status` | `Review` \| `ToDo` \| `In Progress` \| `Blocked` \| `Needs Approval` \| `Done` \| `Cancelled` | Editing this field IS how you "move" the card. `Blocked` (formerly `Needs Help`) and `Needs Approval` are the two non-dispatchable parking statuses — see "Blocked vs Waiting On" and "Needs Approval vs Blocked" below. |
 | `type` | `Bug` \| `Feature` \| `Epic` | Required. |
 | `title` | string | Card name (no `#ISS-N:` prefix — worker prefixes when pushing). |
 | `description` | string | Full markdown body. |
 | `triage` | `{expires_at, reassess_hint, last_status, last_explain, ice, history[]}` | Triage agent owns this. Replaces the legacy flat `triaged` block. `expires_at` is the ISO timestamp at which the poller re-triages the card (`""` forces re-triage on next tick). `last_status` / `last_explain` mirror the most recent `history[]` entry for fast read. `ice = {total, i, c, e}` is the most recent ICE score (`total = i × c × e`). `history[]` is an append-only audit (capped at 10 entries). Leave alone unless you're the triage agent. |
 | `ac` | `[{check_item_id, title, checked}]` | Acceptance Criteria. New items: `check_item_id: ""` (worker assigns). |
 | `comments` | `[{id?, author, timestamp, text}]` | Append `{author, timestamp, text}` (no `id`) — worker pushes. |
-| `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Needs Help only. Worker auto-renders ONE `## Retro` comment. `action_item_ids[]` is a `string[]` of `ISS-N` references (e.g., `["ISS-12", "ISS-14"]`). Create each action item card first via `danx_issue_create`, then push its returned `id` here. Unknown or malformed `ISS-N` values render as `<ISS-N: unknown>` in the retro comment. |
-| `blocked` | `null` OR `{reason, timestamp, by[]}` | `null` when nothing blocks the card. Set to a record when the card is **waiting on other in-flight work** (a phase sibling, an Action Items card, a separately-scoped task) and DOES NOT need a human. `reason` is a non-empty sentence; `timestamp` is ISO 8601; `by[]` is a non-empty list of `ISS-N` ids that must reach Done / Cancelled before the card unblocks. If no card describes the unblock work, **create one** (`danx_issue_create`) and reference it. The worker forces `status: ToDo` whenever `blocked` is non-null; the poller auto-clears the record and dispatches the card once every blocker is terminal. **Blocked is NOT Needs Help** — see "Needs Help vs Blocked" below. |
+| `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Blocked only. Worker auto-renders ONE `## Retro` comment. `action_item_ids[]` is a `string[]` of `ISS-N` references (e.g., `["ISS-12", "ISS-14"]`). Create each action item card first via `danx_issue_create`, then push its returned `id` here. Unknown or malformed `ISS-N` values render as `<ISS-N: unknown>` in the retro comment. |
+| `waiting_on` | `null` OR `{reason, timestamp, by[]}` | **Dep-chain queue** — `null` when nothing queues the card. Set to a record when the card is **waiting on other in-flight work** (a phase sibling, an Action Items card, a separately-scoped task) and the card itself is fine — does NOT need a human. `reason` is a non-empty sentence; `timestamp` is ISO 8601; `by[]` is a non-empty list of `ISS-N` ids that must reach Done / Cancelled before the card unblocks. If no card describes the unblock work, **create one** (`danx_issue_create`) and reference it. The worker forces `status: ToDo` whenever `waiting_on` is non-null; the poller auto-clears the record and dispatches the card once every dependency is terminal. **Waiting On is NOT Blocked** — see "Blocked vs Waiting On" below. |
+| `blocked` | `null` OR `{reason, timestamp}` | **Self-block reason cache.** `null` when the card itself can proceed. Non-null = the card itself cannot make progress on its own work; a human (or a subsequent agent dispatch) must clear the block. No `by[]` — that lives on `waiting_on`. **Invariant: `status === "Blocked" ⟺ blocked !== null`** (worker enforces both directions; setting one without the other is a validation error). `reason` is a non-empty sentence; `timestamp` is ISO 8601. |
 
 ## MCP Tool Surface
 
@@ -66,7 +67,7 @@ All under prefix `mcp__danx-issue__*` (note hyphen). Error shape: `{<verb>: fals
 
 **Save semantics:** Edit the YAML with `Edit` (never `Write` over an existing file — preserves other agents' uncommitted edits), then call `danx_issue_save({id})`. Validation runs synchronously; tracker push happens on the next worker poll (~60s). On `saved: false`, fix the validation errors in `errors[]` and re-call.
 
-**Status terminal moves:** when you set `status: Done`, `status: Cancelled`, or `status: Needs Help` and save, the worker moves the file `open/` → `closed/` (Done / Cancelled) on its next poll. Never move the file yourself.
+**Status terminal moves:** when you set `status: Done`, `status: Cancelled`, or `status: Blocked` and save, the worker moves the file `open/` → `closed/` (Done / Cancelled) on its next poll. `Blocked` keeps the YAML in `open/` (non-terminal — a human or next dispatch may resume). Never move the file yourself.
 
 ## Triage Lifecycle
 
@@ -77,8 +78,8 @@ The `triage{}` block on each YAML is owned by the **per-card triage agent** disp
 | Status | Triage decision | Default TTL |
 |---|---|---|
 | `Review` | ICE-score → Keep / Cancel / Approve (status flips) | 24h |
-| `Needs Help` | Hard Gate audit → Demote to ToDo OR Confirm + write `reassess_hint` | 3h |
-| `Blocked` (`blocked != null`) | Re-check `blocked.by[]` — clear if every blocker is terminal | 1h |
+| `Blocked` (`blocked != null`) | Hard Gate audit → Demote to ToDo OR Confirm + write `reassess_hint` | 3h |
+| `Waiting On` (`waiting_on != null`) | Re-check `waiting_on.by[]` — clear if every dependency is terminal | 1h |
 | `ToDo` / `In Progress` | Not triaged | n/a |
 | `Done` / `Cancelled` | Terminal — never re-triaged | n/a |
 
@@ -95,32 +96,34 @@ stateDiagram-v2
     Review --> Cancelled: triage Cancel
     Review --> Review: triage Keep (refresh expires_at, +24h)
     ToDo --> InProgress: poller dispatch (untriaged first, then ICE DESC)
-    InProgress --> NeedsHelp: agent escalates (human action required)
+    InProgress --> Blocked: agent escalates (self-block — human action required)
     InProgress --> Done: agent completes
     InProgress --> Cancelled: agent cancels
-    NeedsHelp --> ToDo: triage Demote (Hard Gate audit clears the punt)
-    NeedsHelp --> NeedsHelp: triage Confirm (refresh expires_at, +3h)
-    ToDo --> ToDo: blocked auto-clear (poller, when every blocker is terminal)
+    Blocked --> ToDo: triage Demote (Hard Gate audit clears the punt)
+    Blocked --> Blocked: triage Confirm (refresh expires_at, +3h)
+    ToDo --> ToDo: waiting_on auto-clear (poller, when every dependency is terminal)
     Done --> [*]
     Cancelled --> [*]
 ```
 
 `Needs Approval` is human-managed — neither the poller nor the triage agent moves cards into or out of it.
 
-## Needs Help vs Blocked
+## Blocked vs Waiting On
 
 Two different states for "this card cannot proceed right now":
 
-- **Needs Help** (`status: "Needs Help"`): the card cannot complete without **a human acting**. Credentials, deploy, secrets rotation, ambiguous spec needing a human design call, architectural decision that changes the goal of the card, write-only repo. The card sits in Needs Help until the human acts.
-- **Blocked** (`blocked: {...}`): the card is waiting on **other in-flight work** that does NOT need a human — phase siblings shipping first, an Action Items card landing, a separately-scoped task. The poller auto-unblocks and dispatches the card once every blocker reaches Done / Cancelled. Status remains `ToDo` (worker enforces). NEVER set `status: "Needs Help"` for a "waiting on another card" card; that's Blocked.
+- **Blocked** (`status: "Blocked"` + `blocked: {reason, timestamp}`): the card itself cannot complete on its own work — typically because **a human must act**. Credentials, deploy, secrets rotation, ambiguous spec needing a human design call, architectural decision that changes the goal of the card, write-only repo. The card sits in `Blocked` until a human (or a subsequent agent dispatch) clears the block. **Invariant: `status === "Blocked" ⟺ blocked !== null`** — the worker enforces both directions.
+- **Waiting On** (`waiting_on: {reason, timestamp, by[]}`): the card is queued behind **other in-flight work** that does NOT need a human — phase siblings shipping first, an Action Items card landing, a separately-scoped task. The poller auto-unblocks and dispatches the card once every dependency in `by[]` reaches Done / Cancelled. Status remains `ToDo` (worker enforces). NEVER set `status: "Blocked"` for a "waiting on another card" card; that's `waiting_on`.
 
-When the unblock work needs a human, the right shape is: keep this card Blocked, and put the human task in a NEW Needs Help card referenced from `blocked.by[]`. The original card unblocks the moment the human-task card moves to Done / Cancelled.
+When the unblock work itself needs a human, the right shape is: keep this card on `waiting_on`, and put the human task in a NEW `Blocked` card referenced from `waiting_on.by[]`. The original card auto-unblocks the moment the human-task card moves to Done / Cancelled.
 
-**Picking up a Needs Help / Blocked card → invoke the `unblock` skill first.** Same applies if the card you are about to start **overlaps** an existing Needs Help card (same parent epic, same key files, same domain) — surface the dependency before doing work that the upstream resolution may invalidate. `unblock` produces the operator playbook; once the human acts and reports back, resume normal `issue-card-workflow` for the AC update.
+`waiting_on` and `blocked` can technically coexist (rare) — a card both queued behind deps AND self-blocked. The poller's gates handle each independently.
 
-## Needs Help — Hard Gate Before Saving
+**Picking up a Blocked / Waiting On card → invoke the `unblock` skill first.** Same applies if the card you are about to start **overlaps** an existing Blocked card (same parent epic, same key files, same domain) — surface the dependency before doing work that the upstream resolution may invalidate. `unblock` produces the operator playbook; once the human acts and reports back, resume normal `issue-card-workflow` for the AC update.
 
-Before saving `status: "Needs Help"` you MUST name the **specific human-only resource** that blocks completion. Pick exactly one:
+## Blocked — Hard Gate Before Saving
+
+Before saving `status: "Blocked"` (with the matching `blocked: {reason, timestamp}` record) you MUST name the **specific human-only resource** that blocks completion. Pick exactly one:
 
 | Allowed reason | Example |
 |---|---|
@@ -132,7 +135,7 @@ Before saving `status: "Needs Help"` you MUST name the **specific human-only res
 
 If you cannot name one — **status stays `In Progress` and you do the work.** "Operator should verify in production", "human should run these commands and report back", "live operator-driven runs are the only honest way" are NOT valid reasons. If the verification step is `.env` edit + `artisan` + `make` + `yarn` + log grep, the agent runs it.
 
-**Rationalization detector — if your Needs Help comment contains any of these phrases, you are punting:**
+**Rationalization detector — if your `Blocked` comment / `blocked.reason` contains any of these phrases, you are punting:**
 - "operator-driven verification"
 - "production-shaped infra"
 - "honest way to verify"
@@ -155,18 +158,18 @@ Reproducing a bug, validating a fix, running an artisan suite, capturing logs, r
 
 If local genuinely cannot reproduce, that is a SEPARATE bug — file an action-item card to fix the local-vs-prod divergence rather than punt the original card to staging verification.
 
-## Needs Approval vs Needs Help
+## Needs Approval vs Blocked
 
-`Needs Approval` and `Needs Help` are both non-dispatchable parking statuses — neither status is dispatched by the poller, and the YAML stays in `open/`. They differ in **what kind of human action** unblocks the card:
+`Needs Approval` and `Blocked` are both non-dispatchable parking statuses — neither status is dispatched by the poller, and the YAML stays in `open/`. They differ in **what kind of human action** unblocks the card:
 
-- **Needs Help** (`status: "Needs Help"`): a human must **supply information** the agent does not have. Credentials, deploy access, missing decision input, an ambiguous AC the agent cannot resolve from the codebase, a write-only repo the agent cannot reach. Without that input the agent is fundamentally unable to do the work.
+- **Blocked** (`status: "Blocked"`): a human must **supply information / take an action** the agent does not have. Credentials, deploy access, missing decision input, an ambiguous AC the agent cannot resolve from the codebase, a write-only repo the agent cannot reach. Without that input the agent is fundamentally unable to do the work.
 - **Needs Approval** (`status: "Needs Approval"`): the agent **could** do the work — has the access, the context, the tools — but is uncertain whether the chosen direction is **the right one**. Architectural risk, cross-cutting scope, disruptive refactor, large blast radius, ambiguous tradeoffs. The card sits in Needs Approval until a human reviews the plan and either approves it (move back to ToDo) or redirects it (edit the description, move back to ToDo).
 
 Why two statuses instead of one: operators triaging the parked-card list need to know which kind of action is required at a glance. Conflating "I'm missing information" with "I want sanity check before I proceed" loses signal — the operator either has to read every card body or risks under-reviewing high-risk plans.
 
 The triage agent (auto-triage epic, ISS-74 and downstream phases) routes uncertain cards to `Needs Approval` when ICE-scoring or scope analysis flags the card as risky-but-actionable. Humans can also set `Needs Approval` directly when they want a sanity check before an agent picks up the card.
 
-`Needs Approval` is set / cleared by humans only — the poller never moves a card into or out of Needs Approval automatically. Mirrors today's Needs Help semantics.
+`Needs Approval` is set / cleared by humans only — the poller never moves a card into or out of Needs Approval automatically. Mirrors today's `Blocked` semantics.
 
 ## Card Titles
 
@@ -231,7 +234,7 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 If a user prompt looks like it asks for "just an epic," it does not. Read it as "epic + every phase card" — that is the unit of work. Asking the user "want me split phases now?" after writing the epic is the violation; do not do that.
 
-**Epic mechanics:** Set epic's `type: Epic`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type`. Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`. Stamp `blocked.by` on phase 2..N referencing the prior phase so the poller dispatches them in order (default sequential — skip only when phases are genuinely independent). Planning agent has full context — capture into phase cards NOW, not later.
+**Epic mechanics:** Set epic's `type: Epic`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type`. Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`. Stamp `waiting_on.by` on phase 2..N referencing the prior phase so the poller dispatches them in order (default sequential — skip only when phases are genuinely independent). Planning agent has full context — capture into phase cards NOW, not later.
 
 ### Epic status is computed, not edited (ISS-98)
 
@@ -239,7 +242,7 @@ A parent's `status` (Epic OR any non-epic with non-empty `children[]`) is **deri
 
 Priority rules (first match wins):
 
-1. Any child `Needs Help` → parent `Needs Help`.
+1. Any child `Blocked` → parent `Blocked` (worker synthesizes the parent's `blocked` record on promote, clears on demote — preserves the v4 status⇔blocked invariant).
 2. Any child `Needs Approval` → parent `Needs Approval` (preserved as a distinct non-dispatchable signal).
 3. Any child `In Progress` → parent `In Progress`.
 4. Any child `ToDo` → parent `ToDo`.
@@ -252,9 +255,9 @@ Cancelled children are excluded from rules 5 and 6 — a single non-cancelled ch
 **Implications for agents:**
 
 - When you finish a phase card, set the **phase's** `status: Done` and save. The poller flips the parent epic on its next tick. Do **not** touch the epic's status yourself — your edit will be overwritten.
-- When a phase moves to `Needs Help` / `Needs Approval`, the parent epic inherits that status automatically. The operator triages from the parent's view; no need to also flip the epic by hand.
+- When a phase moves to `Blocked` / `Needs Approval`, the parent epic inherits that status automatically. The operator triages from the parent's view; no need to also flip the epic by hand.
 - An Epic stays in whatever state derivation produces. Manually setting `status: Done` on an Epic with one child still `In Progress` is a no-op and re-derives next tick.
-- Parents with `blocked != null` are skipped by derivation (the worker normalizes blocked parents to `status: ToDo` on save). Set the parent's `blocked` record explicitly when needed; derivation doesn't fight it.
+- Parents with `waiting_on != null` are skipped by derivation (the worker normalizes parents with non-null `waiting_on` to `status: ToDo` on save, and `waiting_on` overrides any synthesized `blocked` record). Set the parent's `waiting_on` record explicitly when needed; derivation doesn't fight it.
 
 **Forbidden end-states for any turn that creates an epic:**
 - Epic written, `children: []`, no phase YAMLs on disk.
@@ -275,7 +278,7 @@ All comments append to `comments[]` as `{author, timestamp, text}` (no `id` — 
 
 **Use markdown.** `description`, `comments[].text`, `retro.good`, `retro.bad` all render as markdown in the dashboard's Issues drawer (via `MarkdownEditor` / `CodeViewer`). Use `##`/`###` headers, fenced code blocks (```ts, ```yml, ```bash), bullet/numbered lists, tables, links, **bold**, `inline code`, blockquotes. File paths + symbols → backticks. Multi-line code → fenced. Diffs → ```diff. Plain prose is acceptable but worse — readers skim formatted content faster, and the drawer's renderer already pays the parser cost. Don't escape markdown to "play it safe."
 
-**Retro** (filled in `retro.{good, bad, action_item_ids, commits}` fields, NOT as a manual comment): worker renders ONE `## Retro` comment automatically on terminal save (Done / Cancelled / Needs Help). Re-saving with edited retro fields → worker edits the same comment in place. `action_item_ids[]` entries are resolved to their card titles and rendered as `- {title} ({ISS-N})` bullets; unknown ids render as `<ISS-N: unknown>`.
+**Retro** (filled in `retro.{good, bad, action_item_ids, commits}` fields, NOT as a manual comment): worker renders ONE `## Retro` comment automatically on terminal save (Done / Cancelled / Blocked). Re-saving with edited retro fields → worker edits the same comment in place. `action_item_ids[]` entries are resolved to their card titles and rendered as `- {title} ({ISS-N})` bullets; unknown ids render as `<ISS-N: unknown>`.
 
 **Bug Diagnosis** (bug cards): Problem, Root Cause, Solution. Either prepend to `description` or append as a `comments[]` entry titled `## Bug Diagnosis`.
 
