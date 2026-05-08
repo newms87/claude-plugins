@@ -68,6 +68,45 @@ All under prefix `mcp__danx-issue__*` (note hyphen). Error shape: `{<verb>: fals
 
 **Status terminal moves:** when you set `status: Done`, `status: Cancelled`, or `status: Needs Help` and save, the worker moves the file `open/` → `closed/` (Done / Cancelled) on its next poll. Never move the file yourself.
 
+## Triage Lifecycle
+
+The `triage{}` block on each YAML is owned by the **per-card triage agent** dispatched by the poller. The poller picks one card per tick whose `triage.expires_at <= now` and dispatches `/danx-triage-card <ISS-N>` (the new direct-mode skill). One card per dispatch — the legacy bulk-orchestrator (`/danx-triage`) was retired in Phase 5 of ISS-90.
+
+**Cadence per status (the TTL the agent stamps onto `triage.expires_at`):**
+
+| Status | Triage decision | Default TTL |
+|---|---|---|
+| `Review` | ICE-score → Keep / Cancel / Approve (status flips) | 24h |
+| `Needs Help` | Hard Gate audit → Demote to ToDo OR Confirm + write `reassess_hint` | 3h |
+| `Blocked` (`blocked != null`) | Re-check `blocked.by[]` — clear if every blocker is terminal | 1h |
+| `ToDo` / `In Progress` | Not triaged | n/a |
+| `Done` / `Cancelled` | Terminal — never re-triaged | n/a |
+
+**ToDo dispatch sort** is **untriaged first** (`triage.expires_at === ""` — never been scored) **then triaged by `triage.ice.total` DESC**. ICE = Impact × Confidence × Ease, each axis 1-5, total ranges 1-125. Within each tier, FIFO by mtime. The poller's `listDispatchableYamls` enforces this order; agents do not need to think about ranking themselves — write a good description and the triage agent's ICE score governs priority.
+
+**`Action Items` is not a status concept.** Cards on the Trello "Action Items" list hydrate as `status: Review` so the per-card triage agent picks them up alongside the Review list. The list itself stays on the board as a UX bucket; the YAML stores `status: Review`.
+
+**Triage state machine:**
+
+```mermaid
+stateDiagram-v2
+    [*] --> Review: tracker hydrate (incl. Action Items list)
+    Review --> ToDo: triage Approve (ICE >= threshold)
+    Review --> Cancelled: triage Cancel
+    Review --> Review: triage Keep (refresh expires_at, +24h)
+    ToDo --> InProgress: poller dispatch (untriaged first, then ICE DESC)
+    InProgress --> NeedsHelp: agent escalates (human action required)
+    InProgress --> Done: agent completes
+    InProgress --> Cancelled: agent cancels
+    NeedsHelp --> ToDo: triage Demote (Hard Gate audit clears the punt)
+    NeedsHelp --> NeedsHelp: triage Confirm (refresh expires_at, +3h)
+    ToDo --> ToDo: blocked auto-clear (poller, when every blocker is terminal)
+    Done --> [*]
+    Cancelled --> [*]
+```
+
+`Needs Approval` is human-managed — neither the poller nor the triage agent moves cards into or out of it.
+
 ## Needs Help vs Blocked
 
 Two different states for "this card cannot proceed right now":

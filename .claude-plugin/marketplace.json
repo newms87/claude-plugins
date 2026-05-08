@@ -39,7 +39,7 @@
     {
       "name": "issue-worker",
       "source": "./issue-worker",
-      "description": "Autonomous issue-worker workflow: danx-start, danx-next, danx-ideate, danx-triage, danx-epic-link. Workspace-only."
+      "description": "Autonomous issue-worker workflow: danx-start, danx-next, danx-ideate, danx-triage-card, danx-epic-link. Workspace-only."
     }
   ]
 }
