@@ -1,11 +1,11 @@
 ---
-name: flow-quality-check
+name: pipe-quality
 description: 'Post-review decision audit. Validates that all findings are addressed and no rationalizations slipped through.'
 ---
 
 # Quality Check — Decision Audit
 
-**Run this AFTER `/flow-code-review` and BEFORE `/flow-commit`.** This is a mandatory pipeline step that audits your decisions about reviewer findings. Its purpose is to catch rationalizations and skipped findings before they get committed.
+**Run this AFTER `/pipe-review` and BEFORE `/pipe-commit`.** This is a mandatory pipeline step that audits your decisions about reviewer findings. Its purpose is to catch rationalizations and skipped findings before they get committed.
 
 ---
 
@@ -79,7 +79,7 @@ Before committing, verify these test coverage questions:
 
 ## Step 4: Final Gut Check
 
-Before proceeding to `/flow-commit`, answer honestly:
+Before proceeding to `/pipe-commit`, answer honestly:
 
 - **Is there any finding I'm hoping the user won't notice I skipped?** If yes, go fix it.
 - **Would I be comfortable if the user asked me to explain why I skipped each skipped finding?** If not, go fix it.
@@ -87,7 +87,7 @@ Before proceeding to `/flow-commit`, answer honestly:
 
 ## Step 5: Proceed or Go Back
 
-- **All findings addressed, all skips justified by the 3 valid reasons above** → Proceed to `/flow-commit`
+- **All findings addressed, all skips justified by the 3 valid reasons above** → Proceed to `/pipe-commit`
 - **Any finding skipped for an invalid reason** → Go back and fix it before proceeding
 
 ---

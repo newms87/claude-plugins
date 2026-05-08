@@ -1,5 +1,5 @@
 ---
-name: flow-code-review
+name: pipe-review
 description: 'Post-implementation review. Runs reviewer agents in parallel, fixes ALL findings before committing.'
 ---
 
@@ -69,7 +69,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 - Work through each phase sequentially
 - Mark each phase complete in the revisions plan as you finish it (append ` ✅` to the phase heading)
-- Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/flow-quality-check` for the 3 valid skip reasons)
+- Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/pipe-quality` for the 3 valid skip reasons)
 
 ### Highest Priority: Legacy, Backwards-Compatible, Obsolete, and Dead Code
 
@@ -79,16 +79,16 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx-issue__danx_issue_create` (or append to the active card's `retro.action_items[]`). Don't defer to session end.
 
-## Step 6: Run `/flow-quality-check`
+## Step 6: Run `/pipe-quality`
 
-**After fixing all findings, invoke `/flow-quality-check` before proceeding to `/flow-commit`.** This audits your decisions — verifying that every finding was addressed and no rationalizations slipped through. It is a mandatory pipeline step.
+**After fixing all findings, invoke `/pipe-quality` before proceeding to `/pipe-commit`.** This audits your decisions — verifying that every finding was addressed and no rationalizations slipped through. It is a mandatory pipeline step.
 
 ---
 
 ## Rules
 
 - **You are the author — agents are the reviewers.** Never skip this step because you're confident in your code.
-- **Fix before committing.** ALL findings must be fixed before `/flow-commit`. No deferring, no "flagging for later."
+- **Fix before committing.** ALL findings must be fixed before `/pipe-commit`. No deferring, no "flagging for later."
 - **Always create a revisions plan.** Never fix findings ad-hoc without a plan. The plan ensures nothing gets lost and provides a clear record of what was done.
 - **Never pollute the main plan file.** Review findings and revision tracking belong in the temp revisions plan only.
-- **Always run `/flow-quality-check` after fixing.** This is what catches rationalizations and skipped findings.
+- **Always run `/pipe-quality` after fixing.** This is what catches rationalizations and skipped findings.

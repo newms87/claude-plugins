@@ -1,5 +1,5 @@
 ---
-name: flow-finish
+name: pipe-finish
 description: 'Use when ending a session or completing all work — surfaces unwritten session knowledge, creates Action Items cards for issues found, and ensures nothing is lost when context is destroyed.'
 ---
 

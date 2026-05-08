@@ -103,3 +103,9 @@ Overlap found → invoke `unblock` on the upstream card FIRST and surface the de
 ## Boundary with `issue-card-workflow`
 
 `issue-card-workflow` = full lifecycle (create / save / move / retro / phase cards). `unblock` = read-only summary of one stuck card. They compose: invoke `unblock` to produce the report; later, when operator confirms outcome, invoke `issue-card-workflow` to update AC + close.
+
+## Needs-Help Gate (Pre-Write Check)
+
+Before setting any issue card to `status: Needs Help` or `blocked != null`: walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation.
+
+This is the symmetric write-side check: `unblock` (above) catches misclassified cards on the read side. The Needs-Help gate catches them on the write side. A card that fails this check should never have been marked Needs Help in the first place — fix the work, not the status.

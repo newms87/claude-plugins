@@ -24,7 +24,12 @@
     {
       "name": "pipeline",
       "source": "./pipeline",
-      "description": "Human-in-loop dev pipeline: flow-* skills, plan mode, collaboration. NOT for autonomous dispatched agents."
+      "description": "Autonomous dev pipeline: pipe-start, pipe-review, pipe-quality, pipe-commit, pipe-report, pipe-finish, pipe-plan. Phase-by-phase code-writing flow that runs identically in human-loop and dispatched-worker contexts. Install on every code-writing instance."
+    },
+    {
+      "name": "human-collaboration",
+      "source": "./human-collaboration",
+      "description": "Human-in-the-loop discipline: read-only-default (human-loop skill), host-environment, docs/explain. Install only where a human drives prompts. Do NOT install on autonomous dispatched workers (diagnostic-mode-on-question would deadlock)."
     },
     {
       "name": "issues",

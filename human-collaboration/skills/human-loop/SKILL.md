@@ -1,9 +1,9 @@
 ---
-name: collaboration
-description: 'MANDATORY at session start when human is in the loop. Loads read-only-default discipline, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, never-substitute-better-approach, mistakes-are-questions as TodoWrite checklist. Triggers — every session involving human-driven prompts; before every Edit/Write tool call; when user asks a question containing `?`.'
+name: human-loop
+description: 'MANDATORY at session start when a human drives the prompts. Loads read-only-default discipline, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, never-substitute-better-approach, mistakes-are-questions as TodoWrite checklist. Triggers — every session involving human-driven prompts; before every Edit/Write tool call; when user asks a question containing `?`. Do NOT install on autonomous dispatched workers — diagnostic-mode-on-question would deadlock the worker on any question mark in the dispatch prompt.'
 ---
 
-# Collaboration Rules
+# Human-in-the-Loop Rules
 
 ## CRITICAL: DEFAULT MODE IS READ-ONLY — NO EXCEPTIONS
 

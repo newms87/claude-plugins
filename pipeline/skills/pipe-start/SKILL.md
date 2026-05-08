@@ -1,9 +1,9 @@
 ---
-name: wow
-description: 'Ways of Working — reload critical development rules before every implementation phase. Invoke at phase boundaries, after planning, and before writing code.'
+name: pipe-start
+description: 'Pipeline start — reload critical development rules before every implementation phase. Invoke at phase boundaries, after planning, and before writing code. Autonomous-friendly: runs identically in human-loop and dispatched-worker contexts.'
 ---
 
-# Ways of Working
+# Pipe-Start — Pre-Implementation Rule Reload
 
 **Invoke this skill before every implementation phase.** This is not optional. `/next-phase` and the orchestrator invoke it automatically. If you're implementing without a phased plan, invoke it once before you start writing code.
 
@@ -13,31 +13,23 @@ Read every rule below. These are the rules you are most likely to violate under 
 
 ## Canonical Workflow
 
-This is the canonical end-to-end workflow. Cross-reference: see the **Skill Priority** doctrine block at the top of `~/.claude/CLAUDE.md` for which superpowers skills are deprecated vs retained.
-
 ```
 PLAN SOURCE
-  Issue card (ISS-N YAML) → danx-issue skill
-  No card + multi-step → EnterPlanMode → ~/.claude/plans/
-  No card + investigation → debugging skill
+  Issue card (ISS-N YAML) → issues:issue-card-workflow skill
+  Card path unclear after initial investigation → pipe-plan (escape hatch)
+  No card + investigation → dev:debugging skill
 PRE-IMPL (every phase)
-  wow (this skill)
+  pipe-start (this skill)
 IMPLEMENT
-  TDD via testing skill
-  debugging skill on bugs / investigations / assertions
+  TDD via dev:testing skill
+  dev:debugging skill on bugs / investigations / assertions
 PIPELINE (automatic, no pause)
-  flow-code-review → flow-quality-check → flow-commit → flow-report
+  pipe-review → pipe-quality → pipe-commit → pipe-report
 PHASE ADVANCE
   next-phase
 SESSION END
-  flow-finish
-PR REVIEW (post-merge)
-  code-review:code-review
-RARE PARALLEL WORK
-  dispatching-parallel-agents / subagent-driven-development / using-git-worktrees
+  pipe-finish
 ```
-
-Deprecated superpowers skills (`requesting-code-review`, `receiving-code-review`, `finishing-a-development-branch`, `systematic-debugging`, `test-driven-development`, `verification-before-completion`) — do NOT invoke; use the flow-* / testing / debugging equivalents above.
 
 ---
 
@@ -77,7 +69,7 @@ Read/Edit/Write/Glob/Grep — never bash equivalents (cat, sed, grep, find). Lin
 
 ### 9. Follow the Pipeline
 
-Every phase: Implement -> `/flow-code-review` -> `/flow-quality-check` -> `/flow-commit` -> `/flow-report`. At session end: `/flow-finish` (Action Items + knowledge dump). This is fully automatic after implementation — no pauses, no "ready for review?" questions. The user's plan approval is pre-approval for the entire pipeline.
+Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` -> `/pipe-report`. At session end: `/pipe-finish` (Action Items + knowledge dump). This is fully automatic after implementation — no pauses, no "ready for review?" questions. The user's plan approval is pre-approval for the entire pipeline.
 
 ### 10. Issue Card IS the Plan
 

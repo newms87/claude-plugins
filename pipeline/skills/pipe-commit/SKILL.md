@@ -1,11 +1,11 @@
 ---
-name: flow-commit
+name: pipe-commit
 description: 'Stage and commit changes with a summary table.'
 ---
 
 # Commit Workflow
 
-`/flow-commit` IS the confirmation. Never ask "Ready to commit?" — just do it.
+`/pipe-commit` IS the confirmation. Never ask "Ready to commit?" — just do it.
 
 ---
 
@@ -13,23 +13,23 @@ description: 'Stage and commit changes with a summary table.'
 
 Before any other action, verify in the CURRENT phase's turn window:
 
-1. `/flow-code-review` (or the `flow-code-review` skill) was invoked AND every finding was addressed (fixes committed/staged, or explicitly classified out-of-scope/rationalization-rejected).
-2. `/flow-quality-check` was invoked.
+1. `/pipe-review` (or the `pipe-review` skill) was invoked AND every finding was addressed (fixes committed/staged, or explicitly classified out-of-scope/rationalization-rejected).
+2. `/pipe-quality` was invoked.
 
 **If either is missing, ABORT with this exact text and stop:**
 
 ```
 Phase pipeline incomplete. Missing: [code-review | quality-check].
-Run those before /flow-commit.
+Run those before /pipe-commit.
 ```
 
 Then wait for the user. Do NOT stage, do NOT commit, do NOT proceed to Step 1.
 
 **This gate applies even under `/danx-start`, `/danx-next`, or any "all phases pre-approved" mode.** Pre-approval covers RUNNING the pipeline, not skipping it.
 
-**Single legitimate bypass:** the user passes `--skip-pipeline` in `/flow-commit`'s arguments AND the commit body explains why (emergency hotfix, revert, doc-only typo, etc.). Without both, never bypass.
+**Single legitimate bypass:** the user passes `--skip-pipeline` in `/pipe-commit`'s arguments AND the commit body explains why (emergency hotfix, revert, doc-only typo, etc.). Without both, never bypass.
 
-**Detection mechanism:** scan the recent conversation turns for explicit invocations of `flow-code-review` / `flow-quality-check` skills (their `Skill` tool calls or `<command-name>` markers) within the current phase boundary. The phase boundary is the most recent `/wow`, `/next-phase`, or session start, whichever is later. Honor-system self-attestation is ALSO required — if you can't quote a specific tool call or marker, the gate is missing.
+**Detection mechanism:** scan the recent conversation turns for explicit invocations of `pipe-review` / `pipe-quality` skills (their `Skill` tool calls or `<command-name>` markers) within the current phase boundary. The phase boundary is the most recent `/pipe-start`, `/next-phase`, or session start, whichever is later. Honor-system self-attestation is ALSO required — if you can't quote a specific tool call or marker, the gate is missing.
 
 The point of this step is to invert the cost: skipping the pipeline must be MORE work (arguing with this gate, getting `--skip-pipeline` user-auth) than following it.
 
@@ -144,7 +144,7 @@ After every commit:
 
 ## Continue the Pipeline
 
-**After issue sync, immediately invoke `/flow-report`.** The pipeline is automatic — do not pause, do not wait for user input, do not treat the commit as the end of the workflow. The commit is step 4 of 5. `/flow-report` is step 5.
+**After issue sync, immediately invoke `/pipe-report`.** The pipeline is automatic — do not pause, do not wait for user input, do not treat the commit as the end of the workflow. The commit is step 4 of 5. `/pipe-report` is step 5.
 
 ---
 

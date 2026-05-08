@@ -70,11 +70,17 @@ This is not a suggestion. Skill descriptions in the available-skills list are ne
        - any commit
        - any file delete
 
-   • pipeline:planning-discipline
+   • pipeline:pipe-plan
        - before EnterPlanMode
        - before checking off any AC item
        - before declaring a phase complete
        - before any commit closing a phase
+       - card path unclear after initial investigation (complex-card escape hatch)
+
+   • pipeline:pipe-start
+       - before every implementation phase
+       - after planning, before writing code
+       - after /next-phase
 
    • danxbot:danxbot
        - touching <repo>/.danxbot/
