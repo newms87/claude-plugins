@@ -9,8 +9,8 @@ Behavior diagnostic. STOP ALL WORK on invocation.
 
 ## Critical Rules - NO EXCEPTIONS
 
-1. **NO tools except `Read` / `Edit` / `Write` against `~/.claude/rules/`, `~/.claude/skills/`, or `~/.claude/CLAUDE.md`** — those are the only artifacts this skill ever changes.
-2. **NO code edits, NO bash, NO Grep / Glob, NO investigation in the codebase.** Answer with what's already in the conversation.
+1. **Edits target the PLUGIN SOURCE (`~/web/claude-plugins/<plugin>/skills/<skill>/SKILL.md` or `~/web/claude-plugins/<plugin>/rules/*.md`) — NOT `~/.claude/`.** `~/.claude/plugins/cache/` is a read-only cache; edits there are blown away on `/reload-plugins`. `~/.claude/CLAUDE.md` is a legitimate fallback for user-global config that doesn't belong to any plugin. Allowed tools: `Read` / `Edit` / `Write` on plugin source + `~/.claude/CLAUDE.md`. `Bash` ONLY for `find` / `ls` / `grep` to locate the right plugin file, and for committing the plugin change after the fix.
+2. **NO application code edits, NO investigation in the user's project codebase.** Answer with what's already in the conversation.
 3. **NO stop-gap fixes.** Do not propose code changes, refactors, test fixes, or "courses of action." The application code is NOT the target.
 4. **The ONLY output is a short diagnosis + a concrete docs/rules/skills change.** Goal is to make the next agent less likely to repeat the mistake — nothing else.
 
@@ -23,7 +23,14 @@ Behavior diagnostic. STOP ALL WORK on invocation.
 
 ### 2. The Fix (the only deliverable)
 
-The fix lives in `~/.claude/rules/`, `~/.claude/skills/`, or `~/.claude/CLAUDE.md`. NEVER in application code.
+The fix lives in plugin source (`~/web/claude-plugins/<plugin>/skills/<skill>/SKILL.md` for skill text, `~/web/claude-plugins/<plugin>/rules/*.md` for rule files) or `~/.claude/CLAUDE.md` for user-global config not owned by any plugin. NEVER in application code, NEVER in `~/.claude/plugins/cache/` (read-only cache).
+
+**Locating the right plugin:**
+1. Failure tied to a named skill that fired? → edit that skill's `SKILL.md` in plugin source.
+2. Failure crosses skills / falls between them? → edit the most-related plugin's rule directory or add a new rule there.
+3. No plugin owns it? → `~/.claude/CLAUDE.md`.
+
+After editing: commit + push the plugin (`cd ~/web/claude-plugins && git add <plugin>/... && git commit && git push`) so other instances + container workers (`autoUpdate: true`) pick up the change.
 
 - **File:** the specific file (and section) to edit.
 - **Change:** the exact addition / replacement, ≤ 5 lines, written verbatim so it can be pasted in.

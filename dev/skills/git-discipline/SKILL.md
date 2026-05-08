@@ -46,6 +46,22 @@ Before committing, run `git status` → check for already-staged files you didn'
 
 Never commit on top of another agent's staged work. Never unstage their files.
 
+## Mixed-State Files: ASK, Never Surgically Isolate
+
+`git status` shows file modified that contains BOTH your edits AND pre-existing uncommitted drift → STOP. Single round-trip:
+
+> "Working tree mixed (yours + pre-existing in <files>). Commit-all in one commit, or split? If split: which paths are yours?"
+
+Wait for answer. Then `git add <named-paths>` + commit.
+
+**Forbidden rationalizations** — every one ends in destroyed user work:
+
+- "I'll back up to /tmp, revert file to HEAD, replay only my edits, commit, restore backup" → uses `git show HEAD:file > file` = wholesale overwrite (see next section). Banned.
+- "stash forbidden, but cp/`git show`/Write-original-content is just 'isolating my hunks'" → same wholesale overwrite, different verb. Banned.
+- "Pre-existing edits don't overlap mine, replay safe" → cannot prove non-overlap; another agent may have written between your snapshot + your replay.
+
+**Denied primitive = STOP signal, not escalation cue.** `git stash` blocked, `git add -p` non-interactive, no per-hunk staging available → ASK. Each additional surgical step multiplies blast radius. One question to the user beats four steps that may corrupt their tree.
+
 ## Never Reset or Remove Other Changes
 
 NEVER use `git reset`. When committing, stage ONLY your changes (`git add <specific-files>`). Never reset staging area. Never unstage already-staged files.
