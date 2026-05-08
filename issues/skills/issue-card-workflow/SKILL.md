@@ -194,6 +194,29 @@ If a user prompt looks like it asks for "just an epic," it does not. Read it as 
 
 **Epic mechanics:** Set epic's `type: Epic`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type`. Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`. Stamp `blocked.by` on phase 2..N referencing the prior phase so the poller dispatches them in order (default sequential — skip only when phases are genuinely independent). Planning agent has full context — capture into phase cards NOW, not later.
 
+### Epic status is computed, not edited (ISS-98)
+
+A parent's `status` (Epic OR any non-epic with non-empty `children[]`) is **derivation-owned by the poller**. Every tick the poller walks every YAML with non-empty `children[]` and rewrites the parent's `status` from the union of its children's statuses. Manual edits to a parent's status are **overwritten on the next tick** — there is no manual override.
+
+Priority rules (first match wins):
+
+1. Any child `Needs Help` → parent `Needs Help`.
+2. Any child `Needs Approval` → parent `Needs Approval` (preserved as a distinct non-dispatchable signal).
+3. Any child `In Progress` → parent `In Progress`.
+4. Any child `ToDo` → parent `ToDo`.
+5. All non-cancelled children `Review` → parent `Review`.
+6. All non-cancelled children `Done` → parent `Done`.
+7. All children `Cancelled` (no exclusion) → parent `Cancelled`.
+
+Cancelled children are excluded from rules 5 and 6 — a single non-cancelled child shifts the answer. Rule 7 fires only when EVERY child is Cancelled. Mixed terminal states (e.g. `Review` + `Done` with no `Cancelled`) leave the parent's current status untouched.
+
+**Implications for agents:**
+
+- When you finish a phase card, set the **phase's** `status: Done` and save. The poller flips the parent epic on its next tick. Do **not** touch the epic's status yourself — your edit will be overwritten.
+- When a phase moves to `Needs Help` / `Needs Approval`, the parent epic inherits that status automatically. The operator triages from the parent's view; no need to also flip the epic by hand.
+- An Epic stays in whatever state derivation produces. Manually setting `status: Done` on an Epic with one child still `In Progress` is a no-op and re-derives next tick.
+- Parents with `blocked != null` are skipped by derivation (the worker normalizes blocked parents to `status: ToDo` on save). Set the parent's `blocked` record explicitly when needed; derivation doesn't fight it.
+
 **Forbidden end-states for any turn that creates an epic:**
 - Epic written, `children: []`, no phase YAMLs on disk.
 - Epic written, phase split listed only in description prose, no phase YAMLs on disk.
@@ -203,7 +226,7 @@ If you find yourself about to end a turn in any of those states — stop and wri
 
 **Where phase cards go:** Same `status` as parent epic at creation time. Epic in Review → phase cards Review. Epic In Progress → phase cards In Progress. Phase cards move with the epic through lifecycle.
 
-**After completing each phase card:** Set its `status: Done`, fill retro, save. The worker handles the file move + retro comment + action-item spawn on its next poll. Then update the epic via `flow-commit`'s phase handoff (see `~/.claude/skills/flow-commit/SKILL.md`). All phase cards Done → epic also moves to Done with a retro comment summarizing all phases.
+**After completing each phase card:** Set its `status: Done`, fill retro, save. The worker handles the file move + retro comment + action-item spawn on its next poll. Do **not** edit the epic's status yourself — the poller derives the epic's status from its children's union on the next tick (see "Epic status is computed, not edited" above). The next phase card's notes go in `comments[]` per the rule below; once all phase cards are Done, the poller flips the epic to Done automatically.
 
 **CRITICAL: Update next phase card before ending session.** Append a "Notes from Phase N" entry to the next phase card's `comments[]` and save. Capture: discovered constraints, timing gotchas, reusable helpers + paths, cost/budget observations, dependencies between phases, corrections to the description. Assume the next agent reads ONLY `description` + `comments[]` — not epic handoff, not conversation history, not git log.
 

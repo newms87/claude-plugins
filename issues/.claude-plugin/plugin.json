@@ -1,7 +1,7 @@
 {
   "name": "issues",
   "description": "Issue card workflow: YAML schema, tracker contract, danx-issue MCP usage.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Dan Newman",
     "email": "newms87@gmail.com"

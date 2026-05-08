@@ -16,6 +16,8 @@ Process every YAML at `<repo>/.danxbot/issues/open/` whose `status: ToDo` using 
 5. After each card, re-glob — epic-splitting may have added phase YAMLs.
 6. Loop until no YAML has `status: ToDo`.
 
+When you finish a phase card, set the **phase's** `status: Done` and save. The poller derives the parent epic's `status` from the union of children on its next tick (ISS-98); never edit an epic's status yourself — your edit is overwritten.
+
 ## Report Summary
 
 When all cards processed:
