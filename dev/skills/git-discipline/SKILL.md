@@ -1,6 +1,6 @@
 ---
 name: git-discipline
-description: 'MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit) as TodoWrite checklist. Triggers — about to run git stash/checkout/restore/revert/reset/clean; about to commit; about to delete files.'
+description: 'MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/worktree-fork without current-HEAD base) as TodoWrite checklist. Triggers — about to run git stash/checkout/restore/revert/reset/clean/cherry-pick/apply/worktree; about to commit; about to delete files; about to dispatch an Agent with isolation:"worktree"; about to integrate work from another worktree or branch.'
 ---
 
 # Git Operations
@@ -98,6 +98,24 @@ Instead: Run `git diff`, identify YOUR specific changes, use Edit to remove only
 
 **Only safe recovery:** stop, tell user what deleted + why need back, wait explicit direction. Don't run any recovery command without user's action verb.
 
+## Cherry-pick Is Destructive: Treat Conflicts as STOP-and-Ask
+
+`git cherry-pick`, `git apply`, `git rebase`, `git merge` all rewrite files in the working tree. When the source ref is based on a stale HEAD, conflict resolution can revert legitimate committed work that the source ref didn't have yet. A file showing up as "modified" after a cherry-pick is NOT automatically a bug to fix — it may be the cherry-pick reverting real work.
+
+**Before cherry-pick / apply / rebase / merge:**
+
+1. Run `git log --oneline <source-ref>..HEAD` — list every commit the source ref doesn't have. If non-empty, the source ref is stale.
+2. Stale source + non-empty `git diff --name-only` after the operation = STOP. Every file in the diff is a candidate for "this is the cherry-pick reverting work." Diff each file against HEAD before deciding anything is "wrong."
+3. Found a file that looks like a regression? **Do not "fix" by reverting.** Ask the user: "Cherry-pick on stale base touched <file> — diff shows <one-sentence summary>. Is this a regression to revert, or intentional drop the source ref made?"
+
+**Forbidden recovery patterns** (every one destroys real work):
+
+- `git checkout HEAD -- <file>` to "restore the right version" after cherry-pick — silently discards both the cherry-pick's edits AND any unstaged work in the file. See "ABSOLUTE: Never Use git checkout".
+- `git reset` to "throw out the cherry-pick" — destroys conflict resolutions you've already done by hand and any unstaged work.
+- "Diff looks small, just revert it" — small ≠ safe. Other agent's intentional one-line removal looks identical to a stale-base regression.
+
+**The forked-Agent worktree trap:** dispatching an `Agent` with `isolation: "worktree"` creates a worktree based on the parent's HEAD AT FORK TIME. If main advances during the agent's run, integrating its commits via cherry-pick replays them onto a HEAD the agent never saw. Files outside the agent's intended scope can mutate during the merge. **Do not use `isolation: "worktree"` for tasks that overlap recently-changed files** — do the work inline in the main worktree instead, or rebase the worktree onto current HEAD before the agent commits.
+
 ## CRITICAL: All Code Is Your Code
 
 Wrote 100% of everything in every repo — committed, uncommitted, tracked, untracked. You = sum of all Claude sessions past + present. No "not my change," "pre-existing," "someone else did this," "out of scope." Every line code your responsibility even without context from session that wrote it.
@@ -110,6 +128,6 @@ Wrote 100% of everything in every repo — committed, uncommitted, tracked, untr
 
 **Via pipeline:** `git add` + `git commit` + `git push` when executing `/flow-commit` (automatically allowed)
 
-**Force-push, amend, rebase, reset, checkout/restore/revert:** Not allowed without explicit user request
+**Force-push, amend, rebase, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request
 
 **Otherwise:** Not allowed without explicit user request
