@@ -192,7 +192,7 @@ If Phase 3 identified case #2 (past producer wrote bad rows now in DB) or if you
 
 ## Phase 11 — Close the Loop
 
-- Update the active issue card (YAML `comments[]` / `retro` via `mcp__danx-issue__danx_issue_save`) or session notes with what was found and fixed (if applicable).
+- Update the active issue card (Edit the YAML `comments[]` / `retro` directly — the chokidar watcher mirrors the change to the DB and the post-completion auto-sync pushes to the tracker) or session notes with what was found and fixed (if applicable).
 - If a rule, doc, or skill failure enabled the bug, file an Action Item via `mcp__danx-issue__danx_issue_create` (see `self-improvement.md`).
 - If the same class of bug has bitten more than once, propose a rule update — not a memory note.
 - Confirm the user sees the fix as resolved before closing the todo.

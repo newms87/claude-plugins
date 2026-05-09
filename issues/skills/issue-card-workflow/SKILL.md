@@ -21,7 +21,7 @@ Inbound (tracker → YAML, narrow):
 1. **New cards.** A card created on the tracker that has no matching local YAML gets hydrated into a fresh YAML on the next tick. After hydration, the YAML is the source of truth for that card forever.
 2. **New comments.** Human-authored comments on the tracker are pulled into the YAML's `comments[]` so the agent sees them. Comment-author detection distinguishes human vs bot-mirrored comments to avoid echo loops.
 
-**Everything else from the tracker is ignored.** A human dragging a card between lists on the tracker, editing its title, ticking an AC checkbox, etc. has no effect on the local YAML. The next tick re-asserts YAML state and the human's tracker-side edit disappears. If you want a status change, edit the YAML (or use `mcp__danx-issue__danx_issue_save`). The tracker is for *viewing* and *commenting*, not for editing card structure.
+**Everything else from the tracker is ignored.** A human dragging a card between lists on the tracker, editing its title, ticking an AC checkbox, etc. has no effect on the local YAML. The next tick re-asserts YAML state and the human's tracker-side edit disappears. If you want a status change, edit the YAML directly with `Edit` / `Write` — the chokidar watcher mirrors the change to the DB on the file event, and the worker's per-tick mirror pushes the new state to the tracker. The tracker is for *viewing* and *commenting*, not for editing card structure.
 
 This is intentional. Two-way sync on every field would create merge conflicts the worker can't resolve. One-way mirror + narrow inbound exceptions = unambiguous semantics.
 
@@ -59,15 +59,14 @@ All under prefix `mcp__danx-issue__*` (note hyphen). Error shape: `{<verb>: fals
 
 | Tool | Args | Purpose |
 |---|---|---|
-| `danx_issue_save` | `{id}` | Validate the YAML at `<repo>/.danxbot/issues/{open,closed}/<id>.yml` and reconcile with the tracker (or call `tracker.createCard()` for orphans with empty `external_id`). Returns `{saved: true, ...}` or `{saved: false, errors[]}`. Call after every meaningful Edit. |
-| `danx_issue_create` | `{type, title, description, parent_id?, children?, status?, ac?, comments?}` | Allocate next `ISS-N`, build canonical YAML, push via `tracker.createCard`, write to `<repo>/.danxbot/issues/open/<id>.yml`. Returns `{created: true, id, path, external_id}` or `{created: false, errors[]}`. One call — no draft YAML required. The `phases` field is rejected (ISS-81 — use `children[]` for sub-cards / epic phase cards). |
+| `danx_issue_create` | `{type, title, description, parent_id?, children?, status?, ac?, comments?}` | Allocate next `ISS-N`, build canonical YAML, write to `<repo>/.danxbot/issues/open/<id>.yml`. Returns `{created: true, id, path, external_id}` or `{created: false, errors[]}`. Atomic id allocation needs server-side coordination — this is the only mutation tool agents need beyond `Edit` / `Write`. The worker's orphan-push mirrors the new card to the tracker on the next poll tick. |
 | `danx_issue_get` | `{id}` | Read the YAML for a given `ISS-N` and return parsed object. Use to inspect parents, siblings, etc. without re-parsing manually. |
 | `danx_issue_list` | `{status?, type?, parent_id?}` | Enumerate open issues filtered by status / type / parent. Avoid reading every YAML by hand. |
 | `danx_issue_close` | `{id}` | Explicit terminal close (sets `status: Cancelled` if not already terminal, fills retro, moves file `open/` → `closed/`). |
 
-**Save semantics:** Edit the YAML with `Edit` (never `Write` over an existing file — preserves other agents' uncommitted edits), then call `danx_issue_save({id})`. Validation runs synchronously; tracker push happens on the next worker poll (~60s). On `saved: false`, fix the validation errors in `errors[]` and re-call.
+**Edit semantics:** Edit the YAML directly with `Edit` (preferred — preserves other agents' uncommitted edits) or `Write` for full rewrites. The chokidar watcher (`src/db/issues-mirror.ts` in the danxbot worker) mirrors every file change to Postgres on the file event, and the post-completion auto-sync (`src/worker/auto-sync.ts`) pushes terminal state to the tracker when `danxbot_complete` fires. The worker's per-tick mirror (~60s) is the steady-state safety net for tracker pushes that miss the auto-sync window. There is no agent-facing save verb to call — agents edit the YAML in place and let the worker do the mirroring.
 
-**Status terminal moves:** when you set `status: Done`, `status: Cancelled`, or `status: Blocked` and save, the worker moves the file `open/` → `closed/` (Done / Cancelled) on its next poll. `Blocked` keeps the YAML in `open/` (non-terminal — a human or next dispatch may resume). Never move the file yourself.
+**Status terminal moves:** when you set `status: Done` or `status: Cancelled` and the dispatch completes, the worker moves the file `open/` → `closed/` on its next poll as part of the auto-sync. `Blocked` keeps the YAML in `open/` (non-terminal — a human or next dispatch may resume). Never move the file yourself.
 
 ## Triage Lifecycle
 
@@ -183,7 +182,7 @@ Must pass **zero-context test** — fresh agent with no conversation history can
 
 **Bug:** Problem (what's broken) → Root Cause (why, or "TBD") → Solution (what to change) → Key files.
 
-Every description must include: exact file paths, known gotchas, how to verify. Update with investigation findings when picking up a card (Edit the YAML's `description` field, then `danx_issue_save`).
+Every description must include: exact file paths, known gotchas, how to verify. Update with investigation findings when picking up a card (Edit the YAML's `description` field — the chokidar watcher mirrors the change to the DB; the post-completion auto-sync pushes to the tracker).
 
 ## Checklists
 
@@ -191,7 +190,7 @@ Every description must include: exact file paths, known gotchas, how to verify. 
 
 There is no separate "Progress" or "Phases" checklist on the YAML schema (ISS-81 retired the old `phases[]` field). Multi-step work either fits in `ac[]` on a single card OR splits into an Epic + child phase cards (`children[]`). Progress lives in the agent's pipeline (TDD test pass, code review pass, commit) and is reflected on terminal save via `status: Done` + `retro.commits[]`.
 
-`update_checklist_item` analogue: edit `ac[i].checked: true` (match by exact `title` text — `check_item_id` may be empty for new items the worker hasn't synced yet), then `danx_issue_save`.
+`update_checklist_item` analogue: Edit `ac[i].checked: true` (match by exact `title` text — `check_item_id` may be empty for new items the worker hasn't synced yet). The chokidar watcher mirrors the change to the DB; the per-tick mirror pushes the AC state to the tracker.
 
 ## Reading a Card
 

@@ -64,7 +64,7 @@ Before the session ends, review everything you know and surface anything that ha
 
 Walk through each category and ask: "Is there anything I learned or observed that isn't written down anywhere?"
 
-1. **Issue cards** — Are all assigned `ISS-N` YAMLs up to date? Any status changes, blockers, or discoveries that should be appended to the card's `comments[]` (and saved via `mcp__danx-issue__danx_issue_save`)?
+1. **Issue cards** — Are all assigned `ISS-N` YAMLs up to date? Any status changes, blockers, or discoveries that should be appended to the card's `comments[]` via direct YAML edit? The chokidar watcher mirrors the change to the DB; the post-completion auto-sync pushes to the tracker.
 
 2. **Code comments / docblocks** — Did I encounter confusing code during investigation that I now understand but didn't document? Any "gotchas" I discovered that the next agent will hit?
 
@@ -108,7 +108,7 @@ Undocumented Knowledge is not just a dump — it drives the first items in Recom
 - **CLAUDE.md** — how the system works, key concepts, gotchas that affect multiple files
 - **Rules files** — behavioral patterns, workflow conventions, things agents keep getting wrong
 - **Code comments** — local gotchas in specific functions where the next reader will be confused
-- **Issue card YAML descriptions** — context that a fresh agent needs to pick up work (`description` field, or appended `comments[]` entry, then `mcp__danx-issue__danx_issue_save`)
+- **Issue card YAML descriptions** — context that a fresh agent needs to pick up work (Edit the `description` field directly, or append a `comments[]` entry — the chokidar watcher mirrors the change to the DB; the post-completion auto-sync pushes to the tracker)
 
 **Skip it if** it's one-off implementation detail, obvious from reading the code, or would add noise without preventing real mistakes. Too many rules degrade behavior — each rule competes for attention. A rule that saves 5 minutes once but gets read 100 times is net negative.
 

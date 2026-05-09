@@ -71,11 +71,11 @@ The point of this step is to invert the cost: skipping the pipeline must be MORE
 
 **Only runs if an issue card (`ISS-N`) is assigned to the session.** If no card, skip this entirely.
 
-The session card lives at `<repo>/.danxbot/issues/open/<id>.yml`. Every "sync" action below is a YAML edit followed by an `mcp__danx-issue__danx_issue_save({id})` call. The save tool returns `{saved: true}` or `{saved: false, errors: [...]}`. If `saved: false`, fix the validation errors reported in `errors[]` and re-call save before continuing.
+The session card lives at `<repo>/.danxbot/issues/open/<id>.yml`. Every "sync" action below is a direct YAML edit via `Edit` / `Write`. The chokidar watcher mirrors every file change to the DB on the file event, and the post-completion auto-sync pushes the YAML state to the tracker when the dispatch ends. There is no agent-facing save verb to call — agents edit the YAML in place and let the worker do the mirroring.
 
 After every commit:
 
-1. **Check off completed AC items** — For each `ac[i]` that this commit satisfies, edit the YAML and set `ac[i].checked: true`. Match by exact `title` text (the `check_item_id` may be empty for items added in this session — the worker assigns it on next poll). Same shape for `phases[i].status: Complete` and any Progress-style checklist tracked as `phases[]`. Then call `mcp__danx-issue__danx_issue_save({id: "<ISS-N>"})`.
+1. **Check off completed AC items** — For each `ac[i]` that this commit satisfies, edit the YAML and set `ac[i].checked: true`. Match by exact `title` text (the `check_item_id` may be empty for items added in this session — the worker assigns it on next poll). Same shape for `phases[i].status: Complete` and any Progress-style checklist tracked as `phases[]`. The chokidar watcher mirrors the edit to the DB on the file event.
 
 2. **Append a commit comment** — Append a new entry to `comments[]` (NO `id` field — the worker assigns it on push):
    ```yaml
@@ -87,14 +87,14 @@ After every commit:
        **Commit:** <sha>
        **Completed:** [list of checklist items checked off]
    ```
-   Then call `mcp__danx-issue__danx_issue_save({id: "<ISS-N>"})`.
+   The chokidar watcher mirrors the edit to the DB.
 
 3. **Update card status** based on current state:
    - Still has remaining phases or unchecked AC → leave `status: In Progress`
    - All phases done, all acceptance criteria met → set `status: Done` AND fill `retro.{good, bad, action_items, commits}` (see step 5 below). The worker auto-renders ONE `## Retro` comment, spawns one fresh issue per `retro.action_items[]` string, and moves the file `open/` → `closed/` on its next poll. Do NOT manually post a retro comment, do NOT manually create action-item issues, do NOT move the file yourself.
    - Never set `status: Done` prematurely — only when ALL work is complete.
 
-   Save: `mcp__danx-issue__danx_issue_save({id: "<ISS-N>"})`.
+   The chokidar watcher mirrors the edit to the DB; the post-completion auto-sync pushes the terminal status to the tracker when `danxbot_complete` fires.
 
 **Do NOT set `status: Done` just because a commit happened.** The card moves to Done only when every acceptance criteria item and every progress/phase item is checked off / Complete.
 
@@ -119,11 +119,11 @@ After every commit:
 
    **d. Re-read the epic description and remaining phase cards.** If anything is wrong, outdated, or missing context from what you learned during this phase, edit the YAML(s) now (`description` field on the epic; per-phase YAML for sibling phase cards). The epic must always be zero-context ready for the next agent.
 
-   **e. Save the epic:** `mcp__danx-issue__danx_issue_save({id: "<parent-id>"})`.
+   **e. Persist the epic edits.** The chokidar watcher mirrors the change to the DB on the file event; no save call needed.
 
-   **f. Update the next phase card.** Read each child id from the epic's `children[]` until you find the next phase still in `ToDo` / `In Progress` with unchecked work. `mcp__danx-issue__danx_issue_get({id: "<next-iss-n>"})`, append a "Notes from Phase N" entry to its `comments[]` covering anything that could cause the next agent to waste time or make mistakes: discovered constraints, timing gotchas, reusable helpers and their paths, cost/budget observations, dependencies between phases. Save: `mcp__danx-issue__danx_issue_save({id: "<next-iss-n>"})`. The next agent has ZERO context — it reads only the YAML description and `comments[]`.
+   **f. Update the next phase card.** Read each child id from the epic's `children[]` until you find the next phase still in `ToDo` / `In Progress` with unchecked work. `mcp__danx-issue__danx_issue_get({id: "<next-iss-n>"})`, then Edit the next phase's YAML to append a "Notes from Phase N" entry to its `comments[]` covering anything that could cause the next agent to waste time or make mistakes: discovered constraints, timing gotchas, reusable helpers and their paths, cost/budget observations, dependencies between phases. The chokidar watcher mirrors the edit to the DB. The next agent has ZERO context — it reads only the YAML description and `comments[]`.
 
-   **g. Check if epic is complete.** If every entry in the epic's `phases[]` is `status: Complete` AND every `ac[i].checked: true`, set the epic's `status: Done` and fill its `retro.*` (see step 5). Do not leave the epic In Progress or ToDo when all phases are Done. Save once more: `mcp__danx-issue__danx_issue_save({id: "<parent-id>"})`. The worker handles the retro comment + closed/ move on its next poll.
+   **g. Check if epic is complete.** If every entry in the epic's `phases[]` is `status: Complete` AND every `ac[i].checked: true`, set the epic's `status: Done` and fill its `retro.*` (see step 5). Do not leave the epic In Progress or ToDo when all phases are Done. Edit the YAML directly — the post-completion auto-sync pushes terminal state to the tracker; the worker handles the retro comment + `open/` → `closed/` move on its next poll.
 
 5. **Filling `retro` on terminal save** (Done / Cancelled / Blocked). The worker auto-renders the retro comment AND auto-spawns a fresh issue per `retro.action_items[]` entry on terminal save. So:
 

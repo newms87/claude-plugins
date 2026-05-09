@@ -7,7 +7,7 @@ description: 'MANDATORY before EnterPlanMode, before checking off any AC item, b
 
 ## Issue Card Overrides Plan Mode (Default Path)
 
-Issue card assigned (e.g. `ISS-N` YAML at `<repo>/.danxbot/issues/open/<id>.yml`) → DEFAULT path is NEVER use EnterPlanMode. Card IS plan. Edit the YAML directly via `mcp__danx-issue__danx_issue_save` if plan changes. The card was authored by another agent who already planned the work; trust the spec, execute it.
+Issue card assigned (e.g. `ISS-N` YAML at `<repo>/.danxbot/issues/open/<id>.yml`) → DEFAULT path is NEVER use EnterPlanMode. Card IS plan. Edit the YAML directly with `Edit` / `Write` if plan changes — the chokidar watcher mirrors the change to the DB on the file event, and the post-completion auto-sync pushes to the tracker. The card was authored by another agent who already planned the work; trust the spec, execute it.
 
 ## Complex-Card Escape Hatch (Rare)
 
@@ -26,9 +26,8 @@ The decision is one the agent CAN make, but the card needs more detail to track 
 
 1. Enter ad-hoc plan mode (`EnterPlanMode`) — work the design out as prose only, zero code blocks.
 2. Exit plan mode (`ExitPlanMode`).
-3. Edit the card YAML — append the resolved design to `description` (or append a Design Note `comments[]` entry timestamped now). Update `phases[]` if phase structure changed. Update `ac[]` to reflect new acceptance criteria.
-4. Save: `mcp__danx-issue__danx_issue_save({id})`.
-5. Resume implementation against the expanded card.
+3. Edit the card YAML — append the resolved design to `description` (or append a Design Note `comments[]` entry timestamped now). Update `phases[]` if phase structure changed. Update `ac[]` to reflect new acceptance criteria. The chokidar watcher mirrors the edit to the DB; the post-completion auto-sync pushes to the tracker.
+4. Resume implementation against the expanded card.
 
 ### Move B — Blocked Escalation (when the decision is OUT of scope)
 
@@ -41,10 +40,9 @@ The decision is one the agent SHOULD NOT make alone. This applies when:
 
 When any of those hold:
 
-1. Edit the card YAML — set `status: Blocked`, set `blocked: {reason, timestamp}` where `reason` is a one-paragraph crisp blocker description naming the specific decision the human must make (with the agent's recommended option + tradeoffs of each candidate). Append the same content as a `comments[]` entry so it surfaces in the dashboard drawer. The schema's invariant `status === "Blocked" ⟺ blocked !== null` requires both edits in the same save.
-2. Save: `mcp__danx-issue__danx_issue_save({id})`.
-3. Stop work. Signal completion via `danxbot_complete({status: "completed", summary: "Escalated to Blocked — awaiting decision on <X>"})`.
-4. Do NOT speculatively implement against the unclear option — the next agent (after human input) re-picks the card with a resolved spec.
+1. Edit the card YAML — set `status: Blocked`, set `blocked: {reason, timestamp}` where `reason` is a one-paragraph crisp blocker description naming the specific decision the human must make (with the agent's recommended option + tradeoffs of each candidate). Append the same content as a `comments[]` entry so it surfaces in the dashboard drawer. The schema's invariant `status === "Blocked" ⟺ blocked !== null` requires both edits in the same save. The chokidar watcher mirrors the edit to the DB; the post-completion auto-sync pushes to the tracker.
+2. Stop work. Signal completion via `danxbot_complete({status: "completed", summary: "Escalated to Blocked — awaiting decision on <X>"})`.
+3. Do NOT speculatively implement against the unclear option — the next agent (after human input) re-picks the card with a resolved spec.
 
 ### What Move B is NOT for
 

@@ -51,11 +51,12 @@ re-fire the loop after the dispatch is logically over.
 The dispatch prompt told you the YAML path:
 
 ```
-Edit <repo>/.danxbot/issues/open/<id>.yml.
-Call danx_issue_save({id: "<id>"}) when done.
+Edit <repo>/.danxbot/issues/open/<id>.yml directly with the Edit / Write tools.
+The watcher mirrors changes to the database automatically; the poller's
+per-tick mirror pushes them to the tracker. Call danxbot_complete when done.
 ```
 
-That YAML is the source of truth for the card. The poller pre-hydrated it from the tracker before this dispatch ran. You read, edit, and save the YAML — you do NOT make tracker calls. The worker pushes your changes to the tracker asynchronously.
+That YAML is the source of truth for the card. The poller pre-hydrated it from the tracker before this dispatch ran. You read and edit the YAML in place with `Edit` / `Write` — you do NOT make tracker calls and there is no separate "save" verb. The chokidar watcher in the worker (`src/db/issues-mirror.ts`) catches every file change and mirrors it to Postgres; the poller's per-tick outbound mirror pushes the YAML to the tracker (~30-60s latency). When you call `danxbot_complete`, the worker fires an immediate post-completion tracker push so the dashboard sees terminal state without waiting for the next tick.
 
 ---
 
@@ -79,9 +80,11 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 | `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Blocked. The worker auto-renders this as ONE structured comment on terminal save. `action_item_ids[]` is a `string[]` of `<PREFIX>-N` references. **`action_item_ids[]` is a LAST RESORT** — see Step 1.5. Only reference an action item when the work is BOTH unrelated to this card's ACs AND too large to reasonably finish in this session (multi-phase refactor, redesign, cross-cutting work needing its own scoping). Small in-scope or small unrelated fixes you spotted → DO THEM NOW, don't defer. Create the action item card first via `danx_issue_create({type, title, description, ac, ...})`, then push its returned `id` here. `action_item_ids[]` must contain only valid `<PREFIX>-N` format strings. Do NOT append a `## Retro` comment to `comments[]` yourself. |
 | `waiting_on` | `null` OR `{reason, timestamp, by[]}` | `null` when nothing blocks this card. Set to a `{reason, timestamp, by}` record when the card cannot proceed because it is waiting on **other in-flight work** that does NOT need a human (a phase sibling shipping first, an Action Items card needs to land, a separately-scoped task). `reason` is a non-empty sentence. `timestamp` is current ISO 8601. `by[]` is a non-empty list of the IMMEDIATE `<PREFIX>-N` blocker(s) — never transitive. If A→B→C, A's `by[]` is `["B"]` only; the chain is computed by the poller + dashboard from each card's direct blocker. If no existing card describes the unblock work, **create one** (`danx_issue_create`) and put its id here. The worker mechanically forces `status: ToDo` whenever `waiting_on` is non-null; you do not separately move status. The poller skips dispatching the card while any blocker is non-terminal, then auto-clears `waiting_on` and dispatches once every blocker is Done / Cancelled. **Waiting On is NOT Blocked** — Blocked is when THIS card itself is stuck; Waiting On is when THIS card is queued behind OTHER work. See Step 10b. |
 
-**Save semantics:** `danx_issue_save({id})` validates the YAML synchronously and returns `{saved: true}` or `{saved: false, errors}`. Tracker-side bookkeeping runs detached — those errors NEVER appear in the tool result. When `status` is `Done` or `Cancelled`, the worker moves the file `open/` → `closed/` as part of save. Save after every meaningful edit.
+**Save semantics:** there is no save verb. Use `Edit` / `Write` to modify the YAML on disk. The chokidar watcher detects the file change and upserts the new content into the `issues` Postgres table; an `issue_history` row records the RFC 6902 patch from the prior content. Schema validation does NOT block writes — a malformed YAML is mirrored as `{_malformed: true, raw: <text>}`. Verify your edits by re-reading the file after the write.
 
-**Auto-sync:** `danxbot_complete` triggers a final auto-sync as a safety net, so a missed save before completion still pushes. Prefer explicit saves anyway — they validate earlier.
+**Open → closed move:** when you set `status: Done` or `status: Cancelled` and call `danxbot_complete`, the worker's post-completion auto-sync moves the file from `open/` → `closed/` as part of pushing terminal state to the tracker. You do NOT need to move the file yourself.
+
+**Auto-sync:** `danxbot_complete` triggers an immediate tracker push (the watcher mirror to Postgres has already happened on the file write). Without `danxbot_complete`, the YAML still reaches the tracker on the poller's next tick (~30-60s); calling `danxbot_complete` is faster and signals the dispatch is over.
 
 ---
 
@@ -98,8 +101,7 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 7. Commit (Step 7).
 8. Definition-of-Done gate (Step 8).
 9. Move to Done (Step 9), Blocked (Step 10), or Waiting On (Step 10b).
-10. `danx_issue_save({id})`.
-11. `danxbot_complete` (Step 11).
+10. `danxbot_complete` (Step 11).
 
 Config references: `.claude/rules/danx-repo-config.md` for repo commands. Never hardcode IDs.
 
@@ -109,7 +111,7 @@ Config references: `.claude/rules/danx-repo-config.md` for repo commands. Never 
 
 `Read <repo>/.danxbot/issues/open/<id>.yml`. The dispatch prompt has the absolute path.
 
-The YAML carries `status: ToDo` at this point — the poller picked it up and hydrated it. Your first edit is to flip `status: ToDo` → `status: In Progress` and call `danx_issue_save`. That's how you "claim" the card — the worker syncs the tracker move to In Progress for you.
+The YAML carries `status: ToDo` at this point — the poller picked it up and hydrated it. Your first edit is to flip `status: ToDo` → `status: In Progress`. That's how you "claim" the card — the watcher mirrors the change immediately to the DB and the next poller tick pushes it to the tracker.
 
 If the YAML's `status` is already `In Progress`, treat this as resumption — skip the flip + save and proceed.
 
@@ -145,8 +147,7 @@ Apply this filter, in order, every time you're tempted to defer work:
    debt, and incur re-dispatch cost. Prefer fixing every time.
 3. **Unrelated AND large** (multi-phase refactor, cross-cutting redesign,
    needs its own scoping, would derail this card)? → Action item is OK.
-4. **Needs human decision or external access** (credentials, deploy, repo
-   you can't write to, ambiguous spec)? → Step 10 / action item.
+4. **Needs human decision or external access** (credentials, ambiguous spec, repo you can't write to, secret rotation)? → Step 10 / action item. **NOT a valid blocker:** "needs deploy", "needs prod smoke", "needs production verification". A card is **Done when code is committed and tests pass locally** — deploys are an operational concern that ship code already accepted as Done. Never block a card on `make deploy` / `make deploy-smoke` / "verify in prod"; that's how Done turns into Forever-Blocked.
 
 Mechanical check before writing any action item or going to Blocked:
 **"Could I just do this in the next 10–30 minutes?"** Yes → do it. Drop the
@@ -170,7 +171,7 @@ Blocked status.
 
 1. Read the full `description`, all `comments[]`, all `ac[]` titles, and any existing `children[]` (look up each child YAML to see what's already been built).
 2. **Bug cards (`type: Bug`):** investigate root cause via `Read` / `Grep` / `Bash` before designing the fix.
-3. **Blocked vs Waiting On vs fix-it-yourself:** if the card cannot be done by an agent, route it correctly. Step 10 (Blocked) ONLY for human-action blockers (credentials, deploy, ambiguous spec needing human decision, architectural ambiguity that changes the goal). Step 10b (Waiting On) for waiting on other in-flight work — no human required, the poller auto-unblocks. Anything else → apply Step 1.5 and fix it yourself in this dispatch.
+3. **Blocked vs Waiting On vs fix-it-yourself:** if the card cannot be done by an agent, route it correctly. Step 10 (Blocked) ONLY for true human-action blockers (credentials, secret rotation, ambiguous spec needing human decision, architectural ambiguity that changes the goal). **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required, the poller auto-unblocks. Anything else → apply Step 1.5 and fix it yourself in this dispatch.
 4. Design the approach in your head. No code yet.
 5. Invoke the `/pipe-start` skill to reload pre-implementation rules.
 
@@ -242,7 +243,7 @@ If you decide NOT to split, skip ahead to Step 4.
 5. **Stamp `blocked` on phase 2..N for serial ordering.** `createCard` always stores `blocked: null` — you must add the record in a follow-up save. For each phase card whose index in `children[]` is `>= 1`, edit the phase YAML:
    - Set `blocked: {reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete.", timestamp: "<current ISO>", by: ["<prev-phase-id>"]}`. `<prev-phase-id>` is `children[i-1]`.
    - Phase 1 (`children[0]`) stays `blocked: null` — it dispatches first.
-   - Save each (`danx_issue_save({id})`). The worker forces `status: ToDo` on save (already true) and the poller skips dispatching while any blocker is non-terminal, then auto-clears `blocked` and dispatches phase N+1 once phase N reaches Done / Cancelled.
+   - Save each phase YAML with `Edit` / `Write`. The watcher mirrors the change to the DB and the poller's per-tick mirror pushes to the tracker. The poller skips dispatching while any blocker is non-terminal, then auto-clears `blocked` and dispatches phase N+1 once phase N reaches Done / Cancelled.
    - **Skip this stamping ONLY when phases are genuinely independent** (different domains, no shared state, can ship in any order). Default is sequential — explain in a comment on the epic if you skip.
 6. Restart this workflow at Step 1 using the first phase card's YAML.
 
@@ -263,7 +264,7 @@ The epic stays at `status: In Progress` until ALL phase cards are Done — then 
 
 For large repetitive edits, dispatch a `batch-editor` subagent via `Agent` / `Task`.
 
-After implementation, save: `danx_issue_save({id})`.
+After implementation, edit the YAML to record progress (e.g. update `comments[]` with a build / test summary). The watcher mirrors the change automatically.
 
 ---
 
@@ -277,7 +278,7 @@ Append each result as a new comment to `comments[]`. For each: set `author` to `
 
 If critical issues found, fix them, re-run the failed gate, append a `## Review Fixes` comment summarizing the fixes.
 
-Save: `danx_issue_save({id})`.
+The watcher mirrors every YAML edit automatically — there is no save verb to call.
 
 ---
 
@@ -287,7 +288,9 @@ For each `ac[i]`, verify it holds (test evidence, command output, direct code re
 
 **Never check off an unverified item.** "By construction" / "obviously correct" are not evidence. State must reflect a passing test, captured command output, or a quoted line from code that demonstrably satisfies the criterion.
 
-If you cannot verify an item — repo this worker cannot commit to, requires a deploy, depends on external state — leave `checked: false`. Do NOT check it off with an excuse. Do NOT paraphrase it as "done in spirit."
+If you cannot verify an item — repo this worker cannot commit to, depends on external state you cannot reach — leave `checked: false`. Do NOT check it off with an excuse. Do NOT paraphrase it as "done in spirit."
+
+**"Requires deploy" is NOT a valid reason to leave an AC unchecked.** Every AC is verifiable locally. `make test`, `make test-system`, integration tests, manual local smoke against `http://localhost:5566` — all run on this host. Production deploy is operations, NOT a verification gate. If an AC literally says "verify in production," rewrite it to "verify locally via `<command>`" and check it once that passes — `make deploy` ships code already accepted as Done.
 
 ---
 
@@ -348,9 +351,9 @@ Edit YAML:
    **Root Cause:** ...
    **Solution:** ...
    ```
-3. Fill `retro.good`, `retro.bad`, `retro.action_item_ids[]`, `retro.commits[]`. The worker renders the `## Retro` comment automatically on save. Do NOT append a `## Retro` comment to `comments[]` yourself. **Action items are a LAST RESORT** — re-apply the Step 1.5 filter to every candidate. If it's required for THIS card's ACs (already done, since you're at Done) it's not an action item. If it's small + you could do it now, do it now and re-commit instead of filing. Only large, separate, scoped follow-ups belong here. Create the action item card first via `danx_issue_create({type, title, description, ac, ...})`, then push its returned `<PREFIX>-N` here. Empty `action_item_ids[]` is the right answer most of the time.
+3. Fill `retro.good`, `retro.bad`, `retro.action_item_ids[]`, `retro.commits[]`. The worker renders the `## Retro` comment automatically when the post-completion auto-sync runs (see Step 11). Do NOT append a `## Retro` comment to `comments[]` yourself. **Action items are a LAST RESORT** — re-apply the Step 1.5 filter to every candidate. If it's required for THIS card's ACs (already done, since you're at Done) it's not an action item. If it's small + you could do it now, do it now and re-commit instead of filing. Only large, separate, scoped follow-ups belong here. Create the action item card first via `danx_issue_create({type, title, description, ac, ...})`, then push its returned `<PREFIX>-N` here. Empty `action_item_ids[]` is the right answer most of the time.
 
-Save: `danx_issue_save({id})`. The worker validates, posts the rendered retro comment, spawns Action Items cards, then moves the file `open/` → `closed/` and pushes the tracker move to Done.
+Edit the YAML with `Edit` / `Write`. The watcher mirrors the change to the DB; the post-completion auto-sync (triggered by `danxbot_complete` in Step 11) renders the `## Retro` comment, spawns Action Items cards, moves the file `open/` → `closed/`, and pushes the tracker move to Done.
 
 Skip to Step 11.
 
@@ -364,8 +367,8 @@ other in-flight work — that's **Waiting On** (Step 10b), not Blocked.
 
 Use Step 10 ONLY when the blocker is genuinely one of:
 
-- **Credentials / deploy / secrets / production action** a human must
-  perform (rotate a key, run a deploy, push a config to SSM).
+- **Credentials / secrets** a human must rotate / push to SSM.
+  - **NOT a Blocker:** "needs deploy" / "needs prod smoke" / "needs Layer 3 system test". Layer 3 (`make test-system`) runs locally on this host — you can run it yourself. Production deploy ships code already accepted as Done; it is NEVER a completion gate. A card whose only remaining ACs are "deploy + smoke prod" is **already Done** — rewrite the ACs to local-verify form, run them, mark Done.
 - **External repo / file your worker has no write access to** AND no other
   agent is going to fix it for you.
 - **Genuine human design decision** (ambiguous spec, missing requirement,
@@ -413,9 +416,9 @@ Edit YAML:
      - `**Final AC check:** Before Done, every AC must be checked: true.`
    - No `id` field
 3. **Bug cards** with partial progress: also append the `## Bug Diagnosis` block.
-4. Fill `retro.{good, bad, action_item_ids, commits}` honestly — the AC gap is the primary "what went wrong." The worker auto-renders the `## Retro` comment on save (Blocked is a non-terminal status, so rendering happens when the next pickup eventually moves the card to Done or Cancelled). Filling `retro` now still helps: the next agent inherits it through the YAML. **Re-apply the Step 1.5 filter to every action item candidate.** The fix the next agent will need to make → describe in the Blocked comment, not as an action item card. Only large, unrelated, separately-scopeable follow-ups belong here. Create any action item card first via `danx_issue_create({type, title, description, ac, ...})`, then push its returned `<PREFIX>-N` here. Empty `action_item_ids[]` is the right answer most of the time.
+4. Fill `retro.{good, bad, action_item_ids, commits}` honestly — the AC gap is the primary "what went wrong." The worker auto-renders the `## Retro` comment when the next pickup eventually moves the card to Done or Cancelled (Blocked is a non-terminal status, so the rendering happens on the eventual terminal save, not now). Filling `retro` now still helps: the next agent inherits it through the YAML. **Re-apply the Step 1.5 filter to every action item candidate.** The fix the next agent will need to make → describe in the Blocked comment, not as an action item card. Only large, unrelated, separately-scopeable follow-ups belong here. Create any action item card first via `danx_issue_create({type, title, description, ac, ...})`, then push its returned `<PREFIX>-N` here. Empty `action_item_ids[]` is the right answer most of the time.
 
-Save: `danx_issue_save({id})`.
+Edit the YAML with `Edit` / `Write`; the watcher mirrors the change.
 
 Skip to Step 11.
 
@@ -496,12 +499,14 @@ If the only thing blocking the card is human action → use Step 10 (Blocked) in
 
 ### Save and exit
 
-Save: `danx_issue_save({id})`. The worker normalizes status to ToDo,
-applies the Waiting On label via the tracker, and returns. The poller will
-re-evaluate on its next tick and skip dispatching this card while any
-blocker remains non-terminal. When every blocker reaches Done /
-Cancelled, the poller clears `waiting_on` automatically and dispatches the
-card on the same tick.
+Edit the YAML with `Edit` / `Write`. The watcher mirrors the change to
+the DB; the post-completion auto-sync (when `danxbot_complete` fires)
+normalizes status to ToDo via `forceWaitingOnToToDo`, applies the
+Waiting On label via the tracker, and returns. The poller re-evaluates
+on its next tick and skips dispatching this card while any blocker
+remains non-terminal. When every blocker reaches Done / Cancelled, the
+poller clears `waiting_on` automatically and dispatches the card on the
+same tick.
 
 Skip to Step 11.
 

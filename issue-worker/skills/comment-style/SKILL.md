@@ -1,6 +1,6 @@
 ---
 name: comment-style
-description: 'MANDATORY before writing any `description`, `comments[].text`, `retro.good`, or `retro.bad` field on an issue YAML. Loads the markdown style contract (headers, fenced code, inline code, lists, tables, links) the dashboard''s Issues drawer renders, and the never-do list (no escaping markdown, no ASCII tables, no indented prose for code) as TodoWrite checklist. Triggers — about to Edit any of the four markdown-rendered fields on an issue YAML, or about to call `mcp__danx-issue__danx_issue_save`/`danx_issue_create` with text in those fields.'
+description: 'MANDATORY before writing any `description`, `comments[].text`, `retro.good`, or `retro.bad` field on an issue YAML. Loads the markdown style contract (headers, fenced code, inline code, lists, tables, links) the dashboard''s Issues drawer renders, and the never-do list (no escaping markdown, no ASCII tables, no indented prose for code) as TodoWrite checklist. Triggers — about to Edit any of the four markdown-rendered fields on an issue YAML (the chokidar watcher mirrors the change to the DB; the post-completion auto-sync pushes to the tracker), or about to call `mcp__danx-issue__danx_issue_create` with text in those fields.'
 ---
 
 # Comment / Description / Retro Style
