@@ -29,7 +29,7 @@ This is intentional. Two-way sync on every field would create merge conflicts th
 
 ## YAML Schema
 
-Authoritative source: `/home/newms/web/danxbot/src/issue-tracker/interface.ts` (the `Issue` type).
+Authoritative source: `<DANXBOT_REPO>/src/issue-tracker/interface.ts` (the `Issue` type).
 
 Quick reference:
 
@@ -140,6 +140,8 @@ If you cannot name one — **status stays `In Progress` and you do the work.** "
 - "honest way to verify"
 - "intermittent — needs more samples" (run more samples yourself)
 - "needs to be tested in production / staging"
+- "operator must run `/reload-plugins`" / "active sessions need to reload" / "restart open editors" / "re-source shell" — plugins + configs reload on next session by design; transient session refresh is NEVER a work product. Mark such ACs done if every persistent artifact (commit pushed, file written, package published) is in place.
+- "operator must verify in their environment" — when verification is not gating any other work, ship the card; if verification later fails, file a new card.
 
 Strip the punt, run the steps, report the result, update the AC.
 
@@ -187,6 +189,12 @@ Every description must include: exact file paths, known gotchas, how to verify. 
 ## Checklists
 
 **`ac[]` (Acceptance Criteria, required):** Specific, verifiable items starting with a verb. "Returns 422 when email missing" not "Handle validation."
+
+**Forbidden AC shapes — do NOT add these in the first place:**
+- "Active host-session instances run `/reload-plugins`" / "operator restarts open editors" / "operator re-sources shell rc" / "operator reloads browser tabs" — plugins + configs reload on next session by design. Transient session refresh is NEVER a work product. If the persistent artifact (commit pushed, file written, package published) is in place, the work is done.
+- "Operator verifies in their environment" — agent has no way to verify, verification gates nothing else. Ship the card; file a new card if it later breaks.
+
+If you catch yourself authoring such an AC, drop it. ACs gate Done; transient operator nicety does not.
 
 There is no separate "Progress" or "Phases" checklist on the YAML schema (ISS-81 retired the old `phases[]` field). Multi-step work either fits in `ac[]` on a single card OR splits into an Epic + child phase cards (`children[]`). Progress lives in the agent's pipeline (TDD test pass, code review pass, commit) and is reflected on terminal save via `status: Done` + `retro.commits[]`.
 

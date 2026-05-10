@@ -42,10 +42,10 @@ The list is non-exhaustive. **If the action I am about to take results in a danx
 
 The CURRENT user message in THIS session must directly request the specific worker launch / restart / deploy. Examples that DO authorize:
 
-- "launch the danxbot worker for danxbot"
-- "restart the gpt-manager worker"
-- "deploy danxbot to gpt"
-- "run `make launch-worker REPO=platform`"
+- "launch the danxbot worker for `<repo>`"
+- "restart the `<repo>` worker"
+- "deploy danxbot to `<TARGET>`"
+- "run `make launch-worker REPO=<repo>`"
 
 Examples that do NOT authorize a worker launch:
 

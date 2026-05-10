@@ -31,7 +31,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 **Every code review produces a temporary revisions plan file.** This keeps review findings and fix tracking separate from the main plan file.
 
-1. **Create a revisions plan file** at `/tmp/claude-code-reviews/<project-basename>/revisions-<timestamp>.md` (e.g., `/tmp/claude-code-reviews/gpt-manager/revisions-2026-02-24-1430.md`). Create the directory if it doesn't exist. This lives in `/tmp` because it's ephemeral and should never be committed.
+1. **Create a revisions plan file** at `/tmp/claude-code-reviews/<project-basename>/revisions-<timestamp>.md` (e.g., `/tmp/claude-code-reviews/<your-repo>/revisions-2026-02-24-1430.md`). Create the directory if it doesn't exist. This lives in `/tmp` because it's ephemeral and should never be committed.
 2. **Copy ALL findings** from every reviewer agent into the file verbatim — organized by reviewer (test-reviewer, code-reviewer, architecture-reviewer)
 3. **Write an implementation plan below the findings** — concrete phases detailing how you will address each finding, with specific files and changes described
 4. **If trivial** (all findings are simple renames, missing docs, small fixes): a single phase is fine

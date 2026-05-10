@@ -15,7 +15,7 @@ Read every rule below. These are the rules you are most likely to violate under 
 
 ```
 PLAN SOURCE
-  Issue card (ISS-N YAML) → issues:issue-card-workflow skill
+  Issue card (ISS-N YAML) → danxbot:issue-card-workflow skill
   Card path unclear after initial investigation → pipe-plan (escape hatch)
   No card + investigation → dev:debugging skill
 PRE-IMPL (every phase)

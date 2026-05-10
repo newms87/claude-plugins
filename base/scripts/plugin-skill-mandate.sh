@@ -37,7 +37,7 @@ This is not a suggestion. Skill descriptions in the available-skills list are ne
 
 (2) Hard MANDATORY triggers — match any one and load the skill immediately. Only triggers for INSTALLED plugins apply (skills not in the available-skills list cannot be loaded — skip those triggers):
 
-   • issues:issue-card-workflow
+   • danxbot:issue-card-workflow
        - touching <repo>/.danxbot/issues/ (read OR write OR create)
        - calling mcp__danx-issue__*
        - picking up an ISS-N
@@ -45,7 +45,7 @@ This is not a suggestion. Skill descriptions in the available-skills list are ne
        - ANY plan to write a YAML under .danxbot/issues/
        - SPECIAL: creating a type:Epic card without spawning every phase card in the SAME turn is a violation. "Epic for X" means "epic + every phase card" — atomic unit.
 
-   • issues:unblock
+   • danxbot:unblock
        - picking up a Needs Help / Blocked card
        - user says "unblock", "get unstuck", "fix the blocker on", "what does this card need"
 

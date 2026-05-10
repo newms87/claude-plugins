@@ -20,13 +20,13 @@ When a user asks about a deployed job, dispatch, session, or container — go pu
 
 ## Deployments
 
-Per-target config: `deploy/targets/<TARGET>.yml`. Current targets: `gpt` (gpt-manager). Each target = its own AWS account/region/resources, complete isolation, per-target SSM prefix (e.g. `/danxbot-gpt/...`), per-target EC2.
+Per-target config: `<DANXBOT_REPO>/deploy/targets/<TARGET>.yml`. Each target = its own AWS account/region/resources, complete isolation, per-target SSM prefix (e.g. `/danxbot-<target>/...`), per-target EC2. Substitute `<TARGET>` (e.g. `gpt`) from the deployment the operator is asking about — `ls deploy/targets/` lists current targets.
 
 ## Reach paths
 
 ### 1. HTTP API (preferred for job/dispatch queries — no SSH, no streaming)
 
-The dashboard proxies auth-gated requests to the right worker on `danxbot-net`. For the `gpt` target the public base is `https://danxbot.sageus.ai`. Routes:
+The dashboard proxies auth-gated requests to the right worker on `danxbot-net`. Public base URL = the operator's deployment hostname (read from the relevant `deploy/targets/<TARGET>.yml` `dashboard_host:` field, or check the operator's prior `make deploy-status` output). Routes:
 
 | Route | Method | Notes |
 |-------|--------|-------|
@@ -38,13 +38,13 @@ The dashboard proxies auth-gated requests to the right worker on `danxbot-net`. 
 All require `Authorization: Bearer <token>`. Token in SSM:
 
 ```bash
-DANXBOT_DISPATCH_TOKEN=$(aws --profile gpt ssm get-parameter \
-  --name /danxbot-gpt/shared/DANXBOT_DISPATCH_TOKEN \
-  --with-decryption --region us-east-1 \
+DANXBOT_DISPATCH_TOKEN=$(aws --profile <TARGET> ssm get-parameter \
+  --name /danxbot-<TARGET>/shared/DANXBOT_DISPATCH_TOKEN \
+  --with-decryption --region <REGION> \
   --query Parameter.Value --output text)
 
 curl -sS -H "Authorization: Bearer $DANXBOT_DISPATCH_TOKEN" \
-  "https://danxbot.sageus.ai/api/status/<jobId>?repo=gpt-manager"
+  "https://<your-danxbot-deployment>/api/status/<jobId>?repo=<connected-repo>"
 ```
 
 Right tool for: "why did job X time out / what was its summary / how long did it run".
@@ -54,7 +54,7 @@ Right tool for: "why did job X time out / what was its summary / how long did it
 ```bash
 # Tails `docker compose -f docker-compose.prod.yml logs -f --tail=100` via SSH.
 # Streaming — cap with `timeout` or background + grep.
-timeout 20 make deploy-logs TARGET=gpt 2>&1 | grep <jobId>
+timeout 20 make deploy-logs TARGET=<TARGET> 2>&1 | grep <jobId>
 ```
 
 Use for: timeout reasons, stall detection traces, HTTP request errors, any `[Job <id>] ...` line from `src/agent/launcher.ts` or `src/worker/dispatch.ts`.
@@ -64,9 +64,8 @@ Use for: timeout reasons, stall detection traces, HTTP request errors, any `[Job
 **CRITICAL: do not use bare `terraform output -raw public_ip`.** Terraform's backend is per-target and the last-initialized workspace wins — reading outputs without `terraform init -reconfigure` first gives the IP of whichever target you last deployed, not the one you want. The deploy CLI does this correctly:
 
 ```bash
-# Get the real IP for a target by running the deploy CLI's init-then-output pipeline:
-cd /home/newms/web/danxbot
-IP=$(timeout 30 npx tsx deploy/cli.ts status gpt 2>&1 | grep -oE 'public[_ ]ip[^0-9]*[0-9.]+' | grep -oE '[0-9.]+$')
+# Run from <DANXBOT_REPO>. Get the real IP for a target by running the deploy CLI's init-then-output pipeline:
+IP=$(timeout 30 npx tsx deploy/cli.ts status <TARGET> 2>&1 | grep -oE 'public[_ ]ip[^0-9]*[0-9.]+' | grep -oE '[0-9.]+$')
 # Or parse from deploy-logs stdout (it prints the exact SSH command including the IP).
 
 KEY=~/.ssh/danxbot-production-key.pem
@@ -75,16 +74,16 @@ ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "cd /danxbot && docker compose -f docker-compose.prod.yml ps"
 
 # Interactive session (user-driven — not ideal from Bash tool):
-make deploy-ssh TARGET=gpt
+make deploy-ssh TARGET=<TARGET>
 ```
 
-From inside the instance, the entire worker container is reachable: `docker exec danxbot-worker-gpt-manager ...` for `psql` queries against the dispatches DB, file reads on `~/.claude/projects/...` (claude session JSONLs), or any diagnostic shell.
+From inside the instance, the entire worker container is reachable: `docker exec danxbot-worker-<connected-repo> ...` for `psql` queries against the dispatches DB, file reads on `~/.claude/projects/...` (claude session JSONLs), or any diagnostic shell.
 
 ### 4. SSM + Terraform state for infra questions
 
 ```bash
-make deploy-status TARGET=gpt           # health + instance state
-aws --profile gpt ssm get-parameters-by-path --path /danxbot-gpt/ --recursive --region us-east-1
+make deploy-status TARGET=<TARGET>           # health + instance state
+aws --profile <TARGET> ssm get-parameters-by-path --path /danxbot-<TARGET>/ --recursive --region <REGION>
 ```
 
 ## Canonical debugging recipes

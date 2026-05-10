@@ -4,7 +4,7 @@
     "name": "Dan Newman",
     "email": "newms87@gmail.com"
   },
-  "description": "Personal plugin set: discipline, dev pipeline, danxbot orchestration, issue-worker autonomy",
+  "description": "Personal plugin set: discipline, dev pipeline, danxbot orchestration",
   "plugins": [
     {
       "name": "base",
@@ -32,19 +32,9 @@
       "description": "Human-in-the-loop discipline: read-only-default (human-loop skill), host-environment, docs/explain. Install only where a human drives prompts. Do NOT install on autonomous dispatched workers (diagnostic-mode-on-question would deadlock)."
     },
     {
-      "name": "issues",
-      "source": "./issues",
-      "description": "Issue card workflow: YAML schema, tracker contract, danx-issue MCP usage. Install where cards are read or written."
-    },
-    {
       "name": "danxbot",
       "source": "./danxbot",
-      "description": "Danxbot orchestrator domain knowledge: dispatch architecture, runtime modes, deploy. Install on danxbot-aware instances."
-    },
-    {
-      "name": "issue-worker",
-      "source": "./issue-worker",
-      "description": "Autonomous issue-worker workflow: danx-start, danx-next, danx-ideate, danx-triage-card, danx-epic-link. Workspace-only."
+      "description": "Danxbot orchestrator: dispatch architecture, runtime modes, deploy, issue-card workflow (YAML schema, tracker contract, danx-issue MCP), autonomous issue-worker skills (danx-start, danx-next, danx-ideate, danx-triage-card, danx-epic-link), unblock, halt-flag, no-unauthorized-worker-launch, comment-style. Single home for everything danxbot-related — install on every danxbot-aware instance + workspace."
     }
   ]
 }

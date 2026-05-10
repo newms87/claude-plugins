@@ -5,7 +5,7 @@ description: 'MANDATORY when reasoning about, configuring, debugging, or dispatc
 
 # Danxbot — How It Works
 
-Danxbot is an autonomous orchestrator. Source repo: `/home/newms/web/danxbot/` (sibling of every connected repo). It spawns Claude Code CLI subprocesses to do work in a connected repo (`gpt-manager`, `platform`, etc.), polls issue trackers, exposes an HTTP dispatch API.
+Danxbot is an autonomous orchestrator. Source repo: `<DANXBOT_REPO>` (sibling of every connected repo on the operator's dev box). It spawns Claude Code CLI subprocesses to do work in a connected repo (the operator's app/library codebases — examples: `gpt-manager`, `platform`), polls issue trackers, exposes an HTTP dispatch API.
 
 Reading this skill avoids three recurring mistakes:
 
@@ -38,9 +38,8 @@ The local dev case collapses A and B onto the same host — but treat them as se
 
 | Source path | Runtime location |
 |---|---|
-| `/home/newms/web/gpt-manager/mcp-server/` | npm package `@thehammer/schema-mcp-server` → spawned via `npx` on **Machine B** as stdio child of the dispatched agent |
-| `/home/newms/web/mcp-server-trello/` | npm package `@thehammer/mcp-server-trello` → spawned by the **trello-worker dispatch on Machine B**, NEVER by main session |
-| `/home/newms/web/danx-issue-mcp/` | npm package `@thehammer/danx-issue-mcp` → spawned in **main session on the dev host** (writes local YAML in the connected repo's `.danxbot/issues/`) |
+| `<owner-repo>/<package-source>/` (operator's local checkout of an MCP package) | npm-published name → spawned via `npx` on **Machine B** as stdio child of the dispatched agent. Source-repo path is just where the operator edits + publishes from; it does NOT execute on the connected app's Laravel host. |
+| `<connected-repo>/.danxbot/workspaces/<name>/.mcp.json` | declares which packages the workspace's dispatched agent loads. The package itself runs as a stdio child of that agent on Machine B. |
 | `<repo>/.danxbot/workspaces/<name>/` | bind-mounted into worker container; agent's `cwd` resolves rules + `.mcp.json` from this dir |
 
 A file inside `gpt-manager/mcp-server/` does NOT execute on the gpt-manager Laravel host. It's published to npm and consumed by whatever process loads its MCP server — almost always the dispatched agent on Machine B. Same for `mcp-server-trello`: the package lives as a sibling repo on the dev host, but the only process that loads it is the trello-worker dispatch.
@@ -107,9 +106,9 @@ Main session  ──Edit──>  <repo>/.danxbot/issues/open/<id>.yml  (canonica
 - The backend write surface (`mcp__trello__*`) is loaded ONLY by the trello-worker dispatch on Machine B, NOT by the main session. Never call `mcp__trello__*` from main session.
 - Agents NEVER refer to issues by tracker-native ids. Internal id `ISS-N` is the only stable handle.
 
-Schema authoritative source: `/home/newms/web/danxbot/src/issue-tracker/interface.ts` (the `Issue` type).
+Schema authoritative source: `<DANXBOT_REPO>/src/issue-tracker/interface.ts` (the `Issue` type).
 
-Universal workflow: `~/.claude/rules/issues.md`.
+Universal workflow: invoke `danxbot:issue-card-workflow` skill.
 
 ## Trello Poller (Worker-Owned)
 
@@ -129,10 +128,10 @@ The poller is the ONLY thing that calls Trello. Do not invent agent-path Trello 
 ## External Dispatch API
 
 ```
-curl -sS -X POST https://danxbot.sageus.ai/api/launch \
+curl -sS -X POST https://<your-danxbot-deployment>/api/launch \
   -H "Authorization: Bearer $DANXBOT_DISPATCH_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"repo": "gpt-manager", "workspace": "system-test", "task": "Reply OK and call danxbot_complete.", "api_token": "'"$DANXBOT_DISPATCH_TOKEN"'"}'
+  -d '{"repo": "<connected-repo>", "workspace": "system-test", "task": "Reply OK and call danxbot_complete.", "api_token": "'"$DANXBOT_DISPATCH_TOKEN"'"}'
 ```
 
 - `workspace` is required. Must match a directory under `<connected-repo>/.danxbot/workspaces/`.
@@ -146,11 +145,7 @@ Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That
 
 | Package | Source | Loaded by | Publish command |
 |---|---|---|---|
-| `@thehammer/schema-mcp-server` | `<gpt-manager>/mcp-server/` | dispatched schema-builder workspace | `make publish-mcp` |
-| `@thehammer/mcp-server-trello` | `/home/newms/web/mcp-server-trello/` | trello-worker dispatch only | `make publish-trello-mcp` |
-| `@thehammer/danx-issue-mcp` | `/home/newms/web/danx-issue-mcp/` | main session | `make publish-danx-issue-mcp` |
-
-All three are owned by the user — publish freely without re-asking permission, even when generic rules say "ask before publishing." That generic rule does not apply to MCP servers the user owns.
+Each MCP server consumed by a danxbot workspace has an owner repo with a `make publish-<x>` target. The `danx-issue-mcp` server is owned by the danxbot repo itself; tracker/schema/trello servers may be owned by other repos in the operator's tree. The workspace's `.mcp.json` declares which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
 
 ## Common Failure Modes
 
@@ -158,16 +153,18 @@ All three are owned by the user — publish freely without re-asking permission,
 |---|---|---|
 | New MCP tool not available in dispatched agent | Forgot to publish after editing source | `make publish-mcp` (or relevant publish target), then re-dispatch |
 | YAML edited, Trello unchanged | Worker hasn't polled yet (~60s tick) OR sync failure (check worker logs) | YAML is canonical; don't worry unless tick > a few minutes |
-| Dispatch fails with "Timed out after 2000ms waiting for PID file" | WSL → Windows interop stall on host-mode launcher | `<gpt-manager>/docs/guides/WSL_INTEROP_STALLS_RUNBOOK.md` |
+| Dispatch fails with "Timed out after 2000ms waiting for PID file" | WSL → Windows interop stall on host-mode launcher | check the operator's WSL-interop runbook (host-mode only) |
 | `mcp__trello__*` not found in main session | Correct — it's not loaded there. Use `mcp__danx-issue__*` and let the worker sync. | This skill |
 | Editing `mcp-server/` doesn't change agent behavior | Source change ≠ runtime change. Must publish to npm + clear npx cache. | This skill — Repo Location ≠ Runtime Location |
 | Confusion about whether Laravel can reach the agent's `/tmp/schemas/{id}/` | It cannot. Boundary is HTTP. Machine B owns local FS. | This skill — Two-Machine Networking Model |
 
 ## Cross-References
 
-- `~/.claude/rules/issues.md` — universal issue workflow
-- `<gpt-manager>/.claude/rules/paths-and-commands.md` — gpt-manager-specific publish/danxbot paths
-- `/home/newms/web/danxbot/CLAUDE.md` — danxbot's own dev rules (read when editing danxbot itself)
-- `/home/newms/web/danxbot/.claude/rules/agent-dispatch.md` — full dispatch contract
-- `/home/newms/web/danxbot/.claude/rules/production-access.md` — proxy / SSH / `docker exec` recipes
-- `/home/newms/web/danxbot/.claude/rules/settings-file.md` — per-repo `settings.json` ownership
+- `danxbot:issue-card-workflow` skill — universal issue YAML lifecycle
+- `danxbot:prod-access` skill — proxy / SSH / `docker exec` recipes for deployed targets
+- `danxbot:dispatch-deep` skill — resume protocol, staged_files, multi-block usage dedup, claude-auth diagnostic
+- `danxbot:docker-deep` skill — root `.mcp.json` inject, `.env.<target>` overlays, Laravel `.env.{APP_ENV}` trap
+- `danxbot:settings-deep` skill — per-repo `settings.json` schema + ownership matrix
+- `<DANXBOT_REPO>/CLAUDE.md` — danxbot repo's own dev rules (read when editing danxbot itself)
+- `<DANXBOT_REPO>/.claude/rules/agent-dispatch.md` — full dispatch contract
+- `<DANXBOT_REPO>/.claude/rules/settings-file.md` — settings.json invariants pointer
