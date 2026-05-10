@@ -18,19 +18,25 @@ From the conversation context and user's `/docs` message:
 
 Both `CLAUDE.md` and `.claude/rules/*.md` are loaded automatically with the same priority. The difference is organizational.
 
-| Location | What Goes There |
-|----------|-----------------|
-| `CLAUDE.md` | Project overview, key commands, core principles. Keep concise. |
-| `.claude/rules/*.md` | Domain-specific procedures (git, debugging, planning, TDD). Group related guidance together. |
-| `~/.claude/rules/*.md` | Universal rules shared across all projects. |
-| `.claude/agents/*.md` | Instructions for specialized subagents only. |
+| Location | What Goes There | Audience |
+|----------|-----------------|----------|
+| `CLAUDE.md` | Project overview, key commands, core principles. Keep concise. | Any agent loading the project |
+| `.claude/rules/*.md` | Domain-specific procedures (git, debugging, planning, TDD). | Any agent loading the project |
+| `~/.claude/rules/*.md`, `~/.claude/CLAUDE.md` | Operator's main-thread Claude Code session ONLY. | **Main session only** — does NOT load for dispatched-agent contexts (danxbot worker dispatches running as a different user / different HOME, agent-SDK subagents, container workers). |
+| Plugin source (`~/web/claude-plugins/<plugin>/{rules,skills}/`) | Universal rules + skills shared across projects, agents, dispatched contexts. Loaded via the marketplace + `autoUpdate`. | All instances that consume the plugin. |
+| Workspace inject path (`~/web/danxbot/src/poller/inject/workspaces/<workspace>/.claude/{rules,skills}/`) | Rules that fire INSIDE danxbot dispatched agents specifically. The poller mirrors this tree into every connected repo's workspace dir each tick. | Dispatched danxbot agents. |
+| `.claude/agents/*.md` | Instructions for specialized subagents only. | Subagents |
 
 **Decision flow:**
-- Is this universal across all projects? → Add to `~/.claude/rules/`
-- Does a project-level rules file for this domain already exist? → Add to that file
-- New domain that warrants its own file? → Create `.claude/rules/{domain}.md`
-- Project-wide overview or quick reference? → `CLAUDE.md`
-- Subagent-specific behavior? → `.claude/agents/`
+- Will a danxbot dispatched agent run this rule? → Plugin source OR workspace inject path. **NEVER `~/.claude/`** — dispatched agents don't load it.
+- Universal across all projects + main + dispatched contexts? → Plugin source (via `~/web/claude-plugins/`).
+- Operator's main session only (no dispatched-agent audience)? → `~/.claude/rules/` or `~/.claude/CLAUDE.md`.
+- Project-level domain rule already exists? → Add to that file.
+- New project domain? → Create `.claude/rules/{domain}.md`.
+- Project overview / quick reference? → `CLAUDE.md`.
+- Subagent-specific? → `.claude/agents/`.
+
+**Anti-pattern:** dropping a generalized rule (applies to dispatched agents OR cross-project) into `~/.claude/` because it's the easiest path. Dispatched agents never read it; the rule won't fire where it's needed.
 
 **Path-specific rules:** Add YAML frontmatter with `paths` to scope rules to specific files:
 ```yaml
