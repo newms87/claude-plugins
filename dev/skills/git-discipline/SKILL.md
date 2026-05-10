@@ -70,6 +70,8 @@ NEVER use `git reset`. When committing, stage ONLY your changes (`git add <speci
 
 Forbidden. No exceptions. Understand failure → investigate code itself. Stashing destroys uncommitted work + can corrupt multi-agent sessions.
 
+**Banned rationalization: "baseline."** "Was this broken before my changes?" is NOT a question worth asking. You OWN every failing test in the tree, regardless of origin (cross-session ownership — see line 123 of this skill, plus code-quality:115, pipe-quality:47, testing:29). Only exception: another agent has UNCOMMITTED ACTIVE changes — verifiable via `git status` showing files YOU did not touch in YOUR diff. Otherwise: skip the baseline question, fix the failures. Do NOT `git stash`, do NOT `git checkout`, do NOT swap the working tree to "prove it was already broken." The proof is irrelevant — your responsibility either way.
+
 ## Before Deleting Any File: Grep for Consumers First
 
 Before running `rm`, Edit-to-empty, Write-empty-string, any file removal: **grep entire source tree** for imports, requires, includes, textual references to file. ANY consumer exists → STOP — either delete wrong, or consumers must migrate first.
