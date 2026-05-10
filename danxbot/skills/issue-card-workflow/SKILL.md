@@ -35,14 +35,14 @@ Quick reference:
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema_version` | `4` | Never change. v3 YAMLs auto-migrate to v4 on read (split `blocked` → `waiting_on` for dep-chain entries; rename status `Needs Help` → `Blocked`); always emitted as `4` on write. |
+| `schema_version` | `6` | Never change. v3–v5 YAMLs auto-migrate on read; always emitted as `6` on write. v6 (DX-231) drops the `"Needs Approval"` parking status and adds the orthogonal `requires_human` field — the loader rejects `status: "Needs Approval"` fail-loud. |
 | `tracker` | string | Don't change. Implementation-managed. |
 | `id` | string (`ISS-N`) | Internal primary key. Filename is `<id>.yml`. Don't change. |
 | `external_id` | string | Tracker-native id. Sync-layer only — never expose, never edit. |
 | `parent_id` | `string \| null` | Child card → parent's `id`. On phases of an epic = epic's `id`. Reverse linkage to `children[]`. |
 | `children` | `string[]` (ids) | Ordered list of child issue ids (`ISS-N`). Available on every card type. On `type: Epic` = the ordered phase cards (UI label "Phases"). On non-epic = sub-cards (UI label "Children"). One field, two labels. Phases MUST be cards — there is no in-card phase checklist (ISS-81 retired the old `phases[]` field). Maintained by `danx-epic-link` skill (human-created phase cards) and by `danx_issue_create` (drafts with `parent_id` set). |
 | `dispatch` | `{id, pid, host, kind, started_at, ttl_seconds} \| null` | Poller-managed dispatch record (replaces the bare `dispatch_id`). `null` when no agent is running on the card; non-null is a structured snapshot of the active dispatch (UUID, OS PID + host for cross-host correlation, kind = `"work"` \| `"triage"`, ISO start, liveness TTL in seconds). Don't touch. |
-| `status` | `Review` \| `ToDo` \| `In Progress` \| `Blocked` \| `Needs Approval` \| `Done` \| `Cancelled` | Editing this field IS how you "move" the card. `Blocked` (formerly `Needs Help`) and `Needs Approval` are the two non-dispatchable parking statuses — see "Blocked vs Waiting On" and "Needs Approval vs Blocked" below. |
+| `status` | `Review` \| `ToDo` \| `In Progress` \| `Blocked` \| `Done` \| `Cancelled` | Editing this field IS how you "move" the card. `Blocked` is the non-dispatchable parking status (self-block — see "Blocked vs Waiting On"). The orthogonal `requires_human` field is a separate dispatch gate that may co-exist with any open status — see "Requires Human vs Blocked vs Waiting On". |
 | `type` | `Bug` \| `Feature` \| `Epic` | Required. |
 | `title` | string | Card name (no `#ISS-N:` prefix — worker prefixes when pushing). |
 | `description` | string | Full markdown body. |
@@ -52,6 +52,7 @@ Quick reference:
 | `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Blocked only. Worker auto-renders ONE `## Retro` comment. `action_item_ids[]` is a `string[]` of `ISS-N` references (e.g., `["ISS-12", "ISS-14"]`). Create each action item card first via `danx_issue_create`, then push its returned `id` here. Unknown or malformed `ISS-N` values render as `<ISS-N: unknown>` in the retro comment. |
 | `waiting_on` | `null` OR `{reason, timestamp, by[]}` | **Dep-chain queue** — `null` when nothing queues the card. Set to a record when the card is **waiting on other in-flight work** (a phase sibling, an Action Items card, a separately-scoped task) and the card itself is fine — does NOT need a human. `reason` is a non-empty sentence; `timestamp` is ISO 8601; `by[]` is a non-empty list of `ISS-N` ids that must reach Done / Cancelled before the card unblocks. If no card describes the unblock work, **create one** (`danx_issue_create`) and reference it. The worker forces `status: ToDo` whenever `waiting_on` is non-null; the poller auto-clears the record and dispatches the card once every dependency is terminal. **Waiting On is NOT Blocked** — see "Blocked vs Waiting On" below. |
 | `blocked` | `null` OR `{reason, timestamp}` | **Self-block reason cache.** `null` when the card itself can proceed. Non-null = the card itself cannot make progress on its own work; a human (or a subsequent agent dispatch) must clear the block. No `by[]` — that lives on `waiting_on`. **Invariant: `status === "Blocked" ⟺ blocked !== null`** (worker enforces both directions; setting one without the other is a validation error). `reason` is a non-empty sentence; `timestamp` is ISO 8601. |
+| `requires_human` | `null` OR `{reason, steps[], set_by, set_at}` | **Orthogonal "this card needs a human" indicator** (DX-231 — replaces the retired `"Needs Approval"` parking status). `null` when no human action needed. Non-null = the card cannot make progress until a human acts on something the agent has zero programmatic reach into (3rd-party token rotation, granting access to an external dashboard, manual deploy of external infra). Independent from `blocked` and `waiting_on`; all three are dispatch gates and may co-exist. The poller's dispatch filter (`src/poller/local-issues.ts`) skips any card with `requires_human != null`. `set_by` is `"agent"` (rare 3rd-party blockers) or `"human"` (operator flagged the card via the dashboard). `set_at` is ISO 8601. Cleared by the human via the dashboard's "Mark Resolved" affordance (Phase 8 of DX-231). See "Requires Human vs Blocked vs Waiting On" below. |
 
 ## MCP Tool Surface
 
@@ -76,7 +77,7 @@ The `triage{}` block on each YAML is owned by the **per-card triage agent** disp
 
 | Status | Triage decision | Default TTL |
 |---|---|---|
-| `Review` | ICE-score → Keep / Cancel / Approve (status flips) | 24h |
+| `Review` | ICE-score → Keep (→ ToDo) / Cancel (→ Cancelled) / Approve (→ ToDo + populate `requires_human`) | 24h |
 | `Blocked` (`blocked != null`) | Hard Gate audit → Demote to ToDo OR Confirm + write `reassess_hint` | 3h |
 | `Waiting On` (`waiting_on != null`) | Re-check `waiting_on.by[]` — clear if every dependency is terminal | 1h |
 | `ToDo` / `In Progress` | Not triaged | n/a |
@@ -105,7 +106,11 @@ stateDiagram-v2
     Cancelled --> [*]
 ```
 
-`Needs Approval` is human-managed — neither the poller nor the triage agent moves cards into or out of it.
+`requires_human` is set by humans (via the dashboard "Flag for human"
+affordance) or by the triage agent (Approve decision — populates the
+field with a clear `reason` + `steps[]`). The poller never moves
+`requires_human` automatically; it only reads the field as a dispatch
+gate. Cleared by humans only via "Mark Resolved".
 
 ## Blocked vs Waiting On
 
@@ -159,18 +164,79 @@ Reproducing a bug, validating a fix, running an artisan suite, capturing logs, r
 
 If local genuinely cannot reproduce, that is a SEPARATE bug — file an action-item card to fix the local-vs-prod divergence rather than punt the original card to staging verification.
 
-## Needs Approval vs Blocked
+## Requires Human vs Blocked vs Waiting On
 
-`Needs Approval` and `Blocked` are both non-dispatchable parking statuses — neither status is dispatched by the poller, and the YAML stays in `open/`. They differ in **what kind of human action** unblocks the card:
+Three different "this card cannot dispatch right now" signals. They are
+NOT interchangeable; the dashboard surfaces them as three distinct
+indicators and the poller checks them as three independent gates. Pick
+the right one mechanically — guessing produces noisy operator queues.
 
-- **Blocked** (`status: "Blocked"`): a human must **supply information / take an action** the agent does not have. Credentials, deploy access, missing decision input, an ambiguous AC the agent cannot resolve from the codebase, a write-only repo the agent cannot reach. Without that input the agent is fundamentally unable to do the work.
-- **Needs Approval** (`status: "Needs Approval"`): the agent **could** do the work — has the access, the context, the tools — but is uncertain whether the chosen direction is **the right one**. Architectural risk, cross-cutting scope, disruptive refactor, large blast radius, ambiguous tradeoffs. The card sits in Needs Approval until a human reviews the plan and either approves it (move back to ToDo) or redirects it (edit the description, move back to ToDo).
+| Signal | Field | When | Cleared by |
+|---|---|---|---|
+| **Blocked** | `status: "Blocked"` + `blocked: {reason, timestamp}` | The card *itself* is stuck — a human must **supply information / take an action the agent does not have** but COULD perform if it had it (credentials, deploy access, ambiguous spec needing a design call, missing decision input, write-only repo the agent cannot reach). | Human writes a comment / opens the card; next dispatch (or human) flips `status` back to ToDo and clears `blocked`. |
+| **Requires Human** | `requires_human: {reason, steps[], set_by, set_at}` (any open `status`) | The card needs a human to act on a **system the agent has zero programmatic reach into** — 3rd-party API token rotation, granting access to an external dashboard, manual deploy of external infra. Independent from `blocked` / `waiting_on`. | Human via the dashboard's "Mark Resolved" affordance (PATCHes `requires_human: null`). Re-enables dispatch on the next poll tick. |
+| **Waiting On** | `waiting_on: {reason, timestamp, by[]}` (worker forces `status: ToDo`) | The card is queued behind **other in-flight work** that does NOT need a human — phase siblings shipping first, an Action Items card landing, a separately-scoped task. | Poller auto-clears `waiting_on` and dispatches the card the moment every blocker in `by[]` reaches Done / Cancelled. |
 
-Why two statuses instead of one: operators triaging the parked-card list need to know which kind of action is required at a glance. Conflating "I'm missing information" with "I want sanity check before I proceed" loses signal — the operator either has to read every card body or risks under-reviewing high-risk plans.
+### Why three signals instead of one
 
-The triage agent (auto-triage epic, ISS-74 and downstream phases) routes uncertain cards to `Needs Approval` when ICE-scoring or scope analysis flags the card as risky-but-actionable. Humans can also set `Needs Approval` directly when they want a sanity check before an agent picks up the card.
+Operators triaging the parked-card list need to know what kind of
+unblock action is required at a glance. Collapsing them into one
+"parked" bucket loses signal:
 
-`Needs Approval` is set / cleared by humans only — the poller never moves a card into or out of Needs Approval automatically. Mirrors today's `Blocked` semantics.
+- **Blocked** is a request for *information / a decision*. The
+  unblock action is short, often answerable from a comment.
+- **Requires Human** is a request for *external action*. The
+  unblock action requires the human to leave the dashboard and
+  touch a vendor portal / keyring / other system; it cannot be
+  resolved by typing.
+- **Waiting On** is *no human action at all* — the poller will
+  unblock the card automatically when the dependency chain
+  resolves; surfacing it as "needs human" is noise.
+
+### When to use each — examples
+
+| Scenario | Right signal |
+|---|---|
+| Agent picks up card, AC says "use the Stripe API" but no Stripe key is in `.env` | **Requires Human** — operator must rotate / install a 3rd-party key the agent cannot get itself. |
+| Agent picks up card, finds the spec ambiguous between two architectures | **Blocked** — human supplies a design decision. |
+| Agent picks up card, finds the test suite is failing on a file the card does not touch (after exhausting in-session fixes) | **Blocked** — human must debug or redirect. |
+| Phase 5 of an epic; Phase 4 just shipped but Phase 5 needs the schema bump from Phase 3 which has not landed yet | **Waiting On** with `by: ["<phase-3-id>"]`. |
+| Triage detects the card describes a manual SaaS dashboard config the agent cannot perform | **Requires Human** (set during triage as part of the Approve decision). |
+| Card is implementable but the chosen direction is high-risk and the agent wants a sanity check | **Requires Human** with `reason: "Direction needs sign-off"` + `steps: ["Confirm direction in design doc"]`. (Triage Approve.) |
+
+### Coexistence
+
+`requires_human` is fully independent of `blocked` and `waiting_on` and
+may coexist (rare). Example: a card that is both `Blocked` (waiting on a
+clarifying comment) AND has `requires_human` set (waiting on a token
+rotation that the operator will do as part of clearing the block). The
+poller checks each gate independently; clearing all three is required
+to dispatch.
+
+### Whitelist / blacklist for `requires_human`
+
+The full whitelist + blacklist for when an agent may set
+`requires_human` lives in the dispatched-agent inject rule
+`src/poller/inject/workspaces/issue-worker/.claude/rules/danx-requires-human.md`. The condensed
+form: **whitelist** = 3rd-party token rotation, external dashboard
+access, manual deploy of external infra, anything the agent has zero
+programmatic reach into. **Blacklist** = ambiguous spec, failing test,
+merge conflict, missing local dependency, clarifying question — those
+are `Blocked`, not `requires_human`.
+
+### Termination contract for agent-set `requires_human`
+
+When an agent **sets** `requires_human` mid-dispatch (the field flips
+from `null` to populated during this session), the dispatch ends with
+`danxbot_complete({status: "completed", summary: "Set requires_human — see field"})`. The agent does NOT also flip `status` to a terminal value
+and does NOT fill `retro` — the human is the next actor and the field
+is the only signal needed. The poller skips the card on every
+subsequent tick until the human clears the field; when they do, a
+fresh dispatch picks it up at whatever status it was at and continues.
+
+Humans can also set `requires_human` directly via the dashboard's
+"Flag for human" affordance (`set_by: "human"`) when they want to
+park a card on an external action they will perform later.
 
 ## Card Titles
 
@@ -249,20 +315,24 @@ A parent's `status` (Epic OR any non-epic with non-empty `children[]`) is **deri
 
 Priority rules (first match wins):
 
-1. Any child `Blocked` → parent `Blocked` (worker synthesizes the parent's `blocked` record on promote, clears on demote — preserves the v4 status⇔blocked invariant).
-2. Any child `Needs Approval` → parent `Needs Approval` (preserved as a distinct non-dispatchable signal).
-3. Any child `In Progress` → parent `In Progress`.
-4. Any child `ToDo` → parent `ToDo`.
-5. All non-cancelled children `Review` → parent `Review`.
-6. All non-cancelled children `Done` → parent `Done`.
-7. All children `Cancelled` (no exclusion) → parent `Cancelled`.
+1. Any child `Blocked` → parent `Blocked` (worker synthesizes the parent's `blocked` record on promote, clears on demote — preserves the status⇔blocked invariant).
+2. Any child `In Progress` → parent `In Progress`.
+3. Any child `ToDo` → parent `ToDo`.
+4. All non-cancelled children `Review` → parent `Review`.
+5. All non-cancelled children `Done` → parent `Done`.
+6. All children `Cancelled` (no exclusion) → parent `Cancelled`.
 
-Cancelled children are excluded from rules 5 and 6 — a single non-cancelled child shifts the answer. Rule 7 fires only when EVERY child is Cancelled. Mixed terminal states (e.g. `Review` + `Done` with no `Cancelled`) leave the parent's current status untouched.
+Cancelled children are excluded from rules 4 and 5 — a single non-cancelled child shifts the answer. Rule 6 fires only when EVERY child is Cancelled. Mixed terminal states (e.g. `Review` + `Done` with no `Cancelled`) leave the parent's current status untouched.
+
+Parent rollup ignores the orthogonal `requires_human` field — that
+field is checked only at dispatch time, not propagated. The dashboard
+surfaces a child-count subscript on epic children lists when any
+phase has `requires_human != null`.
 
 **Implications for agents:**
 
 - When you finish a phase card, set the **phase's** `status: Done` and save. The poller flips the parent epic on its next tick. Do **not** touch the epic's status yourself — your edit will be overwritten.
-- When a phase moves to `Blocked` / `Needs Approval`, the parent epic inherits that status automatically. The operator triages from the parent's view; no need to also flip the epic by hand.
+- When a phase moves to `Blocked`, the parent epic inherits that status automatically. The operator triages from the parent's view; no need to also flip the epic by hand. (Phase `requires_human` is NOT propagated — surface it on the epic children list instead of via parent status.)
 - An Epic stays in whatever state derivation produces. Manually setting `status: Done` on an Epic with one child still `In Progress` is a no-op and re-derives next tick.
 - Parents with `waiting_on != null` are skipped by derivation (the worker normalizes parents with non-null `waiting_on` to `status: ToDo` on save, and `waiting_on` overrides any synthesized `blocked` record). Set the parent's `waiting_on` record explicitly when needed; derivation doesn't fight it.
 
