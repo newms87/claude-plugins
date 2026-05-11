@@ -1,0 +1,15 @@
+{
+  "description": "Investigation gate: detects diagnostic triggers (why/how does/investigate/etc.) and injects mandatory pre-response Skill(investigate) requirement before any tool call.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/investigation-gate.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
