@@ -1,6 +1,6 @@
 ---
 name: debugging
-description: 'MANDATORY for every bug, error, unexpected behavior, failing test, unexpected value, INVESTIGATION (any user request to "investigate," "look into," "find out," "why is X," "how does Y work," "what''s happening with Z"), or any time you are about to make a factual ASSERTION about the state of the codebase — file contents paraphrased (not quoted), timing, latency, process state, config values, runtime behavior, causality, "why X works this way," or any claim that goes beyond a direct file quote. No minimum size, no "obvious" exemption, no "explanation mode" escape hatch. Loads the full debugging discipline as a checklist tracked via TodoWrite. Invoke BEFORE running commands, reading code for analysis, or drafting any answer that contains claims about this system''s behavior.'
+description: 'MANDATORY for every bug, error, unexpected behavior, failing test, unexpected value, INVESTIGATION (any user request to "investigate," "look into," "find out," "why is X," "how does Y work," "what''s happening with Z"), or any time you are about to make a factual ASSERTION about the state of the codebase — file contents paraphrased (not quoted), timing, latency, process state, config values, runtime behavior, causality, "why X works this way," or any claim that goes beyond a direct file quote. ALSO MANDATORY whenever you are about to COMMUNICATE / EXPLAIN / REPORT a bug or problem to the user — even if the diagnosis is already done, even if the user just asked "what went wrong" or "explain that bug" or "what is broken" — the per-bug breakdown format in Phase 12 (Affects / Env / Scenario / Expected / Actual) is REQUIRED for every bug discussed in the response, no narrative substitutes. No minimum size, no "obvious" exemption, no "explanation mode" escape hatch, no "I already know what it is" escape hatch. Loads the full debugging discipline as a checklist tracked via TodoWrite. Invoke BEFORE running commands, reading code for analysis, drafting any answer that contains claims about this system''s behavior, OR drafting any user-facing bug report / failure summary.'
 ---
 
 # Debugging Skill
@@ -198,6 +198,34 @@ If Phase 3 identified case #2 (past producer wrote bad rows now in DB) or if you
 - Confirm the user sees the fix as resolved before closing the todo.
 
 **Acceptance:** Trello and rules state reflect what was learned; user has confirmed.
+
+---
+
+## Phase 12 — Bug Explanation Format (MANDATORY for every user-facing bug report)
+
+**Trigger:** any time the response will tell the user about one or more bugs / problems / failures / regressions — whether you just diagnosed them, were asked "explain X," are summarizing a test run, or are listing what is broken.
+
+**Rule:** every distinct bug gets its own block in this exact shape. No narrative substitution. No "I'll just describe it" shortcut.
+
+```
+## #N — <one-line bug name>
+
+- **Affects:** who/what is impacted (component, command, code path, user role)
+- **Env:** the environment / runtime / config / state required to hit it (host vs docker, specific flags, version, prerequisite data)
+- **Scenario:** the exact step sequence that triggers it — concrete, not abstract
+- **Expected:** what the system was designed/documented to do at that step
+- **Actual:** what it actually does, including the specific symptom (error message, exit code, wrong value, missing record)
+```
+
+Multiple bugs → one block per bug, numbered. A "side effect" of a bug uses the same shape with `Side-effect — <name>` heading. A bug summary table is OK as a TOC at the top, but it does NOT replace the per-bug blocks.
+
+**Why this is mandatory:** prose bug reports collapse the five distinct facts into a single ambiguous paragraph — the reader can't tell whether `Actual` is observed or hypothesized, can't reproduce without re-asking for `Scenario`, and can't decide blast radius without `Affects`. The five fields force every claim to be either evidence-backed or visibly missing.
+
+**Forbidden:**
+- Narrative bug reports ("So what happened was…").
+- Mixing `Expected` and `Actual` in one sentence ("X failed because Y").
+- Skipping `Env` because "it's obvious" — environment-dependence is the most-skipped, most-bug-causing field.
+- Combining N bugs into one block to "save space" — each independent failure mode is its own block.
 
 ---
 
