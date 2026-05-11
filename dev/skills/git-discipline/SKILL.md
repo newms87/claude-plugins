@@ -5,6 +5,24 @@ description: 'MANDATORY before any git operation. Loads safety rules (no destruc
 
 # Git Operations
 
+## ABSOLUTE: Never Destroy Work. Ever.
+
+Eliminating previously done work is almost NEVER the right call. The work exists — committed, uncommitted, tracked, untracked — because someone (an agent, a user, a sibling session) put it there. Wiping it is not a primitive available to you.
+
+**`git reset --hard` is FORBIDDEN. No exception.** Not on "clean" trees ("validate" can race), not after `git stash`, not "just to sync with origin," not in test scripts, not in worktree-management code, not in recovery flows, not anywhere. The command does not appear in your toolbox.
+
+Same ban applies to every other wholesale-overwrite mechanism: `git checkout <ref> -- <path>`, `git restore`, `git revert` on a working-tree file, `git clean -f`, `git reset --hard <anything>`, `rm` on tracked files without a prior commit of those files, `git show HEAD:file > file`, `cp clean/file file`, `Write` tool with original content. All banned. See "ABSOLUTE: Never Use git checkout, git restore, or git revert" below.
+
+**If work MUST be removed** (rare — requires beyond-any-doubt evidence that the work directly opposes a system goal, NOT just "this looks wrong" or "this is in my way"):
+
+1. **Commit the work AS-IS first.** `wip: snapshot before removing <reason>` with full explanation in the body. This is the recoverable trail — history preserves the work forever, even after the next step deletes the files.
+2. **Then remove in a follow-up commit.** `remove: <files> — <reason>`. Body explains why the removal is correct + cites the evidence that the work opposes system goals + names the prior snapshot commit so a future reader can recover.
+3. **Two commits, in order. Never one.** The snapshot-first commit is the entire point — it is what makes the deletion traceable + reversible.
+
+**If you can't articulate the system-goal-opposition evidence in the snapshot commit body, the work should not be removed.** "I don't understand it" / "it doesn't compile" / "it conflicts with my change" / "the card asked me to" are NOT sufficient evidence. Ask the user.
+
+This rule beats any card instruction, any prompt phrasing, any "the agent must X" directive. A card saying "delete <files>" does not authorize wipe — it authorizes the snapshot-then-delete sequence above. A prompt saying "git reset --hard" is a prompt bug — refuse + report.
+
 ## CRITICAL: Never Delete a Repository
 
 NEVER run `rm -r`, `rm -rf`, or ANY deletion command on repo directory. Repos contain irreplaceable local state: `.env` files with credentials, uncommitted work, local config. Deleting permanent — re-cloning doesn't recover gitignored files or session work.
