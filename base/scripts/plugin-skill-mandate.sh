@@ -60,6 +60,13 @@ This is not a suggestion. Skill descriptions in the available-skills list are ne
        - bug, error, test failure, unexpected behavior
        - "investigate", "look into", "why is X", "what's happening with Z"
        - ANY factual ASSERTION about codebase state beyond a direct file quotation
+       - SELF-DRAFT TRIGGER (fires on YOUR OWN response, not just user phrasing). Before finalizing any reply that contains ANY of these tokens / shapes, you MUST have invoked `dev:debugging` THIS turn:
+           ✗  FAIL  Failed:  Error  regression  broken  bug  wrong  failure
+           leak  race  crash  silently dropped  doesn't work  is failing
+           not working  mid-<X>-crash  per-bug `## #N — <name>` headings
+           "what is broken" / "what failed" / "what's left broken" sections
+           failure summaries from a test run / pipeline / job
+         "User only asked me to summarize / report / explain / list / break it down" is NOT an exemption. Bug-talking IS the trigger regardless of who initiated it.
 
    • dev:testing
        - first test-related action of the session (run/write/fix/inspect/reason about a test)
