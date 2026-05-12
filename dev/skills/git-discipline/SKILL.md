@@ -73,6 +73,8 @@ Never commit on top of another agent's staged work. Never unstage their files.
 
 Wait for answer. Then `git add <named-paths>` + commit.
 
+**Exception — background-system drift never asks, always commits.** Files auto-mutated by the running system (poller / triage / chokidar mirror / heartbeat / TTL timer / auto-sync) are NEVER an "ask" target — they ride along on every dispatch and the agent IS the only actor that can carry them through a rebase. Specifically: any modified path under `<repo>/.danxbot/issues/`, `<repo>/.danxbot/.trello-retry/`, `<repo>/.danxbot/dispatch-stops/`, or `<repo>/.danxbot/CRITICAL_FAILURE`. Stage them into the same commit as session work (or into a sibling `chore(issues): mid-session YAML drift` commit when the diff is large), then proceed. Rebase conflicts on these paths are YOUR job to resolve — "I don't know which version to keep" is a research question, not an operator question; read the file, the YAML schema, the chokidar mirror direction, decide. The operator cannot answer; only the agent has the schema knowledge.
+
 **Forbidden rationalizations** — every one ends in destroyed user work:
 
 - "I'll back up to /tmp, revert file to HEAD, replay only my edits, commit, restore backup" → uses `git show HEAD:file > file` = wholesale overwrite (see next section). Banned.
