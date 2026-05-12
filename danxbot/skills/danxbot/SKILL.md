@@ -127,6 +127,21 @@ The Trello "Action Items" list is **not** a separate status — cards on that li
 
 The poller is the ONLY thing that calls Trello. Do not invent agent-path Trello calls. Do not edit YAML expecting an immediate Trello write — wait one poll tick.
 
+## Pre-dispatch prep step (DX-291 / DX-297)
+
+Every multi-agent dispatch begins with the `danxbot:danx-prep` skill running on the agent's worktree. The prep agent runs commit-first WIP recovery, branch sync against `origin/main`, file-scope conflict reasoning against in-progress siblings, and a self-stuck check on the candidate card, then emits ONE verdict via `mcp__danxbot__danxbot_prep_verdict`:
+
+| Verdict | Worker route side-effect |
+|---|---|
+| `ok` | Combined-mode → dispatch keeps running, agent proceeds into `/danx-next`. Separate-mode → stop; poller re-picks next tick for the work pass. |
+| `conflict_on` | Append `{id, reason}` entries to the candidate YAML's `conflict_on[]` for each partner. The poller's `isAnyKindBlocked` filter skips dispatch while any partner is non-terminal; auto-resolves on the partner reaching terminal status. |
+| `blocked` | Stamp `status: "Blocked"` + `blocked: {reason, timestamp}` on the candidate YAML. |
+| `abort` | Stamp `agents.<name>.broken = {reason, suggested_steps, set_at}` on `<repo>/.danxbot/settings.json`. The picker filters this agent out on every subsequent tick until the operator clears the field via the dashboard Agents tab. |
+
+Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json` (`combined` default). DX-297 retired the legacy `runConflictCheck` precursor dispatch + the `dispatchInRecoveryMode` recovery prompt; the prep agent now owns file-overlap reasoning + branch state inspection directly on the agent's worktree.
+
+The `agents.<name>.broken` field is a persistent dispatch gate, distinct from per-tick quarantine (DX-221) and `<repo>/.danxbot/CRITICAL_FAILURE` (whole-repo halt). Broken means "this specific agent's worktree is wedged" — the operator clears it after manually unwedging the worktree (e.g. resolving a `git rebase` conflict, force-pushing the agent's branch).
+
 ## External Dispatch API
 
 ```
