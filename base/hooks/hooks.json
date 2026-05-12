@@ -1,5 +1,5 @@
 {
-  "description": "Plugin skill load mandate. Fires on SessionStart and UserPromptSubmit. Injects an unambiguous instruction forcing the agent to invoke the matching skill via the Skill tool BEFORE the first mutating action whose triggers match an installed plugin's domain. Skill descriptions in the available-skills list are necessary but insufficient — past sessions skipped skills because the trigger was paraphrased or the task 'felt small'. This hook makes the load mandate explicit and unbypassable at the prompt-injection layer.",
+  "description": "Plugin skill load mandate + convey high-yield-communication mandate. Both fire on SessionStart and UserPromptSubmit so every session has the baseline discipline injected before the first agent action.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,6 +7,10 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plugin-skill-mandate.sh SessionStart"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/convey-mandate.sh SessionStart"
           }
         ]
       }
@@ -17,6 +21,10 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plugin-skill-mandate.sh UserPromptSubmit"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/convey-mandate.sh UserPromptSubmit"
           }
         ]
       }
