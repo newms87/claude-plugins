@@ -13,6 +13,10 @@ Read every rule below. These are the rules you are most likely to violate under 
 
 ## Canonical Workflow
 
+**Two variants — pick by context.** If `process.env.DANXBOT_DISPATCH_ID` is set, you are a dispatched worker; the danx-next workflow OWNS the post-implementation chain and the pipeline post-impl skills (`pipe-review`, `pipe-quality`, `pipe-commit`, `pipe-finish`) are NOT auto-invoked — quality gates run as inline Test Reviewer + Code Reviewer subagents per `danxbot:danx-next` Step 5, commit runs as `agent-finalize.sh` per Step 7a, completion runs as `danxbot_complete` per Step 11. Reading the table below as a TODO list when dispatched = workflow violation.
+
+### Human-loop session (no `DANXBOT_DISPATCH_ID`)
+
 ```
 PLAN SOURCE
   Issue card (ISS-N YAML) → danxbot:issue-card-workflow skill
@@ -28,8 +32,26 @@ PIPELINE (automatic, no pause)
 PHASE ADVANCE
   next-phase
 SESSION END
-  pipe-finish
+  pipe-finish (mode B)
 ```
+
+### Dispatched worker (`DANXBOT_DISPATCH_ID` set)
+
+```
+PLAN SOURCE
+  Dispatch prompt names the ISS-N → danxbot:danx-next skill owns flow
+PRE-IMPL
+  pipe-start (this skill — load rules, NOTHING ELSE)
+IMPLEMENT
+  TDD via dev:testing skill
+  dev:debugging skill on bugs / investigations / assertions
+QUALITY + COMMIT + COMPLETION
+  danx-next Step 5 (inline Test Reviewer + Code Reviewer subagents)
+  danx-next Step 7a (agent-finalize.sh)
+  danx-next Step 11 (danxbot_complete — emit NO text after the call)
+```
+
+Post-implementation pipeline skills are reserved for human-loop sessions; in dispatched mode they are orphaned by design.
 
 ---
 

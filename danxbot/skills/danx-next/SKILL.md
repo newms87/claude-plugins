@@ -686,6 +686,28 @@ explicitly in `summary`) or terminal-status `Blocked` / `failed` /
 Never exit without `danxbot_complete`. Never call it with prereqs
 unmet.
 
+### Terminal token — emit NO text after the call
+
+`danxbot_complete` IS the report. The `summary` arg + `retro.{good,
+bad, commits, action_item_ids}` in the YAML are what the operator,
+the dashboard, and the next dispatch will read. The conversation
+stream is **not** read by anyone after the tool returns — the worker
+SIGTERMs claude within 5s, and any tokens streamed during that
+grace window are discarded.
+
+**Forbidden after `danxbot_complete`:**
+- convey-format end-of-turn report (`## <headline>`, behavior diff
+  table, verify line)
+- `pipe-finish` mode A post-commit summary
+- `pipe-finish` mode B final-session wrap (mode B is for human-loop
+  sessions only — dispatched workers MUST skip it)
+- any text response at all
+
+The `base:convey` self-trigger gate has an explicit carve-out for
+this — see the "Hard carve-out — terminal MCP calls" section in
+that skill. If you reach for a report reflex after the tool result,
+that is the rule the carve-out exists to block.
+
 ---
 
 ## If the YAML Says Empty / Wrong State

@@ -109,6 +109,12 @@ Before sending ANY response that contains ANY of these tokens / shapes, confirm 
 
 If your draft is going to be longer than 40 lines for a single completed action, convey is not loaded or not applied — re-shape.
 
+### Hard carve-out — terminal MCP calls
+
+When the previous tool call was a **terminal signal** (`mcp__danxbot__danxbot_complete`, `mcp__danxbot__danxbot_slack_reply` followed immediately by `danxbot_complete`, or any equivalent "this dispatch is over" tool), **emit NO further text in this turn.** The process is being SIGTERM'd; any tokens streamed during the grace window are discarded and wasted. The terminal tool's `summary` arg + the `retro` field on the issue YAML ARE the report — the conversation text is not.
+
+Self-trigger gate does NOT fire after a terminal MCP call. Stop output, full stop.
+
 ## Anti-patterns
 
 **Anti-pattern: Wall of file paths.**

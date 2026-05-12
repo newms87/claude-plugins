@@ -55,6 +55,14 @@ Correct pattern: declarative statement + immediate invocation. The user can inte
 
 ## Mode B — Final session wrap
 
+### Hard skip — dispatched workers
+
+**If `process.env.DANXBOT_DISPATCH_ID` is set, Mode B does NOT run.** Dispatched workers terminate via `danxbot_complete`; the worker handles retro rendering, Action Items spawning from `retro.action_item_ids[]`, and the file move `open/` → `closed/` automatically (see `danxbot:danx-next` Step 11 "What the worker does on signal"). The Mode B output stream is discarded by SIGTERM and the action-item spawning duplicates work the worker already does from YAML. Skip the entire section, call `danxbot_complete`, emit nothing further.
+
+Mode B is for **human-loop sessions only** — the operator's terminal, not dispatched agents.
+
+### Human-loop only — what follows
+
 Context is about to be destroyed — anything not written down is lost forever. Three jobs: spawn Action Items cards, dump session knowledge, present recommended next actions. All output follows `convey`.
 
 ---
