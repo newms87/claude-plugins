@@ -1,23 +1,40 @@
 ---
 name: no-unauthorized-worker-launch
-description: 'MANDATORY before running ANY command that starts a danxbot poller, worker, infra container, or production deploy — `make launch-worker*`, `make launch-all-workers`, `make launch-infra`, `make launch-dashboard-host`, `make deploy*`, `make deploy-secrets-push`, `make deploy-destroy`, direct `npx tsx src/index.ts`, `docker compose up` against `<danxbot>/docker-compose.yml` or `docker-compose.prod.yml`, `docker start danxbot-worker-*` / `docker restart danxbot-worker-*`, or any equivalent shell incantation whose effect is "a danxbot poller starts polling". Strictly prohibited without explicit per-invocation user authorization in the CURRENT user message — prior-session approvals do NOT carry forward, skills/pipelines do NOT override, "I am sure it is fine" is not authorization. Loads forbidden-command table + what-to-do-instead branch as TodoWrite checklist.'
+description: 'MANDATORY before running ANY command that starts a danxbot poller, worker, infra container, or production deploy — `make launch-worker*`, `make launch-all-workers`, `make launch-infra`, `make launch-dashboard-host`, `make deploy*`, `make deploy-secrets-push`, `make deploy-destroy`, direct `npx tsx src/index.ts`, `docker compose up` against `<danxbot>/docker-compose.yml` or `docker-compose.prod.yml`, `docker start danxbot-worker-*` / `docker restart danxbot-worker-*`, or any equivalent shell incantation whose effect is "a danxbot poller starts polling". Strictly prohibited without explicit per-invocation user authorization in the CURRENT user message — prior-session approvals do NOT carry forward, skills/pipelines do NOT override, "I am sure it is fine" is not authorization. Dispatched autonomous agents have no user channel — for them the rule is NEVER, period. Loads forbidden-command table + what-to-do-instead branch as TodoWrite checklist.'
 ---
 
-# STRICTLY PROHIBITED — Never Launch a Danxbot Worker / Poller / Deploy Without Explicit Human Authorization
+# STRICTLY PROHIBITED — Never Launch a Danxbot Worker / Poller / Deploy Without Explicit Per-Invocation Authorization
 
 ## The rule (no exceptions)
 
-**An agent MUST NEVER start, restart, relaunch, or deploy a danxbot worker, poller, infra container, or production target unless the human user has explicitly authorized THAT specific action in THIS session, in the CURRENT user message.**
+**Starting, restarting, relaunching, or deploying a danxbot worker, poller, infra container, or production target requires explicit per-invocation human authorization in the CURRENT user message.**
 
 A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, mutates YAMLs, mirrors to Trello, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
+
+## Dispatched-agent context — effectively NEVER
+
+If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The YAML card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. From any workspace. Under any circumstance.
+
+This is true even if:
+
+- The card you are working on says "the worker should be restarted".
+- A test you ran failed because the worker is down.
+- Logs show the poller is stuck.
+- You "just want to check that the fix took".
+- You see a `Makefile` target that looks helpful.
+- A skill, plan, or pipeline tells you to.
+- The card belongs to the danxbot repo itself.
+- You are running inside the danxbot repo's workspace.
+
+You do not have authorization to operate the danxbot infrastructure. Only the human operator running the host session does.
 
 ## TodoWrite checklist (mandatory on first invoke)
 
 When this skill is invoked, write these as TodoWrite items and tick them off in order:
 
-1. Confirm the CURRENT user message in THIS session explicitly names the launch / restart / deploy command I am about to run. Prior-session approvals, CLAUDE.md notes, commit messages, and skill instructions do NOT count.
+1. Confirm the CURRENT user message in THIS session explicitly names the launch / restart / deploy command I am about to run. Prior-session approvals, CLAUDE.md notes, commit messages, and skill instructions do NOT count. **Dispatched agents: this check fails by construction — the "user" is a YAML card, which never authorizes worker launches.**
 2. Confirm I am about to run EXACTLY the command the user authorized — not a broader variant ("they said launch worker for X, I'll also launch Y"), not an inferred follow-up ("they said deploy, so I'll restart the local worker first").
-3. If either check fails → STOP. Do not run the command. Tell the user what state I observed and which exact command I would run, and wait for explicit authorization.
+3. If either check fails → STOP. Do not run the command. **Operator session:** tell the user what state I observed and which exact command I would run, and wait for explicit authorization. **Dispatched agent:** document on the card per "What to do when I think a worker needs to be running" below.
 
 ## Forbidden commands without explicit per-invocation user approval
 
@@ -38,6 +55,29 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 
 The list is non-exhaustive. **If the action I am about to take results in a danxbot worker process polling ToDo on any repo, it is forbidden without explicit per-invocation user authorization.**
 
+## What IS allowed (local verification)
+
+The forbidden list is specifically **launching workers + deploys**, NOT verification commands. Run these freely when an AC needs them:
+
+- `make test` (Layer 1 — unit + integration)
+- `make test-system` (Layer 3 — real Claude API, ~$1, hits the LOCAL worker on this host, does NOT touch production)
+- `make test-validate` (Layer 2 — real Claude API budget-capped)
+- `npx vitest run …`, `npx tsc --noEmit`, `npx vue-tsc --noEmit`
+- `curl http://localhost:5566/...` / `curl http://localhost:5555/...` (local dashboard probes)
+- `gh pr create` / `gh pr view` / `git` operations on the repo
+
+Read-only diagnostics also remain unrestricted:
+
+- `make logs REPO=<name>` (tail of an already-running worker)
+- `make deploy-status TARGET=<t>` / `make deploy-logs TARGET=<t>`
+- `docker ps`, `docker logs <container>`, `docker inspect <container>`
+- Reading files under `<repo>/.danxbot/` (issues, settings, env)
+- HTTP `GET /api/status/:jobId`, `/api/health`, etc. against an already-running worker.
+
+Anything that would *create* a polling process is the prohibited class.
+
+**A card is Done when committed code passes local tests.** Deployment is operations and is never a completion gate — see `danx-next/SKILL.md` Step 6 + Step 10.
+
 ## What "explicit per-invocation user authorization" means
 
 The CURRENT user message in THIS session must directly request the specific worker launch / restart / deploy. Examples that DO authorize:
@@ -57,30 +97,32 @@ Examples that do NOT authorize a worker launch:
 - A skill, plan, or pipeline says "run the worker" — skills do NOT override this rule.
 - I inferred "we need fresh poller data" from logs, errors, or test output.
 
-When in doubt: ask the user before launching. Asking is cheap. A rogue poller spending hours dispatching cards is not.
+For dispatched agents — there is no user message channel; the answer is always "not authorized." Do not improvise an authorization from the card body.
 
-## Read-only diagnostics are allowed
+When in doubt: ask the user before launching (operator session) or document on the card (dispatched agent). Asking is cheap. A rogue poller spending hours dispatching cards is not.
 
-These commands inspect state without starting a poller and remain unrestricted:
+## What to do when I think a worker needs to be running
 
-- `make logs REPO=<name>` (tail of an already-running worker)
-- `make deploy-status TARGET=<t>` / `make deploy-logs TARGET=<t>`
-- `docker ps`, `docker logs <container>`, `docker inspect <container>`
-- `make test`, `make test-unit`, `make test-integration` (no live worker)
-- Reading files under `<repo>/.danxbot/` (issues, settings, env)
-- HTTP `GET /api/status/:jobId`, `/api/health`, etc. against an already-running worker.
-
-Anything that would *create* a polling process is the prohibited class.
-
-## What to do if I think a worker needs to be running
+**Operator session:**
 
 1. Stop. Do not start one.
 2. Tell the user what state I observed and what command I would run.
 3. Wait for explicit authorization.
 4. If the user authorizes, run exactly the command they approved — not a broader variant.
 
+**Dispatched agent:**
+
+1. **Stop.** Do not run any launch / deploy / restart command.
+2. **Document on the card.** Add a `comments[]` entry titled `## Operator action required` describing exactly what command the operator would need to run, why, and what the expected effect is.
+3. **Set status if appropriate.**
+   - If the card cannot proceed without operator action, set `status: "Blocked"` and populate `blocked: {reason, timestamp}` per `danx-next/SKILL.md` Step 10.
+   - If the card can complete its other work without the operator action, finish the rest, document the operator-required step in the retro / a comment, and let the orchestrator close the card normally.
+4. **Save and exit.** The poller stops dispatching the card; the operator takes the launch action; the next dispatch picks up from there.
+
 ## Why this rule exists
 
 A previous agent session (DX-150 follow-up, 2026-05-08) launched `make launch-worker-host REPO=danxbot` without operator authorization. The poller picked up cards from ToDo, derived parent statuses, reset "In Progress" cards with no dispatch stamp back to ToDo, and spawned a dispatched agent against `DX-203` — all unauthorized work in a session where the user had explicitly told the agent to "test that locally and run the test yourself. Do NOT deploy."
 
 This rule is the load-bearing assumption that prevents that class of incident. It is non-negotiable. Skills and pipelines do not override it; prior-session authorizations do not carry forward; "I'm sure it's fine" is not a substitute for an explicit user request in the current turn.
+
+For dispatched autonomous agents, the rule is even simpler: the prompt comes from a YAML card; cards do not authorize launches; therefore launches are never authorized inside a dispatch.

@@ -70,7 +70,8 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 | `parent_id` | string \| null | Set on child cards (epic's `id` for phase children, or any other parent's `id` for sub-cards). Reverse linkage to `children[]`. |
 | `children` | `string[]` (ids) | Ordered list of child issue ids (`<PREFIX>-N`). On `type: Epic` cards, `children[]` IS the list of phase cards (label "Phases"). On non-epic cards, it's the list of sub-cards (label "Children"). Same field, two labels. Maintained by `danx_issue_create` (when a child card is created from a draft) and by the `danx-epic-link` skill (for human-created phase cards). Phases MUST be cards — there is no separate in-card phase checklist. |
 | `dispatch` | `{id, pid, host, kind, started_at, ttl_seconds} \| null` | Poller-managed dispatch record. `null` when no agent is running. Don't touch. |
-| `status` | `Review` \| `ToDo` \| `In Progress` \| `Blocked` \| `Needs Approval` \| `Done` \| `Cancelled` | Editing this is how you move the card across lists. |
+| `status` | `Review` \| `ToDo` \| `In Progress` \| `Blocked` \| `Done` \| `Cancelled` | Editing this is how you move the card across lists. Six values; the parking statuses are `Review` and `Blocked`. |
+| `requires_human` | `null` OR `{reason, steps[], set_by, set_at}` | Orthogonal "this card needs a human" indicator. `null` when no human action needed. Non-null = the card cannot make progress until a human acts (3rd-party token rotation, credential rotation, manual deploy of external infra). Independent from `blocked` and `waiting_on`; all three are dispatch gates and may co-exist. The poller's dispatch filter (`src/poller/local-issues.ts`) skips cards with `requires_human != null`. Whitelist + blacklist for when an agent may set this — `.claude/rules/danx-requires-human.md`. |
 | `type` | `Bug` \| `Feature` \| `Epic` | Required label. |
 | `title` | string | Card name. |
 | `description` | string | Full markdown body. |
@@ -90,6 +91,7 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 
 ## Top-Level Flow
 
+0. Verify on latest `origin/main` (Step 0).
 1. Read the YAML the dispatch prompt named.
 1.1. **Resume self-check** (Step 1.1) — terminal state + checked ACs + filled retro = call `danxbot_complete` and stop. Do not redo work.
 1.5. Internalize the **You Fix What You Find** rule (Step 1.5) before doing anything else.
@@ -104,6 +106,30 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 10. `danxbot_complete` (Step 11).
 
 Config references: `.claude/rules/danx-repo-config.md` for repo commands. Never hardcode IDs.
+
+---
+
+## Step 0 — Verify on latest `origin/main`
+
+The worker's `dispatchWithRecovery` runs `git fetch origin main` and `git reset --hard origin/main` before spawning you, so your worktree SHOULD already be on the upstream tip. This step is the defense-in-depth audit — confirm freshness once at start so a regression in the dispatch path (skipped fetch, stale cache, racing operator push between fetch and reset) is caught here instead of silently shipping work against stale base.
+
+```bash
+git fetch origin --quiet
+git rev-list HEAD..origin/main --count
+```
+
+- Output `0` → you are on the latest main. Proceed to Step 1.
+- Output non-zero → upstream moved between the worker's pre-dispatch fetch and your spawn. Catch up before doing any work:
+
+  ```bash
+  git rebase origin/main
+  ```
+
+  A clean rebase puts you at HEAD = origin/main. Proceed to Step 1.
+
+  A rebase **conflict** here means your worktree carried in-flight work the worker's `validate()` did not flag (it should have routed you to recovery mode — a regression worth a comment on the card). Don't try to resolve blind. Add a `comments[]` entry titled `## Operator action required` describing the conflicting paths + the fact that the dispatch landed pre-recovery, then follow Step 10 (Blocked).
+
+This step is read-only against your worktree's existing work — if `git status` shows uncommitted changes BEFORE you do anything, the worker mis-routed (validate should have caught dirty state). Same operator-action comment + Blocked.
 
 ---
 
@@ -187,7 +213,7 @@ Apply this filter, in order, every time you're tempted to defer work:
    debt, and incur re-dispatch cost. Prefer fixing every time.
 3. **Unrelated AND large** (multi-phase refactor, cross-cutting redesign,
    needs its own scoping, would derail this card)? → Action item is OK.
-4. **Needs human decision or external access** (credentials, ambiguous spec, repo you can't write to, secret rotation)? → Step 10 / action item. **NOT a valid blocker:** "needs deploy", "needs prod smoke", "needs production verification". A card is **Done when code is committed and tests pass locally** — deploys are an operational concern that ship code already accepted as Done. Never block a card on `make deploy` / `make deploy-smoke` / "verify in prod"; that's how Done turns into Forever-Blocked.
+4. **Needs human decision or external access** (credentials, ambiguous spec, repo you can't write to, secret rotation)? → Step 10 / action item. **NOT a valid blocker:** "needs deploy", "needs prod smoke", "needs production verification", "manual UI smoke", "pre-existing flaky test in an unrelated file", "post-terminal-save state I cannot observe from inside this dispatch". A card is **Done when code is committed and tests pass locally** — deploys are an operational concern that ship code already accepted as Done. Never block a card on `make deploy` / `make deploy-smoke` / "verify in prod" / "operator must click the dashboard" / "the watcher will mirror after I exit"; that's how Done turns into Forever-Blocked. Full pattern catalog + programmatic substitutes: `.claude/rules/danx-no-false-blockers.md`.
 
 Mechanical check before writing any action item or going to Blocked:
 **"Could I just do this in the next 10–30 minutes?"** Yes → do it. Drop the
@@ -336,7 +362,45 @@ If you cannot verify an item — repo this worker cannot commit to, depends on e
 
 ## Step 7 — Commit
 
-Consult `Git Mode` in `.claude/rules/danx-repo-config.md`:
+Two paths — pick the one that matches THIS dispatch.
+
+### Step 7a — Multi-worker agent dispatch (persona block present)
+
+If your dispatch prompt's first paragraph reads `You are <name>.` followed by a `Your worktree:` line and a `Your branch:` line, you are running as a multi-worker agent (Alice / Bob / etc.) inside a persistent git worktree. Use the `agent-finalize.sh` helper — do NOT hand-roll the rebase + squash + push.
+
+1. **Compose the title verbatim from the card title.** Drop the `<Epic Title> > Phase N: ` prefix when present — keep just the leaf phase description. Example: `"Multi-Worker > Phase 4: Persona injection + agent-finalize.sh + Conventional Commits squash-merge flow"` → `"Persona injection + agent-finalize.sh + Conventional Commits squash-merge flow"`.
+2. **Compose 1–5 bullets summarizing what changed.** Verbs in past tense — `added`, `fixed`, `refactored`, `wired`. Each bullet is a separate command-line argument, properly quoted.
+3. **Run from inside your worktree** (the `Your worktree:` path from the persona block):
+
+   ```bash
+   cd <Your worktree path>
+   bash .danxbot/scripts/agent-finalize.sh <YOUR-NAME> <CARD-ID> "<title>" "<bullet 1>" "<bullet 2>" ...
+   ```
+
+   The script: WIP-commits any uncommitted changes, fetches + rebases onto `origin/main`, squashes the agent branch into ONE Conventional Commits commit (`feat(<CARD-ID>): <title>` + bullet body), pushes `HEAD:main` (with rebase-loop on push race up to 5 retries), then resets the agent branch back to `origin/main` for the next dispatch.
+
+4. **Read the exit code:**
+   - **Exit 0** — success. The script's stdout contains `PUSHED <sha>`. Capture that sha; append it to `retro.commits[]` in Step 9. Proceed.
+   - **Exit 1** — rebase conflict. **This is EXPECTED, not a blocker.** The conflict-check at pick time is permissive on purpose; concurrent agents finalizing back-to-back will collide here regularly, and whoever pushes second owns the merge. **You are responsible for resolving every conflict cleanly, in this dispatch.** Procedure:
+
+     a. Read the script's stderr — it lists every conflicting path.
+     b. For each path, open it, read BOTH sides of every `<<<<<<<` / `=======` / `>>>>>>>` marker, and produce a merged result that **keeps all valid code from both sides**. Do not delete the other agent's work to make the conflict go away. Do not pick one side wholesale unless the two edits are semantically identical. The goal is a working tree that contains the intended behavior of *both* cards.
+     c. Re-read the file after editing to confirm no markers remain. Run `grep -n "<<<<<<< \|======= \|>>>>>>> " <path>` per path — must return zero matches.
+     d. `git add` every resolved path. Run `git rebase --continue`. If git stops on a further commit, repeat (a)–(c) until the rebase completes.
+     e. **Run the test suite.** As the rebaser you now own every test the merge could have broken — not just tests for *your* card. From the worktree: `npx vitest run > /tmp/vitest.log 2>&1 ; echo EXIT=$?` and `npx tsc --noEmit`. Any failure caused by your resolution OR by the interaction between the two cards' code paths is YOURS to fix. A failure already present on `origin/main` before your work is a pre-existing condition (rare — `origin/main` should be green) — confirm with `git stash && npx vitest run <failing-file>` only if you have strong evidence the failure is unrelated; otherwise assume the rebase caused it and fix it.
+     f. Once tests + typecheck are green, re-invoke `agent-finalize.sh` with the same args. The script will rebase (now a no-op), squash, and push.
+
+     Only escalate to Blocked when the conflict is genuinely outside the scope of either card — e.g. the conflicting file has been deleted on `origin/main` by a third party with no clear "what does this card want" answer. In that rare case, document the path, both diffs verbatim, and the specific decision you cannot make in a `## Operator action required` comment, then follow Step 10 (Blocked). "Conflict was hard" / "I don't know which side wins" / "tests broke" are NOT valid escalations — read both diffs, decide, fix the tests.
+   - **Exit 2** — push race exhausted (`PUSH_RACE_EXHAUSTED` on stderr). Five consecutive non-fast-forward push rejections — the remote has another writer pushing faster than you can rebase. Append a comment to the card explaining (script output verbatim), then call `danxbot_complete({status: "failed", summary: "Push race exhausted; operator must finalize."})` and exit. Do NOT loop manually.
+   - **Exit 64** — usage error. Either the args were malformed (missing `<title>` / `<bullets>`), `<CARD-ID>` doesn't match `<PREFIX>-N`, or `<title>` contains a newline. The script's stderr names the specific cause. Fix the invocation (single-line title, valid card id) and re-run. Do NOT `git rebase --continue` — that's a different failure.
+   - **Exit 65** — wrong branch. The worktree HEAD is not on `<YOUR-NAME>`. Investigate (`git status`, `git branch --show-current`) — the worktree may be wedged. If you can switch back to your branch cleanly (`git checkout <YOUR-NAME>`), re-run the script. If you cannot, document the wedge in a `## Operator action required` comment and follow Step 10 (Blocked).
+
+5. **No-op safety net.** If the script's stdout is `NO_OP` (and stderr contains `no commits ahead of origin/main`) you ran finalize without making any code changes — your dispatch was docs-only, or you forgot to actually edit code. Decide which: docs-only → still Done, leave `retro.commits[]` empty; missing edits → fix them in this dispatch, then re-run finalize. Do NOT push the literal token `NO_OP` into `retro.commits[]`.
+
+### Step 7b — Legacy single-workspace dispatch (no persona block)
+
+If your dispatch prompt has no `You are <name>.` first paragraph, you are running in the legacy single-workspace mode (`<repo>/.danxbot/workspaces/issue-worker/`). Consult `Git Mode` in `.claude/rules/danx-repo-config.md`:
+
 - `auto-merge`: feature branch `danxbot/<kebab-case-title>`, stage + commit, push, merge to main, delete branch.
 - `pr`: feature branch, stage + commit, push, `gh pr create`.
 
@@ -401,6 +465,15 @@ Skip to Step 11.
 
 ## Step 10 — Move to Blocked (HUMAN INTERVENTION ONLY)
 
+**MANDATORY:** Before writing `status: "Blocked"`, populating
+`blocked: {reason, timestamp}`, appending a `## Blocked` comment, OR
+calling `danxbot_complete({status: "failed", ...})` with operator-must-X
+framing — INVOKE the `issue-blocker` skill via the Skill tool. The
+8-item gating checklist there has authority over this section. If any
+item fails you are NOT authorized to mark Blocked; return to in-session
+work. Failing to invoke the skill before a Blocked move is a rule
+violation.
+
 Blocked is a **LAST RESORT** AND is reserved EXCLUSIVELY for cards that
 cannot proceed without a human acting. If the card is just waiting on
 other in-flight work — that's **Waiting On** (Step 10b), not Blocked.
@@ -409,6 +482,9 @@ Use Step 10 ONLY when the blocker is genuinely one of:
 
 - **Credentials / secrets** a human must rotate / push to SSM.
   - **NOT a Blocker:** "needs deploy" / "needs prod smoke" / "needs Layer 3 system test". Layer 3 (`make test-system`) runs locally on this host — you can run it yourself. Production deploy ships code already accepted as Done; it is NEVER a completion gate. A card whose only remaining ACs are "deploy + smoke prod" is **already Done** — rewrite the ACs to local-verify form, run them, mark Done.
+  - **NOT a Blocker:** pre-existing flaky / failing test in an unrelated file. File an Action Item card via `danx_issue_create`, push the id into `retro.action_item_ids[]`, check the AC off (your card's tests pass), proceed. See `.claude/rules/danx-no-false-blockers.md` Pattern 1.
+  - **NOT a Blocker:** AC says "manual UI smoke" / "operator clicks X." The agent has the dashboard token at `~/.config/danxbot/dashboard-token` (host mode) + the playwright MCP + the dashboard component-test runner. Verify programmatically (component test → playwright → rewrite AC), check off, proceed. See `.claude/rules/danx-no-false-blockers.md` Pattern 2.
+  - **NOT a Blocker:** AC verifies behavior that fires AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, watcher mirror, any self-derived state). Rewrite the AC to point at the unit test for the derivation function, run it, check off. See `.claude/rules/danx-no-false-blockers.md` Pattern 3.
 - **External repo / file your worker has no write access to** AND no other
   agent is going to fix it for you.
 - **Genuine human design decision** (ambiguous spec, missing requirement,
