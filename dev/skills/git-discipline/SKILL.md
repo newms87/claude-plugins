@@ -53,7 +53,8 @@ Never manually run `git add` + `git commit`. Always invoke `/flow-commit` via Sk
 
 Every commit followed by `git push` in same flow. Push not optional + not gated on separate user request — `/flow-commit` runs automatically. Only exceptions:
 
-- **Push fails** (rejected, no upstream, network) — report failure + stop. Never force-push to recover.
+- **Push rejected non-fast-forward** — run `git pull --rebase` ONCE. Clean rebase → push again, report outcome. Rebase conflicts → `git rebase --abort` immediately, then STOP and ask the user per-file. Never auto-resolve, never `-Xtheirs` / `-Xours`, never `git checkout` / `git restore` to "fix" a conflict (see ABSOLUTE rules above). Conflict resolution is wholesale-overwrite territory — user must direct it.
+- **Push fails for other reasons** (no upstream, auth, network) — report failure + stop. Never force-push to recover.
 - **User explicitly says "don't push"** for this commit.
 
 Force-push (`--force`, `--force-with-lease`) still requires explicit user auth — see Git Operations Allowed below.
@@ -148,6 +149,8 @@ Wrote 100% of everything in every repo — committed, uncommitted, tracked, untr
 
 **Via pipeline:** `git add` + `git commit` + `git push` when executing `/flow-commit` (automatically allowed)
 
-**Force-push, amend, rebase, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request
+**`git pull --rebase` on push rejection:** allowed ONCE per push-rejection. Conflict-free rebase → re-push. Conflict → `git rebase --abort` + ask user. Interactive rebase, rebase onto arbitrary ref, `--continue` past conflicts, `-X` strategy options: not allowed without explicit user request.
+
+**Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request
 
 **Otherwise:** Not allowed without explicit user request
