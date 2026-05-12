@@ -65,9 +65,20 @@ Before committing, run `git status` → check for already-staged files you didn'
 
 Never commit on top of another agent's staged work. Never unstage their files.
 
+## Own Work Is Never The Question
+
+Your own work commits separately, no questions asked. Mixed-state means some file contains BOTH your edits AND foreign edits — that question resolves on the FOREIGN edits only (commit-along, leave for sibling agent, or ask about orphaned drift). NEVER ask the user whether to commit your own work. NEVER gate your own-work commit on foreign-work attribution. NEVER ask "should I split or commit-all?" framed around your own files — the answer is always "commit your own files now, decide on the foreign hunks separately."
+
+Order of operations when the working tree is mixed:
+1. Identify which files / hunks are YOURS (this session's edits, traceable in your tool call history).
+2. Stage + commit + push YOUR files. No question to the user.
+3. THEN look at the remaining foreign drift. Ask the user only about the foreign hunks: "Files X, Y modified outside this session — active sibling agent (leave), or orphaned (commit-along / ask owner)?"
+
+The "ASK" rule below applies ONLY to isolating foreign hunks FROM your hunks inside a single file, NOT to whether your work ships at all.
+
 ## Mixed-State Files: ASK, Never Surgically Isolate
 
-`git status` shows file modified that contains BOTH your edits AND pre-existing uncommitted drift → STOP. Single round-trip:
+After own-work is committed (see above), if a file remaining in the working tree contains BOTH your edits AND pre-existing foreign drift you cannot cleanly separate by path, → STOP. Single round-trip:
 
 > "Working tree mixed (yours + pre-existing in <files>). Commit-all in one commit, or split? If split: which paths are yours?"
 
