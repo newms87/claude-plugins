@@ -39,6 +39,19 @@ Never guess parameters. Always read schema from ToolSearch before calling. MCP t
 
 **CRITICAL: MCP string parameters are LITERAL — no escape sequences.** `\n` in parameter value = TWO CHARACTERS (`\` + `n`), not newline. Harness JSON-encodes value → `\n` becomes `\\n` in API payload. Use actual multi-line strings with real line breaks in every MCP string parameter. Applies to ALL MCP tools — Trello descriptions, comments, card names, etc. **Pre-call check:** Before every MCP call with multi-line string, visually confirm parameter contains real newlines, not `\n`.
 
+## Background Processes — ALWAYS use Bash `run_in_background: true`
+
+Long-running process (worker, dev server, build watch, deploy, test suite that takes minutes) → **MUST** spawn via `Bash` tool with `run_in_background: true`. Harness captures task ID + tracks child PID + tails stdout/stderr to a file the agent can read.
+
+**FORBIDDEN:** shell backgrounding (`cmd &`, `nohup cmd &`, `disown`, `setsid`). The shell wrapper exits immediately → `$!` references the wrapper, NOT the real worker → PID lost → cannot satisfy `process-kill` Iron Rule on restart → cannot signal-by-captured-PID. Even when output is redirected (`cmd > log 2>&1 &`), the PID is still untraceable.
+
+**Pre-spawn check** before any process expected to live >30s:
+1. Am I about to write `&` at the end of a Bash command? → STOP. Use `run_in_background: true` instead.
+2. Did I capture the PID at spawn? → must be `child.pid` / `$!` returned by the tool that owns the process, NOT a later `ps` grep.
+3. If the only way I can find this process later is `ps -ef | grep`, I have already failed the kill discipline.
+
+The Bash tool's background mode is the single canonical mechanism. Shell `&` is never the right choice in Claude Code.
+
 ## Browser Automation
 
 Use `mcp__claude-in-chrome__*` tools only, never Playwright. Start with `tabs_context_mcp`, then `tabs_create_mcp`, `navigate`, `computer` (screenshot/click/type), `read_page` (accessibility tree), `read_console_messages` (with pattern filter).
