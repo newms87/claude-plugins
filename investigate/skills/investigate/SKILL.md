@@ -90,13 +90,13 @@ Do NOT silently retcon the hypothesis to match evidence after the fact. If the o
 
 ### 6. Report findings
 
-Output to the user, in this order:
+Output follows `base:convey` — concept-first headline, tables, ASCII flow, caveats, verify line. Investigation budget under convey: **≤20 lines**. Map the standard convey sections to the investigation-specific items below:
 
-1. **Question** (the specific one from step 1)
-2. **Answer** — one sentence. The direct answer.
-3. **Evidence** — the verbatim file:line / command output / row that supports the answer. Cite paths and line numbers. Quote no more than one short snippet (per copyright discipline).
-4. **What was wrong with my initial hypothesis** (if applicable) — one sentence. Honest delta.
-5. **Options for next steps** — numbered list. Each option = one specific action the user could authorize. Include the option "do nothing" when it's reasonable.
+1. **Headline** = the specific question being answered (≤12 words).
+2. **Goal / Answer** — one sentence. The direct answer.
+3. **Evidence** (replaces "Behavior diff" / "Flow" for this skill) — the verbatim `file:line` / command output / row that supports the answer. Cite paths and line numbers. Quote no more than one short snippet (per copyright discipline). Tabular when evidence has multiple axes.
+4. **What was wrong with my initial hypothesis** (if applicable) — one sentence. Honest delta. Skip if hypothesis matched.
+5. **Options for next steps** — numbered list. Each option = one specific action the user could authorize. Include the option "do nothing" when reasonable. This is the convey "Caveats / next actions" section, retitled.
 
 Forbidden in the report:
 - Hedging language about local behavior ("probably," "typically," "should be") — if you reached for it, you didn't gather enough evidence
