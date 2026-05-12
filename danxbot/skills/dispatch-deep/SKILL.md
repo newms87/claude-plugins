@@ -1,6 +1,6 @@
 ---
 name: dispatch-deep
-description: 'MANDATORY when touching any of the deep-dispatch contracts that the always-on `agent-dispatch.md` rule pointed away to keep its size manageable. Triggers — editing `src/worker/dispatch.ts` resume route or `src/worker/server.ts` `/api/resume`, `src/dispatch/staged-files.ts` or any callsite that builds `staged_files`, `src/dashboard/playwright-proxy.ts`, any code that accumulates `usage` from JSONL entries (`src/agent/launcher.ts` `seenUsageMessageIds`, `src/dashboard/jsonl-reader.ts`, `LaravelForwarder`, any new metrics emitter), `src/agent/stall-detector.ts` recovery logic, claude-auth troubleshooting (silent dispatch failures, empty `claude -p` stdout, `.credentials.json` rotation, `.claude.json` writability); about to introduce a new staged-files allowlist root in a workspace `staging-paths`; about to add a new binary-upstream proxy on the dashboard. Loads resume protocol, staged-files validation pipeline, Playwright proxy binary-safety contract, multi-block usage dedup rule (production bug `d11b63d`), stall-recovery auth diagnostic recipe (PHevzRil) as a TodoWrite checklist.'
+description: 'MANDATORY when touching deep-dispatch contracts the always-on `agent-dispatch.md` rule points away to. Triggers — editing `src/worker/dispatch.ts` resume route or `src/worker/server.ts` `/api/resume`; `src/dispatch/staged-files.ts` or any caller; `src/dashboard/playwright-proxy.ts`; any code accumulating `usage` from JSONL entries (`src/agent/launcher.ts` `seenUsageMessageIds`, `src/dashboard/jsonl-reader.ts`, `LaravelForwarder`, new metrics emitters); `src/agent/stall-detector.ts` recovery logic; `src/agent/api-error-detector.ts` / `attach-monitoring-stack.ts#handleApiErrorRecover` / `MAX_RECOVERS` (DX-246 stream-idle recover); `src/mcp/danxbot-server.ts` DB-fallback / filesystem-queue branch or `src/worker/replay-stop-queue.ts` / `mapCompleteToTerminalStatus` (DX-242 fallback chain); claude-auth troubleshooting (silent dispatch failures, empty `claude -p` stdout, `.credentials.json` rotation, `.claude.json` writability); introducing a new staged-files allowlist root; introducing a new binary-upstream proxy on the dashboard. Loads resume protocol, staged-files validation pipeline, Playwright proxy binary-safety contract, multi-block usage dedup rule (prod bug `d11b63d`), stall-recovery claude-auth diagnostic (PHevzRil), DX-242 completion-signal fallback chain + boot replay, DX-246 stream-idle auto-recover detector + handler as TodoWrite checklist.'
 ---
 
 # Danxbot Dispatch — Deep Contracts
@@ -9,11 +9,13 @@ description: 'MANDATORY when touching any of the deep-dispatch contracts that th
 
 ## TodoWrite checklist (mandatory on first invoke)
 
-1. Identify which contract applies: resume / staged_files / Playwright proxy / multi-block usage dedup / stall-recovery auth diagnostic.
+1. Identify which contract applies: resume / staged_files / Playwright proxy / multi-block usage dedup / claude-auth diagnostic / DX-242 fallback chain / DX-246 stream-idle recover.
 2. Re-read the relevant section below before touching code.
-3. If introducing a new binary-upstream proxy → use `handlePlaywrightProxy` pattern, NOT `proxyToWorker`.
-4. If accumulating `usage` from JSONL → MUST dedupe by `message.id` (multi-block trap).
-5. If a dispatch is "silent failing" → run the auth diagnostic before chasing StallDetector.
+3. New binary-upstream proxy → use `handlePlaywrightProxy` pattern, NOT `proxyToWorker`.
+4. Accumulating `usage` from JSONL → MUST dedupe by `message.id`.
+5. "Silent failing" dispatch → run claude-auth diagnostic before chasing StallDetector.
+6. Touching `danxbot_complete` fallback path → preserve HTTP → DB → filesystem-queue ordering; `mapCompleteToTerminalStatus` is the SINGLE collapse point for `CompleteStatus → DispatchStatus`.
+7. Changing `MAX_RECOVERS` or detector match logic → update integration test `src/__tests__/integration/api-error-recover.test.ts` in the same commit.
 
 ## Resume
 
@@ -148,3 +150,106 @@ docker exec -u danxbot danxbot-worker-<repo> bash -c 'cd /tmp && unset ANTHROPIC
 ```
 
 Empty stdout + exit 0 = auth chain broken (one of the three above). PONG + exit 0 = auth is fine; the stall is something else (real model latency, infinite loop, etc.). The `worker-compose-mounts.test.ts` regression test guards #1 at the compose level; the spawn-time preflight in Trello `3l2d7i46` (when shipped) will surface #1, #2, and #3 loudly before the worker ever starts a doomed dispatch.
+
+## DX-242 — `danxbot_complete` fallback chain + boot replay
+
+`danxbot_complete` MUST land the terminal signal even when the worker is dead between spawn and completion (OOM-kill, host reboot, crash). The MCP server falls through three paths:
+
+1. **HTTP** — POST to `DANXBOT_STOP_URL`. Always tried first; fast path when worker is alive.
+2. **Direct DB UPDATE** — when `DANXBOT_DB_*` + `DANXBOT_DISPATCH_ID` env vars are present, the MCP server opens a one-shot `pg.Pool` and `UPDATE`s the `dispatches` row to terminal status, `summary`, `completed_at`, `pid_terminated_at`. Idempotent: `WHERE "status" NOT IN (TERMINAL_STATUSES)`.
+3. **Filesystem queue** — when `DANX_REPO_ROOT` is present, atomic tempfile + rename to `<repoRoot>/.danxbot/dispatch-stops/<dispatchId>.json`. Carries the agent-facing `CompleteStatus` (NOT the collapsed `DispatchStatus`) so boot replay can route `critical_failure` correctly.
+
+Chain succeeds on the first lander. Agent sees one success message naming the path ("recorded via DB fallback" / "queued for boot replay"). When ALL paths fail (no fallback context configured AND HTTP unreachable), MCP server fails loud with the original primary error embedded.
+
+Fallback context is auto-injected by `dispatch()` (`src/dispatch/core.ts`) from `repo.localPath` (queue dir), `dispatchId` (queue key), and `config.db`. **`mcp/danxbot-server.ts#mapCompleteToTerminalStatus` is the SINGLE source of truth for `CompleteStatus → DispatchStatus` collapse.** `worker/dispatch.ts#handleStopFromDb`, `worker/replay-stop-queue.ts`, and the MCP server's DB-fallback branch all import it — never inline a copy.
+
+**Boot replay** (`src/worker/replay-stop-queue.ts`, wired into `startWorkerMode` BEFORE `reconcileOrphanedDispatches`):
+
+- Scan `<repo>/.danxbot/dispatch-stops/`.
+- Per entry: `getDispatchById` → skip-if-terminal → `autoSyncTrackedIssue` → `updateDispatch` → `unlinkSync`.
+- `critical_failure` branch: `writeFlag(<repo>/.danxbot/CRITICAL_FAILURE)` + row → failed (auto-sync skipped).
+- Per-entry failures recorded as `stop-replay`-source system errors; file STAYS on disk for the next boot to retry.
+- Malformed JSON / shape errors DISCARD the file (permanently broken file would otherwise loop every boot).
+
+**Do not:**
+- Inline a second `CompleteStatus → DispatchStatus` collapse anywhere — always import `mapCompleteToTerminalStatus`.
+- Skip the idempotent `WHERE` clause in the DB-fallback UPDATE — concurrent HTTP + DB writes will fight without it.
+- Delete queue files on a retryable error — only successful row updates and malformed-shape errors unlink.
+- Reorder the chain (HTTP last, DB first, etc.) — HTTP is the fast path that keeps the rest cold.
+
+## DX-246 — Claude API stream-idle auto-recover
+
+Distinct from Stall Recovery. Anthropic stream times out mid-turn → Claude Code writes a synthetic JSONL pair (assistant entry + optional `turn_duration` system entry) signaling lost connection. The agent itself is still alive but produced no real turn — the only forward path is kill + `POST /api/resume` so claude reconnects via `claude --resume <sessionUuid>`.
+
+### Synthetic JSONL signature
+
+Two surface forms (defense in depth — Claude Code has emitted both in the wild):
+
+```jsonc
+// Surface 1 — explicit flag
+{
+  "type": "assistant",
+  "message": {
+    "model": "<synthetic>",
+    "stop_reason": "stop_sequence",
+    "content": [{"type": "text",
+                 "text": "API Error: Stream idle timeout - partial response received"}]
+  },
+  "isApiErrorMessage": true,
+  "error": "unknown"
+}
+
+// Surface 2 — content-pattern
+{
+  "type": "assistant",
+  "message": {
+    "model": "<synthetic>",
+    "content": [{"type": "text", "text": "API error: <anything>"}]
+  }
+}
+
+// Usually followed by:
+{"type": "system", "subtype": "turn_duration", "durationMs": 1457211}
+```
+
+Detection — `src/agent/api-error-detector.ts#matchesSynthetic`:
+
+1. `raw.isApiErrorMessage === true`, OR
+2. `raw.message.model === "<synthetic>"` AND content text matches `/API Error/i`.
+
+### Detector behavior
+
+`ApiErrorDetector` subscribes to the same `SessionLogWatcher` every other observer reads (one fork, one watcher). On match:
+
+- **5s confirmation timer** — does not fire immediately. If a real assistant entry (`model !== "<synthetic>"`) arrives during the window, pending recover is cancelled (transient API stutter).
+- **Idempotent by recover epoch** — remembers `recoverCount` at fire time; further synthetic entries in the same epoch are no-ops. Next epoch re-arms when the handler bumps the counter.
+- **Sub-agent (sidechain) entries skipped** — sub-agent's API error stays scoped to the sub-agent; never triggers a parent recover.
+
+### Recover contract
+
+`attach-monitoring-stack.ts#handleApiErrorRecover` runs after the 5s window confirms:
+
+1. **Skip if non-running** — detector may fire after stall / cancel / inactivity already terminated the job.
+2. **Increment counter** — `job.recoverCount + 1`, persisted via `tracker.recordRecoverCount`.
+3. **Branch on cap:**
+   - `count > MAX_RECOVERS (= 3)` → `writeFlag(<repo>/.danxbot/CRITICAL_FAILURE)` + `job.stop("api_error_failed", ...)`. Poller halts on next tick.
+   - `count ≤ MAX_RECOVERS` → `job.stop("api_error_recover", ...)` (row collapses to `status: "recovered"`) + `POST /api/resume` so a fresh dispatch picks up `--resume <sessionUuid>` with `parent_recover_id`.
+
+`/api/resume` failures (network, non-2xx) are logged but do NOT escalate to CRITICAL_FAILURE — transient resume errors are recoverable on the next poller tick; persisting a halt for them defeats the feature.
+
+Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`). Chain queryable via `parent_recover_id`. Dashboard's Recovers column surfaces `recover_count` + a `↳` glyph next to dispatch IDs with non-null `parent_recover_id`.
+
+### Integration points
+
+- `src/agent/api-error-detector.ts` — pure detector, no recover logic.
+- `src/agent/attach-monitoring-stack.ts` — wires detector onto shared watcher; carries `handleApiErrorRecover` + `MAX_RECOVERS`.
+- `src/agent/agent-types.ts#SpawnAgentOptions.recoverContext` — `{originalTask, workspace, workerPort, repoLocalPath}`. Required for the recover-ok branch; missing context fail-louds to `api_error_failed` so the row doesn't leak in `recovered` with no resume-child.
+- `src/dispatch/core.ts` — auto-injects `recoverContext` from `RepoContext.localPath` + `workerPort`.
+- `src/worker/dispatch.ts#handleResume` — threads `recover_count` + `parent_recover_id` from POST body onto the new dispatch row.
+- `src/dashboard/dispatches.ts` — surfaces `recoverCount` + `parentRecoverId` on `Dispatch`; `dispatches-routes.ts` validates `?status=recovered`.
+- `dashboard/src/components/DispatchList.vue` — Recovers column badge + parent linkage indicator.
+- `src/__tests__/integration/api-error-recover.test.ts` — end-to-end pin: synthetic JSONL → detector → recover handler → `/api/resume` POST + chain stamping + cap-exhausted CRITICAL_FAILURE.
+
+### Tuning
+
+`MAX_RECOVERS = 3` is hardcoded in `attach-monitoring-stack.ts`. Changing it requires updating unit + integration tests in the same commit. 3 × ~5s window is enough to ride out the API stutter the feature was built for; more would burn tokens during sustained outages before falling through to operator intervention.
