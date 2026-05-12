@@ -216,8 +216,8 @@ to dispatch.
 ### Whitelist / blacklist for `requires_human`
 
 The full whitelist + blacklist for when an agent may set
-`requires_human` lives in the dispatched-agent inject rule
-`src/poller/inject/workspaces/issue-worker/.claude/rules/danx-requires-human.md`. The condensed
+`requires_human` lives in the `danxbot:requires-human` plugin skill
+(load via the Skill tool before populating the field). The condensed
 form: **whitelist** = 3rd-party token rotation, external dashboard
 access, manual deploy of external infra, anything the agent has zero
 programmatic reach into. **Blacklist** = ambiguous spec, failing test,

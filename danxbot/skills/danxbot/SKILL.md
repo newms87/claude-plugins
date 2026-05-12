@@ -7,6 +7,8 @@ description: 'MANDATORY when reasoning about, configuring, debugging, or dispatc
 
 Danxbot is an autonomous orchestrator. Source repo: `<DANXBOT_REPO>` (sibling of every connected repo on the operator's dev box). It spawns Claude Code CLI subprocesses to do work in a connected repo (the operator's app/library codebases — examples: `gpt-manager`, `platform`), polls issue trackers, exposes an HTTP dispatch API.
 
+This plugin is the single source of truth for every danxbot discipline rule + skill — operator's main session and dispatched workers all read the same body via `danxbot@newms-plugins` (was previously dual-housed in the poller inject pipeline; epic DX-269 retired the inject side so plugin edits propagate everywhere with `autoUpdate: true`).
+
 Reading this skill avoids three recurring mistakes:
 
 1. Confusing **repo location** (where source lives) with **runtime location** (where it executes).
