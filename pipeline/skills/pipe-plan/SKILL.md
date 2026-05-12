@@ -132,10 +132,10 @@ Never modify reviewer agents to reduce findings. Reviewers intentionally aggress
 2. `/pipe-review` (fix findings)
 3. `/pipe-quality` (audit decisions)
 4. `/pipe-commit` (stage and commit)
-5. `/pipe-report` (present results)
+5. `/pipe-finish` mode A — post-commit report in `base:convey` format + invoke `/next-phase`
 6. Mark phase complete
 7. Repeat for next phase
-8. `/pipe-finish` (at session end — Action Items + knowledge dump)
+8. `/pipe-finish` mode B (at session end — Action Items + knowledge dump)
 
 **CRITICAL:** Pipeline automatic. User approval of plan = pre-approval for entire pipeline. NEVER pause between steps. NEVER ask "ready for code review?" Just execute. Do NOT skip quality gates.
 
@@ -143,7 +143,7 @@ Never modify reviewer agents to reduce findings. Reviewers intentionally aggress
 
 Quality gates run after each phase (independent domains) or once after all related phases (same domain). Never skip.
 
-**CRITICAL: Phase with no code change still runs pipeline.** Verification-only phases, plan-only phases, research phases NOT exempt. Still run `/pipe-report` at phase end + `/pipe-finish` at session end. Code-oriented steps (`/pipe-review`, `/pipe-quality`, `/pipe-commit`) = no-ops on empty diff — still invoke + exit cleanly with "nothing to review / nothing to commit." Pipeline not conditional on code being changed; structure for phase + session closure.
+**CRITICAL: Phase with no code change still runs pipeline.** Verification-only phases, plan-only phases, research phases NOT exempt. Still run `/pipe-finish` mode A at phase end + mode B at session end. Code-oriented steps (`/pipe-review`, `/pipe-quality`, `/pipe-commit`) = no-ops on empty diff — still invoke + exit cleanly with "nothing to review / nothing to commit." Pipeline not conditional on code being changed; structure for phase + session closure.
 
 **`/pipe-finish` NEVER optional.** Regardless whether session produced commits, plans, or only investigation, every session ends with `/pipe-finish`. Captures unwritten knowledge + formalizes Action Items otherwise lost when context window destroyed. Skipping `/pipe-finish` because "already filed action items manually" or "no code change" = classic end-of-session shortcut. Do not take.
 

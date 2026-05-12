@@ -1,11 +1,61 @@
 ---
 name: pipe-finish
-description: 'Use when ending a session or completing all work — surfaces unwritten session knowledge, creates Action Items cards for issues found, and ensures nothing is lost when context is destroyed.'
+description: 'Use (a) immediately after every `/pipe-commit` to produce a post-commit report + invoke the next pipeline step, AND (b) at session end to surface unwritten knowledge + spawn Action Items cards. Replaces the retired `/pipe-report` skill. All output sections follow the `convey` format (auto-loaded base skill) — concept-first headline, behavior-diff tables, ASCII flow, caveats list, verify line.'
 ---
 
-# Finish Session
+# Finish — post-commit reports AND end-of-session wrap
 
-Final skill invoked when a session is ending. Two jobs: spawn issue cards for anything discovered that needs attention, and dump session knowledge that hasn't been captured. Context is about to be destroyed — anything not written down is lost forever.
+This skill has two modes, invoked at different cadences:
+
+| Mode | When | What it does |
+|---|---|---|
+| **Post-commit** (mode `A`) | Immediately after every `/pipe-commit` | Emits a `convey`-format report of the just-committed change, then invokes `/next-phase` or recurses into mode `B` if the session is done. |
+| **Final wrap** (mode `B`) | At session end (last phase committed OR user wraps up) | Action Items spawning, session knowledge dump, recommended next actions, final session report. |
+
+All output produced by either mode follows the `convey` format — see the auto-loaded `base:convey` skill for the scaffold (headline → goal → behavior diff table → flow → caveats → verify). Length budgets: post-commit report 30 lines, final wrap 60 lines.
+
+---
+
+## Mode A — Post-commit report
+
+Replaces the retired `/pipe-report` skill. Use immediately after `/pipe-commit` succeeds.
+
+### Steps
+
+1. `git show --stat HEAD` — sanity-check the commit landed.
+2. Emit a `convey`-format report (use the scaffold from `base:convey`):
+   - **Headline** — what now works / fails / changed in ≤12 words.
+   - **Goal** — one sentence.
+   - **Behavior diff** — table for any "Before / After" axis the commit changed. Skip if a one-line commit with one clear effect.
+   - **Caveats / next actions** — `- [ ]` checkboxes for operator deploy / publish / restart steps, known limitations.
+   - **Verify** — `cmd → ✅ N/N` line. Skip per-suite tables unless something failed.
+   - **Skipped findings** — list any validly-skipped pipe-quality findings.
+3. State the next step as a **declarative fact**, then invoke it without pausing.
+
+### Decision tree for the next step
+
+| Situation | Next step | Action |
+|---|---|---|
+| More phases remain in the plan | Name the next phase | Invoke `/next-phase` in the same response. |
+| This was the final phase | `/pipe-finish` (mode B) | Recurse into mode B in the same response. |
+| Waiting on external input the pipeline cannot produce itself (human-only Trello approval, third-party API outage) | State the blocker | Stop. Do not invoke a pipeline step. |
+
+### Forbidden — never ask permission for pipeline-mandated steps
+
+`/next-phase` and the mode-B wrap are pre-approved by the original plan approval. Writing any of these is a rule violation:
+
+- "Let me know if you want me to also…"
+- "Say go / go ahead / approve and I'll…"
+- "…want me to run X?"
+- Any `?` attached to a pipeline step name
+
+Correct pattern: declarative statement + immediate invocation. The user can interrupt if they want something else.
+
+---
+
+## Mode B — Final session wrap
+
+Context is about to be destroyed — anything not written down is lost forever. Three jobs: spawn Action Items cards, dump session knowledge, present recommended next actions. All output follows `convey`.
 
 ---
 

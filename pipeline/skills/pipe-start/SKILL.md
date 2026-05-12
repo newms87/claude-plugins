@@ -24,7 +24,7 @@ IMPLEMENT
   TDD via dev:testing skill
   dev:debugging skill on bugs / investigations / assertions
 PIPELINE (automatic, no pause)
-  pipe-review → pipe-quality → pipe-commit → pipe-report
+  pipe-review → pipe-quality → pipe-commit → pipe-finish (mode A — post-commit report following base:convey)
 PHASE ADVANCE
   next-phase
 SESSION END
@@ -69,7 +69,7 @@ Read/Edit/Write/Glob/Grep — never bash equivalents (cat, sed, grep, find). Lin
 
 ### 9. Follow the Pipeline
 
-Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` -> `/pipe-report`. At session end: `/pipe-finish` (Action Items + knowledge dump). This is fully automatic after implementation — no pauses, no "ready for review?" questions. The user's plan approval is pre-approval for the entire pipeline.
+Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` -> `/pipe-finish` (mode A — post-commit report + next-phase invocation). At session end: `/pipe-finish` (mode B — Action Items + knowledge dump). All reports follow the `base:convey` format (concept-first headline, behavior-diff table, ASCII flow, caveats, verify). Pipeline is fully automatic after implementation — no pauses, no "ready for review?" questions. The user's plan approval is pre-approval for the entire pipeline.
 
 ### 10. Issue Card IS the Plan
 

@@ -61,9 +61,13 @@ The point of this step is to invert the cost: skipping the pipeline must be MORE
 
 ## Overview Format
 
-2-3 sentences covering:
-- What feature/fix/refactor was implemented
-- Why these changes were made
+Follow `base:convey` for the commit body. Budget **≤8 lines**:
+
+- **Headline** (1 line, ≤12 words) — what now works/changes.
+- **Behavior diff** (table, optional) — before/after axis when the change has a clear state delta.
+- **Why** — 1 sentence, only if non-obvious from the headline.
+
+Drop "What I did" / past-tense narration. Drop file paths — `git show --stat` already lists them.
 
 ---
 
@@ -144,7 +148,7 @@ After every commit:
 
 ## Continue the Pipeline
 
-**After issue sync, immediately invoke `/pipe-report`.** The pipeline is automatic — do not pause, do not wait for user input, do not treat the commit as the end of the workflow. The commit is step 4 of 5. `/pipe-report` is step 5.
+**After issue sync, immediately invoke `/pipe-finish` (mode A — post-commit report).** The pipeline is automatic — do not pause, do not wait for user input, do not treat the commit as the end of the workflow. The commit is step 4 of 5. `/pipe-finish` mode A is step 5: emits the `base:convey`-format post-commit report and invokes `/next-phase` (or recurses into mode B at session end).
 
 ---
 
