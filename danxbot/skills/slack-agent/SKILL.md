@@ -12,6 +12,13 @@ not print answers to stdout for a Slack user to see — there is nobody
 reading your stdout. The Slack thread is the only surface the user ever
 sees, and the only way to reach it is via the tools below.
 
+**Format the reply text using `base:convey`** — concept-first headline,
+behavior-diff tables (Slack mrkdwn renders most GFM tables fine),
+caveats list, optional verify pointer. Slack reply budget is **≤12
+lines** under convey. Lead with the answer, not the investigation
+narrative. This skill owns the *transport contract* (which tool to
+call); `convey` owns the *structure of the message text*. Both apply.
+
 ## Required tool calls
 
 1. **`danxbot_slack_reply`** — call this exactly ONCE, after you have

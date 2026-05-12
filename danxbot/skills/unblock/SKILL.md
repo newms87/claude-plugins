@@ -59,25 +59,30 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
    - **Operator must do:** numbered steps. Each step ≤2 lines. Include exact commands (env vars, artisan/make/yarn invocations, file paths, log greps).
    - **Outcome branches:** what success looks like, what failure looks like, what to report back. Always two branches — never single-path.
 
-5. **Output format (this exact shape, no deviation) — ONLY if step 3 found genuine human-only blockers:**
+5. **Output format — `base:convey` scaffold, instantiated for unblock reports** (this exact shape, no deviation) — ONLY if step 3 found genuine human-only blockers:
 
    ```
-   # <ISS-N> — <one-line title>
+   ## <ISS-N> — <one-line title> (≤12 words)
 
-   **Status:** <what shipped, what's pending, commit refs if any>
-   **Blocker:** <one sentence>
+   **Goal.** <one sentence — what the operator needs to do, plain English>
 
-   ## What you do
+   **Status.**
+   | Shipped | Pending | Commits |
+   |---|---|---|
+   | <what's done> | <what's left> | <sha refs if any> |
 
+   **Blocker.** <one sentence — exactly why the agent cannot self-progress>
+
+   **What you do.**
    1. <step + exact command>
    2. <step + exact command>
-   ...
 
-   ## Outcomes
-
-   - **<success branch>** → <what to tell agent / what agent does next>
-   - **<failure branch>** → <what to capture / what to paste back>
+   **Outcomes.**
+   - ✅ **<success branch>** → <what to tell agent / what agent does next>
+   - ❌ **<failure branch>** → <what to capture / what to paste back>
    ```
+
+   Unblock budget under convey: **≤20 lines.** Convey owns the structure (headline + goal + tables); this skill owns the unblock-specific section names (Status / Blocker / What you do / Outcomes).
 
 6. **Stop.** Do not start fixing. Do not edit the card's YAML. Do not change AC checks. The skill ends with the report. Operator runs the steps and reports back; only then does the agent resume work on the card (re-invoking `issue-card-workflow` for the AC update).
 

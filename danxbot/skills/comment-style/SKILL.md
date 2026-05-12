@@ -7,6 +7,8 @@ description: 'MANDATORY before writing any `description`, `comments[].text`, `re
 
 `description`, `comments[].text`, `retro.good`, and `retro.bad` render as markdown in the dashboard's Issues drawer (via `MarkdownEditor`). Use markdown — readers skim formatted content faster than wall-of-prose, and the renderer already pays the parser cost.
 
+**Format the content using `base:convey`** — concept-first headline, behavior-diff tables, ASCII flow diagrams, caveats list, verify line. This file owns the *markdown rendering contract* (what syntax the drawer renders); `convey` owns the *structure* of what you write inside that markdown. Both apply.
+
 ## Always use
 
 - **Headers** — `##` for top-level sections in a comment, `###` for sub-sections. Reserve `#` for the comment-style title only when the consumer expects it (`## Code Review`, `## Test Review`, `## Bug Diagnosis`).
