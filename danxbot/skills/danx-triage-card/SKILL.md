@@ -203,8 +203,8 @@ Procedure:
 
 | Audit outcome | Action | YAML changes |
 |---|---|---|
-| **Every blocker is terminal** | **Unblock**. Set `waiting_on: null` (the worker mechanically forces `status: ToDo` on save when `waiting_on` is null and the prior status was the worker-managed `ToDo` — see `issue-card-workflow` "Waiting On vs Blocked"). | `waiting_on: null`, `triage.last_status: Unblock`, `triage.last_explain: "<one sentence — every blocker reached terminal status>"`, `triage.reassess_hint: ""` (cleared — card is dispatchable). |
-| **At least one blocker is non-terminal** | **Confirm-Block**. Update `triage.reassess_hint` to name which blockers are still pending. | `waiting_on` unchanged, `status` unchanged (worker enforces ToDo), `triage.last_status: Confirm-Block`, `triage.last_explain: "<one sentence — naming the still-pending blockers>"`, `triage.reassess_hint: "<≤120 chars — e.g. 'Re-check ISS-91, ISS-92 — still in progress as of <iso>'>"`. |
+| **Every blocker is terminal** | **Cleared — no-op on `waiting_on`**. The picker dispatches the card automatically the next tick (it gates on effective dep resolution, not raw `waiting_on`). Leave the durable record in place as dep history. | `waiting_on` unchanged, `status` unchanged, `triage.last_status: Unblock`, `triage.last_explain: "<one sentence — every blocker reached terminal status; picker will dispatch>"`, `triage.reassess_hint: ""` (cleared — card is dispatchable). |
+| **At least one blocker is non-terminal** | **Confirm-Block**. Update `triage.reassess_hint` to name which blockers are still pending. | `waiting_on` unchanged, `status` unchanged, `triage.last_status: Confirm-Block`, `triage.last_explain: "<one sentence — naming the still-pending blockers>"`, `triage.reassess_hint: "<≤120 chars — e.g. 'Re-check ISS-91, ISS-92 — still in progress as of <iso>'>"`. |
 
 `triage.expires_at = now + 1h` on every Waiting On save. The 1h cadence is intentionally short — a phase sibling can move from In Progress to Done at any minute, and we want the dependent card dispatched as soon as possible.
 
@@ -229,7 +229,7 @@ scope for the per-status triage agent. `requires_human` is cleared by
 the human (via the dashboard "Mark Resolved" affordance), not by
 triage.
 
-**A card with `waiting_on != null` is NEVER out of scope** — even if its `status` is `ToDo` (the worker forces `ToDo` on every waiting-on card). **A card with `blocked != null` is NEVER out of scope** — even if its `status` is `Blocked` (the worker enforces the invariant). Always route waiting-on cards to the Waiting On path and blocked cards to the Blocked path. Re-read the in-scope table at the top of "Per-status decision trees" if you find yourself looking at `status: ToDo` and considering refusal — the FIRST checks are `waiting_on != null` and `blocked != null`, not `status`.
+**A card with `waiting_on != null` is NEVER out of scope** — regardless of its `status` (`waiting_on` is an independent dispatch gate). **A card with `blocked != null` is NEVER out of scope** — even if its `status` is `Blocked` (the worker enforces the invariant). Always route waiting-on cards to the Waiting On path and blocked cards to the Blocked path. Re-read the in-scope table at the top of "Per-status decision trees" if you find yourself considering refusal — the FIRST checks are `waiting_on != null` and `blocked != null`, not `status`.
 
 The poller is the gatekeeper; if you receive a genuinely out-of-scope card (`blocked == null` AND non-Review/non-Blocked status) the poller has a bug — fail loud so it surfaces.
 

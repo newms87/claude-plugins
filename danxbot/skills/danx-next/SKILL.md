@@ -79,7 +79,7 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 | `ac` | `[{check_item_id, title, checked}]` | Acceptance Criteria. Empty `check_item_id` on new items — tracker assigns. |
 | `comments` | `[{id?, author, timestamp, text}]` | Append a new comment by adding `{author, timestamp, text}` (no `id`). The worker handles tracker push semantics. |
 | `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Blocked. The worker auto-renders this as ONE structured comment on terminal save. `action_item_ids[]` is a `string[]` of `<PREFIX>-N` references. **`action_item_ids[]` is a LAST RESORT** — see Step 1.5. Only reference an action item when the work is BOTH unrelated to this card's ACs AND too large to reasonably finish in this session (multi-phase refactor, redesign, cross-cutting work needing its own scoping). Small in-scope or small unrelated fixes you spotted → DO THEM NOW, don't defer. Create the action item card first via `danx_issue_create({type, title, description, ac, ...})`, then push its returned `id` here. `action_item_ids[]` must contain only valid `<PREFIX>-N` format strings. Do NOT append a `## Retro` comment to `comments[]` yourself. |
-| `waiting_on` | `null` OR `{reason, timestamp, by[]}` | `null` when nothing blocks this card. Set to a `{reason, timestamp, by}` record when the card cannot proceed because it is waiting on **other in-flight work** that does NOT need a human (a phase sibling shipping first, an Action Items card needs to land, a separately-scoped task). `reason` is a non-empty sentence. `timestamp` is current ISO 8601. `by[]` is a non-empty list of the IMMEDIATE `<PREFIX>-N` blocker(s) — never transitive. If A→B→C, A's `by[]` is `["B"]` only; the chain is computed by the poller + dashboard from each card's direct blocker. If no existing card describes the unblock work, **create one** (`danx_issue_create`) and put its id here. The worker mechanically forces `status: ToDo` whenever `waiting_on` is non-null; you do not separately move status. The poller skips dispatching the card while any blocker is non-terminal, then auto-clears `waiting_on` and dispatches once every blocker is Done / Cancelled. **Waiting On is NOT Blocked** — Blocked is when THIS card itself is stuck; Waiting On is when THIS card is queued behind OTHER work. See Step 10b. |
+| `waiting_on` | `null` OR `{reason, timestamp, by[]}` | **Pure dispatch gate, independent of `status`.** `null` when nothing blocks this card. Set to a `{reason, timestamp, by}` record when the card is waiting on **other in-flight work** that does NOT need a human (a phase sibling shipping first, an Action Items card needs to land, a separately-scoped task). `reason` is a non-empty sentence. `timestamp` is current ISO 8601. `by[]` is a non-empty list of the IMMEDIATE `<PREFIX>-N` blocker(s) — never transitive. If A→B→C, A's `by[]` is `["B"]` only; the chain is computed by the poller + dashboard from each card's direct blocker. If no existing card describes the unblock work, **create one** (`danx_issue_create`) and put its id here. The picker skips dispatch while any blocker is non-terminal, then dispatches once every blocker is Done / Cancelled. The field itself is a **durable record** — the system NEVER auto-clears it on dep resolution or status change; only the agent / operator clears it (if the link was a mistake). Any `status` is legal with any `waiting_on` value. **Waiting On is NOT Blocked** — Blocked is when THIS card itself is stuck; Waiting On is when THIS card is queued behind OTHER work. See Step 10b. |
 
 **Save semantics:** there is no save verb. Use `Edit` / `Write` to modify the YAML on disk. The chokidar watcher detects the file change and upserts the new content into the `issues` Postgres table; an `issue_history` row records the RFC 6902 patch from the prior content. Schema validation does NOT block writes — a malformed YAML is mirrored as `{_malformed: true, raw: <text>}`. Verify your edits by re-reading the file after the write.
 
@@ -597,10 +597,10 @@ If the only thing blocking the card is human action → use Step 10 (Blocked) in
      blockers is redundant data that drifts the moment the chain is
      reorganized. Same rule for phase chains (Phase 3 → Phase 2 only,
      never `["Phase 2", "Phase 1"]`).
-   - Do NOT change `status`. Leave it as is. The worker mechanically
-     forces `status: ToDo` on save when `waiting_on` is non-null. Setting
-     `Blocked` here would be wrong (Blocked is human-action-only)
-     and the worker would normalize it back to `ToDo` anyway.
+   - Do NOT change `status`. Leave it as is. `waiting_on` is independent
+     of `status` — setting `Blocked` here would be wrong (Blocked is
+     human-action-only). The picker uses `waiting_on` alone as the
+     dispatch gate.
    - Append a comment to `comments[]` summarizing what you did, what
      blocker(s) you found / created, and what state to expect once the
      blockers ship. No `id` field.
@@ -617,12 +617,11 @@ If the only thing blocking the card is human action → use Step 10 (Blocked) in
 
 Edit the YAML with `Edit` / `Write`. The watcher mirrors the change to
 the DB; the post-completion auto-sync (when `danxbot_complete` fires)
-normalizes status to ToDo via `forceWaitingOnToToDo`, applies the
-Waiting On label via the tracker, and returns. The poller re-evaluates
-on its next tick and skips dispatching this card while any blocker
-remains non-terminal. When every blocker reaches Done / Cancelled, the
-poller clears `waiting_on` automatically and dispatches the card on the
-same tick.
+applies the Waiting On label via the tracker, and returns. The picker
+skips dispatching this card while any blocker is non-terminal. When
+every blocker reaches Done / Cancelled, the picker dispatches the card
+on the same tick — the `waiting_on` record itself stays on the card as
+a durable dep history note.
 
 Skip to Step 11.
 

@@ -131,8 +131,9 @@ For each phase YAML at index `i >= 1` in the ordered `children[]`:
 3. The watcher mirrors the change automatically.
 
 Phase 1 (`children[0]`) stays `waiting_on: null` — it dispatches first. The
-poller auto-clears `waiting_on` and releases phase N+1 once phase N reaches
-Done / Cancelled.
+picker releases phase N+1 once phase N reaches Done / Cancelled (the
+`waiting_on` record itself stays on the card as a durable dep history note —
+never auto-cleared).
 
 **Skip this step ONLY when phases are genuinely independent** (different
 domains, no shared state, can ship in any order). Default = sequential.

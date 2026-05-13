@@ -10,7 +10,7 @@ Purpose: turn a `Blocked` card (or one with non-null `waiting_on`) into a one-sc
 ## v4 vocabulary primer
 
 - **`status: "Blocked"`** + `blocked: {reason, timestamp}` — **self-block.** The card itself cannot proceed (formerly `Needs Help`). A human or next dispatch must clear it. Invariant: `status === "Blocked" ⟺ blocked !== null`.
-- **`waiting_on: {reason, timestamp, by[]}`** — **dep-chain queue.** The card is fine; it's waiting for the issues in `by[]` to terminal-finish. Status stays `ToDo`. Poller auto-clears.
+- **`waiting_on: {reason, timestamp, by[]}`** — **dep-chain dispatch gate, independent of `status`.** The card is fine; it's waiting for the issues in `by[]` to terminal-finish. Picker skips dispatch while any dep is non-terminal; the record itself is durable (never auto-cleared by the system).
 
 This skill applies to BOTH — `Blocked` (because a human likely needs to act) and `waiting_on` (because the operator may want to know what the card is queued behind).
 
