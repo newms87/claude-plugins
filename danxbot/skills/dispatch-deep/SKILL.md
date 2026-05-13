@@ -253,3 +253,29 @@ Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`)
 ### Tuning
 
 `MAX_RECOVERS = 3` is hardcoded in `attach-monitoring-stack.ts`. Changing it requires updating unit + integration tests in the same commit. 3 × ~5s window is enough to ride out the API stutter the feature was built for; more would burn tokens during sustained outages before falling through to operator intervention.
+
+## syncWorktree ff-only abort — never work around with ref/index/tree mutation (DX-340)
+
+`syncWorktree` (`src/agent/worktree-manager.ts:447-496`, per DX-293) is intentionally strict: `git pull --ff-only origin/main` aborts on any dirty / divergent working tree, and `dispatchWithRecovery` (`src/dispatch/recovery-mode.ts:65-84`) escalates that abort to `agents.<name>.broken` quarantine. The strictness is the feature — it surfaces writer-vs-git contention loudly instead of silently destroying work.
+
+**Forbidden "workarounds" — every one masks the real bug + corrupts agent state:**
+
+- `git update-ref refs/heads/<branch> <commit>` to skip the merge → ref pointer moves but the working tree doesn't; next tick dirties differently; the agent quarantines on the next dispatch instead of this one.
+- `git reset --hard origin/main` to "force the worktree to current" → destroys whatever the inject pipeline (or any other live writer) wrote since fork; same dirt reappears on the next tick.
+- `git stash` of the inject-written files → destroys the inject's output; next tick re-writes it; oscillation, not a fix.
+- `git checkout <file>` / `git restore` on the dirty paths → already banned in `dev:git-discipline`, regardless of motivation.
+
+**Correct fix (canonical example: DX-340).** danxbot's inject pipeline (`src/inject/sync.ts` → `mirrorWorkspaceTree`) rewrites templated content into `<consumer-repo>/.danxbot/workspaces/<templated>/*` every tick. When the consumer repo TRACKS those paths, every tick dirties the working tree → `syncWorktree` aborts → quarantine. The fix is on the writer-side gitignore boundary:
+
+1. Extend `<repo>/.danxbot/.gitignore` (via `ensureGitignoreEntry` calls in `src/inject/sync.ts` — see `src/inject/gitignore-workspaces.ts`) to cover the inject-owned paths.
+2. One-time `git rm --cached` of those paths in each consumer repo, commit, push. Files stay on disk; inject keeps writing them; git stops seeing the writes as modifications.
+3. Re-dispatch — `syncWorktree` returns `noop` or a clean ff merge.
+
+**Mechanical decision rule when `syncWorktree` aborts on ff-only:**
+
+1. `git status --short` inside the failing worktree → which paths are dirty?
+2. Identify the writer (`grep -r "<path-fragment>"` across danxbot `src/`; `mirrorWorkspaceTree` / `renderPerRepoFilesIntoWorkspaces` / any inject helper = the writer is danxbot itself).
+3. Fix the gitignore at the writer's gitignore boundary. Commit. Push. One-time `git rm --cached` in the affected consumer repo(s).
+4. Re-dispatch.
+
+Reaching for ref / index / tree mutation in step 3 is a workflow violation. The right action is always on the writer side.
