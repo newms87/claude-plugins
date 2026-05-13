@@ -64,7 +64,7 @@ Sections in **bold** are the canonical names — keep them stable so readers can
 |---|---|
 | Concepts in body; paths in Verify line only | File paths above Verify |
 | Tables for any "A vs B" / matrix / option list | Prose comparing two states |
-| Options framed in plain English (what + trade-off) — reader doesn't need codebase knowledge | Options framed by code path / file name / internal symbol (`refactor validateBlocked` / `move call out of reconcile.ts`) |
+| Problem statements + options + diagnoses framed in plain English (what's happening, what changes, what trade) — reader needs zero codebase knowledge to follow | Problem / option / diagnosis framed by code path, file name, internal symbol, field name, or invariant ID (`DX-212`, `waiting_on`, `validateBlocked`) without first naming the real-world thing it controls |
 | ASCII arrow diagrams (`A → B → C`) | Numbered prose paragraphs describing flow |
 | Bullets for parallel items | Run-on sentences listing items |
 | Present-tense, system-actor verbs ("skips", "stamps", "rebuilds") | Past-tense personal-actor ("I added", "We refactored") |
@@ -142,6 +142,22 @@ First the picker calls runConflictCheck, which then awaits a verdict via onCompl
 ```
 picker → conflict-check → verdict → apply → YAML on disk
 ```
+
+**Anti-pattern: Jargon-first problem statement.**
+```
+SG-135 has waiting_on populated + status In Progress → DX-212 invariant
+(`waiting_on != null ⟹ status === "ToDo"`) fires every reconcile tick.
+```
+→ Reader has to know what `waiting_on`, `DX-212`, `reconcile`, and "the invariant" are before the first sentence parses. Lead with the real-world thing FIRST, name the internals after:
+```
+A card has a "waiting on SG-134" note pinned to it. SG-134 finished,
+so the agent picked the card up + flipped it to In Progress. The
+validator sees note-still-pinned + status-not-waiting → screams every
+minute in the log.
+```
+Then, only if the reader needs to act on code: name the field (`waiting_on`), invariant (`DX-212`), file (`yaml.ts:941`) in the Verify line. Field names + IDs + paths are NEVER the lead.
+
+Applies to: problem statements, investigation findings, options, retros, commit bodies, PR descriptions, unblock notes, Slack replies. Any artifact a human reads to make a decision.
 
 **Anti-pattern: Code-path options.**
 ```
