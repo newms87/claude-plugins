@@ -2,19 +2,14 @@
 name: testing
 description: |-
   MANDATORY the FIRST time you run, write, fix, inspect, reason about, or delete any test in a session — unit, integration, system, validation, snapshot, E2E, single test, full suite, filtered, happy-path, bug-repro test — no exceptions. Also MANDATORY before:
-  - Writing a new test or test case (including happy-path, error-path, edge-case, or parametrized variants)
   - Writing a failing test for a bug fix
-  - Editing, fixing, or updating an existing test
+  - Editing or fixing an existing test
   - Deleting a test file or test case
-  - Creating, updating, or removing mocks, stubs, fixtures, test doubles, or test data (vi.mock, jest.mock, spy, patch, fixture setup, @pytest.fixture, test helper functions, seed data, etc.)
-  - Adding, creating, invoking, setting up, or defining a fixture, helper, or test utility (including pytest fixtures, vitest setup files, factory functions, test data builders, test helper functions, fixture definitions for new classes/modules, or any fixture registration/boilerplate)
+  - Creating, updating, or removing mocks, stubs, fixtures, or test doubles (vi.mock, jest.mock, spy, patch, fixture setup, etc.)
   - Running any test command or test runner (vitest, pytest, jest, rspec, go test, cargo test, phpunit, make test*, npm test, yarn test, ./vendor/bin/sail test, or any language-specific test runner)
-  - Reading test output, reporting test results/failures, interpreting test failure messages, summarizing test execution status, or counting/reporting failure counts
-  - Mocking external calls, functions, modules, or spawned processes (vi.mock, jest.mock, vi.spyOn, mock decorators, patch utilities, spawn mocks, child_process mocks, or any test double that prevents real execution)
-  - Fixing a failing or broken test (including correcting assertions, updating mocks, rewriting test logic to match new code behavior, or adapting tests to changed return shapes/signatures)
-  - Deleting or removing an obsolete, legacy, no-longer-relevant, or orphaned test file or test case (where the subject code module no longer exists or the test is unmaintained)
+  - Reading test output or reporting test results/failures
 
-  Loads the complete testing discipline (running, writing, fixing, deletion, mocking, fixture creation, industry practices, framework gotchas, anti-patterns) as a TodoWrite checklist. Invoke BEFORE the first tool call in a test-related sequence — not after. You do not get to invoke a single test "just to see," add or create a fixture, set up a mock or test double, delete a test file, fix a failing test, write a new test case, run a test command, report or summarize test results, interpret test output, or repair a test that no longer matches its subject code without this skill first.
+  Loads the complete testing discipline (running, writing, fixing, deletion, mocking, industry practices, framework gotchas, anti-patterns) as a TodoWrite checklist. Invoke BEFORE the first tool call in a test-related sequence — not after. You do not get to invoke a single test "just to see," add a fixture, create a mock, delete a test file, fix a failing test, or report test results without this skill first.
 ---
 
 # Testing Skill
