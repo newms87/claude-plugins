@@ -7,12 +7,12 @@ description: |-
   - Editing, fixing, or updating an existing test
   - Deleting a test file or test case
   - Creating, updating, or removing mocks, stubs, fixtures, test doubles, or test data (vi.mock, jest.mock, spy, patch, fixture setup, @pytest.fixture, test helper functions, seed data, etc.)
-  - Adding, creating, or invoking a fixture, helper, or test utility (including pytest fixtures, vitest setup files, factory functions, test data builders, or test helper functions)
+  - Adding, creating, invoking, or setting up a fixture, helper, or test utility (including pytest fixtures, vitest setup files, factory functions, test data builders, test helper functions, or fixture definitions for new classes/modules)
   - Running any test command or test runner (vitest, pytest, jest, rspec, go test, cargo test, phpunit, make test*, npm test, yarn test, ./vendor/bin/sail test, or any language-specific test runner)
-  - Reading test output, reporting test results/failures, interpreting test failure messages, or summarizing test execution status
-  - Mocking external calls, functions, or modules (vi.mock, jest.mock, vi.spyOn, mock decorators, patch utilities, or any test double setup)
-  - Fixing a failing or broken test (including correcting assertions, updating mocks, or rewriting test logic to match new code behavior)
-  - Deleting or removing an obsolete, legacy, or no-longer-relevant test file or test case
+  - Reading test output, reporting test results/failures, interpreting test failure messages, summarizing test execution status, or counting/reporting failure counts
+  - Mocking external calls, functions, or modules (vi.mock, jest.mock, vi.spyOn, mock decorators, patch utilities, spawn mocks, or any test double setup that prevents real execution)
+  - Fixing a failing or broken test (including correcting assertions, updating mocks, rewriting test logic to match new code behavior, or adapting tests to changed return shapes/signatures)
+  - Deleting or removing an obsolete, legacy, no-longer-relevant, or orphaned test file or test case (where the subject code no longer exists)
 
   Loads the complete testing discipline (running, writing, fixing, deletion, mocking, fixture creation, industry practices, framework gotchas, anti-patterns) as a TodoWrite checklist. Invoke BEFORE the first tool call in a test-related sequence — not after. You do not get to invoke a single test "just to see," add or create a fixture, set up a mock or test double, delete a test file, fix a failing test, write a new test case, run a test command, report or summarize test results, interpret test output, or repair a test that no longer matches its subject code without this skill first.
 ---
