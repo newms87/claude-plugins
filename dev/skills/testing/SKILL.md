@@ -2,14 +2,15 @@
 name: testing
 description: |-
   MANDATORY the FIRST time you run, write, fix, inspect, reason about, or delete any test in a session — unit, integration, system, validation, snapshot, E2E, single test, full suite, filtered, happy-path, bug-repro test — no exceptions. Also MANDATORY before:
+  - Writing a new test or test case (including happy-path, error-path, edge-case, or parametrized variants)
   - Writing a failing test for a bug fix
-  - Editing or fixing an existing test
+  - Editing, fixing, or updating an existing test
   - Deleting a test file or test case
-  - Creating, updating, or removing mocks, stubs, fixtures, or test doubles (vi.mock, jest.mock, spy, patch, fixture setup, etc.)
+  - Creating, updating, or removing mocks, stubs, fixtures, test doubles, or test data (vi.mock, jest.mock, spy, patch, fixture setup, @pytest.fixture, test helper functions, seed data, etc.)
   - Running any test command or test runner (vitest, pytest, jest, rspec, go test, cargo test, phpunit, make test*, npm test, yarn test, ./vendor/bin/sail test, or any language-specific test runner)
-  - Reading test output or reporting test results/failures
+  - Reading test output, reporting test results/failures, or interpreting test failure messages
 
-  Loads the complete testing discipline (running, writing, fixing, deletion, mocking, industry practices, framework gotchas, anti-patterns) as a TodoWrite checklist. Invoke BEFORE the first tool call in a test-related sequence — not after. You do not get to invoke a single test "just to see," add a fixture, create a mock, delete a test file, fix a failing test, or report test results without this skill first.
+  Loads the complete testing discipline (running, writing, fixing, deletion, mocking, fixture creation, industry practices, framework gotchas, anti-patterns) as a TodoWrite checklist. Invoke BEFORE the first tool call in a test-related sequence — not after. You do not get to invoke a single test "just to see," add or create a fixture, create or set up a mock, delete a test file, fix a failing test, write a new test case, run a test command, or report test results without this skill first.
 ---
 
 # Testing Skill
