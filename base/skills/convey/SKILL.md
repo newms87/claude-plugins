@@ -64,6 +64,7 @@ Sections in **bold** are the canonical names — keep them stable so readers can
 |---|---|
 | Concepts in body; paths in Verify line only | File paths above Verify |
 | Tables for any "A vs B" / matrix / option list | Prose comparing two states |
+| Options framed in plain English (what + trade-off) — reader doesn't need codebase knowledge | Options framed by code path / file name / internal symbol (`refactor validateBlocked` / `move call out of reconcile.ts`) |
 | ASCII arrow diagrams (`A → B → C`) | Numbered prose paragraphs describing flow |
 | Bullets for parallel items | Run-on sentences listing items |
 | Present-tense, system-actor verbs ("skips", "stamps", "rebuilds") | Past-tense personal-actor ("I added", "We refactored") |
@@ -141,6 +142,21 @@ First the picker calls runConflictCheck, which then awaits a verdict via onCompl
 ```
 picker → conflict-check → verdict → apply → YAML on disk
 ```
+
+**Anti-pattern: Code-path options.**
+```
+**Options.**
+1. Thread `byId` into `validateBlocked` and check `effectiveWaitingOn`.
+2. Move `forceWaitingOnToToDo` out of `syncTrackedIssueOnComplete`.
+3. Drop the DX-212 invariant at yaml.ts:941.
+```
+→ Reader needs codebase context to pick. Frame each option as **what behaviour changes** + **the trade**, no internal symbols. Example:
+```
+1. Validator gets smarter — only fail when deps are still unresolved. Keeps history, medium effort.
+2. Picker rips off the wait note on dispatch. Cheap, loses history.
+3. Drop the rule. One-line fix, loses a guardrail.
+```
+File paths + symbols belong in the Verify line, not in the option body.
 
 **Anti-pattern: Section padding.**
 ```
