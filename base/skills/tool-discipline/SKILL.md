@@ -1,6 +1,6 @@
 ---
 name: tool-discipline
-description: 'MANDATORY before any file operation. Loads tool-choice discipline (Read/Edit/Write over bash equivalents, MCP schema reads before calls, dist/node_modules avoidance) as TodoWrite checklist. Triggers — about to run cat/head/tail/sed/awk/grep on tracked files; about to call MCP tool without reading schema.'
+description: 'MANDATORY before any file operation OR before backgrounding any long-running process. Loads tool-choice discipline (Read/Edit/Write over bash equivalents, MCP schema reads before calls, dist/node_modules avoidance, run_in_background:true over shell `&`) as TodoWrite checklist. Triggers — about to run cat/head/tail/sed/awk/grep on tracked files; about to call MCP tool without reading schema; about to write a trailing `&` / `nohup` / `setsid` / `disown` in a Bash command (workers, dev servers, build watches, deploys, anything that outlives the Bash tool call).'
 ---
 
 # Tool Usage Rules
