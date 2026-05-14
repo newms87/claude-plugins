@@ -99,6 +99,28 @@ dispatch — if you somehow receive one, fail loud with
 `danxbot_complete({status: "failed", summary: "..."})` and do NOT mutate
 the YAML.
 
+## Operator notes (`## Operator notes` task-body block)
+
+The `/api/triage` route (DX-515) accepts an optional `instructions` field. When present, the route appends a marked block to the dispatch task body:
+
+```
+Triage card <PREFIX>-N using the danx-triage-card skill.
+
+## Operator notes
+
+<operator's free-form text>
+```
+
+When you see a `## Operator notes` section in your initial prompt, you MUST:
+
+1. **Read the notes before deciding.** Treat them as additional context — same priority as the card's `description` and recent comments.
+2. **Reflect them in `triage.last_explain`.** Acknowledge the note in 1 sentence so the next triage agent (and the human reviewing the dashboard) sees the operator's input was considered. Example: `"Re-scored on operator note 'may be obsolete after DX-269' — confirmed obsolete; recommending Cancel."`
+3. **Reflect them in the appended `## Triage` comment.** Add a `**Operator note:** <verbatim quote, trimmed to fit>` line above the `**Explain:**` line so the audit trail survives.
+
+**Notes do NOT override the per-status decision tree.** They augment context — the ICE rubric, the Hard Gate audit, the Waiting On re-check logic, the rationalisation detector all still apply unchanged. If the note says "approve this anyway" but the Blocked Hard Gate audit says every step is locally executable, you Demote — never let an operator note short-circuit the audit.
+
+When the dispatch task body does NOT contain a `## Operator notes` block, proceed normally — the field is purely additive.
+
 ## TTLs (per-status re-triage cadence)
 
 | Status | TTL on triage success | Why |
