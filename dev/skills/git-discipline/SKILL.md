@@ -2,13 +2,14 @@
 name: git-discipline
 description: |-
   MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/worktree-fork without current-HEAD base) as TodoWrite checklist. Triggers on:
+  - Any file deletion request, explicit or implicit (including "delete [file]", `git clean`, untracked file removal, or cleanup instructions);
   - Any git command that modifies working tree or history (stash, checkout, restore, revert, reset, clean, cherry-pick, apply, rebase, merge);
-  - Any file deletion or cleanup request (including `git clean`, untracked file removal, or explicit "delete [file]" instructions);
-  - Any commit operation (before committing);
-  - Any branch switch or pull operation (checkout branch, pull from remote);
+  - Any commit operation or request to revert/undo a commit (before committing or after revert/reset request);
+  - Any branch switch, pull, or remote synchronization (checkout branch, pull from remote, fetch with intent to integrate);
+  - Any cherry-pick, rebase, or apply operation from another branch/worktree;
   - Any git push or integration of work from another branch/worktree;
   - Any Agent dispatch with isolation:"worktree" or cross-worktree synchronization.
-  Block or require approval for: destructive operations without explicit consent, checkout/restore/revert/reset/clean/cherry-pick/apply without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation.
+  Block or require approval for: destructive operations without explicit consent, checkout/restore/revert/reset/clean/cherry-pick/apply without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation, file deletion without confirmation, stash operations without explicit approval, branch switching without safety checklist.
 ---
 
 # Git Operations
