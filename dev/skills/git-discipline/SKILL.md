@@ -2,17 +2,43 @@
 name: git-discipline
 description: |-
   MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/rebase without current-HEAD base) as TodoWrite checklist. Triggers on:
-  - Any file or directory deletion request, explicit or implicit (including "delete [file]", `git clean`, untracked file removal, cleanup instructions, or references to removing/deleting/clearing files);
+
+  **File/directory deletion:**
+  - Explicit deletion requests ("delete [file]", "remove [file]", "drop [file]");
+  - Implicit deletion (untracked file removal, cleanup instructions, "clean up");
+  - `git clean`, untracked file removal, or references to removing/deleting/clearing files;
+  - **Even when preceded by rationale or context** ("Delete the file src/legacy/old-router.ts — it's unused").
+
+  **Working tree or history modification:**
   - Any git command that modifies working tree or history (stash, checkout, restore, revert, reset, clean, cherry-pick, apply, rebase, merge);
-  - Any commit operation, or request to revert/undo/squash a commit (including "revert the last/most recent commit", "undo commit", or revert/reset requests);
-  - Any branch switch or checkout operation (including "checkout [branch]", "switch to [branch]", "switch [branch]", or branch navigation language like "go to", "move to");
-  - Any pull, fetch, or remote synchronization (pull from remote, fetch with integration intent, sync with origin, or "pull the latest");
-  - Any cherry-pick, rebase, or apply operation from another branch/ref, including explicit commit references (e.g., "cherry-pick abc123", "cherry-pick commit [hash] from [branch]", "rebase [branch]");
-  - Any git push or integration of work from another branch/worktree;
+  - Commit operations or requests to revert/undo/squash a commit;
+  - **Explicit commit references** ("Revert the last commit", "undo commit", "revert/reset requests", "Revert the last commit on this branch").
+
+  **Branch operations:**
+  - Any branch switch or checkout operation ("checkout [branch]", "switch to [branch]", "switch [branch]", "go to", "move to");
+  - **Compound actions combining branch ops with other risky ops** ("Checkout the main branch and pull the latest from origin").
+
+  **Remote synchronization:**
+  - Any pull, fetch, or remote synchronization (pull from remote, fetch with integration intent, sync with origin);
+  - **Descriptive phrases referencing sync** ("pull the latest", "pull the latest from origin");
+  - Any git push or integration of work from another branch/worktree.
+
+  **Cherry-pick, rebase, apply:**
+  - Any operation from another branch/ref;
+  - **Explicit commit hash references** ("Cherry-pick commit abc123 from feature/foo onto main", "cherry-pick abc123");
+  - Cherry-pick/rebase/apply without confirmed current-HEAD baseline.
+
+  **Stash operations:**
+  - Any stash operation or request to set aside/restore work;
+  - **Descriptive phrases referencing stash intent** ("set aside work", "set aside the WIP changes", `git stash`).
+
+  **Worktree/cross-repo:**
   - Any Agent dispatch with isolation:"worktree" or cross-worktree synchronization;
-  - Any stash operation or request to set aside/restore work (including `git stash`, "stash changes", "stash WIP", or "set aside work").
-  Block or require approval for: destructive operations without explicit consent, file/directory deletion without confirmation, checkout/restore/revert/reset/clean/cherry-pick/apply/rebase without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation, stash operations without explicit approval, branch switching without safety checklist.
-  Discriminators: trigger on literal action words ("delete", "checkout", "switch", "cherry-pick", "stash", "clean", "revert", "pull", "push", "rebase") and on descriptive phrases that reference those actions ("set aside", "pull the latest", "revert the last commit", "clean up untracked"). Trigger on compound requests that combine multiple risky operations (e.g., "checkout and pull", "stash and switch branches"). Trigger even when the action is preceded by context or rationale (e.g., "Delete the file src/legacy/old-router.ts — it's unused." or "Run `git clean -fd` to clean up.").
+  - Repository deletion.
+
+  **Block or require approval for:** destructive operations without explicit consent, file/directory deletion without confirmation, checkout/restore/revert/reset/clean/cherry-pick/apply/rebase without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation, stash operations without explicit approval, branch switching without safety checklist.
+
+  **Discriminators:** Trigger on literal action words ("delete", "checkout", "switch", "cherry-pick", "stash", "clean", "revert", "pull", "push", "rebase") AND on descriptive/intent phrases that reference those actions ("set aside", "pull the latest", "revert the last commit", "clean up untracked", "go to [branch]"). Trigger on compound requests combining multiple risky operations. **Critically: trigger even when action is preceded by context, rationale, file paths, or narrative** — scan entire user message for trigger patterns, not just leading intent. Do NOT skip safety review based on explanation or justification text.
 ---
 
 # Git Operations
