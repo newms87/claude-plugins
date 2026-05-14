@@ -55,6 +55,7 @@ This is not a suggestion. Skill descriptions in the available-skills list are ne
        - any chained bash with long-running step → bash-exit-capture FIRST
        - any Monitor / `until ...; do sleep` poll loop → monitor-polling FIRST
        - any file op (cat/head/tail/sed/awk over Read/Edit/Write) → tool-discipline FIRST
+       - any trailing `&` / `nohup` / `setsid` / `disown` in a Bash command (workers, dev servers, build watches, deploys, anything that outlives the Bash tool call) → tool-discipline FIRST (use `run_in_background: true` instead of shell `&`)
 
    • dev:debugging
        - bug, error, test failure, unexpected behavior
