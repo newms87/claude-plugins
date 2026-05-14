@@ -49,6 +49,12 @@ This is not a suggestion. Skill descriptions in the available-skills list are ne
        - picking up a Needs Help / Blocked card
        - user says "unblock", "get unstuck", "fix the blocker on", "what does this card need"
 
+   • danxbot:issue-blocker
+       - about to WRITE `status: "Blocked"` / `blocked: {reason, timestamp}` on any YAML
+       - about to RECOMMEND moving a card to Blocked in a report, option list, or message to the operator
+       - about to populate `waiting_on` or `conflict_on[]` (skill carries the three-field selection table)
+       - about to call `danxbot_complete({status: "failed", ...})` with "operator must X" framing
+
    • base:tool-discipline / base:process-kill / base:sub-agent-delegation / base:bash-exit-capture / base:monitor-polling
        - any kill / pkill / SIGTERM / SIGKILL → process-kill FIRST
        - any Agent / Task sub-agent dispatch → sub-agent-delegation FIRST
