@@ -66,18 +66,18 @@ No such thing as "administrative" kill, "quick cleanup" kill, "obviously-mine" k
 
 When in doubt, process stays alive. Stale orphan ∞ cheaper than destroyed session.
 
-## "Orphan" Is a Strong Claim — Prove It End-to-End
+## "Orphan" / "Unowned" / "Dead" — Prove Absence Before Claiming It
 
-Before labelling any process / scope / container / row an orphan (and especially before proposing reap):
+A process is not orphan-because-you-think-so. Before labelling any process unowned, stale, or unmonitored:
 
-1. **Read the canonical record yourself.** API row, DB row, registry entry — fetch and quote it. Do not infer "no row" from a parsing miss, a None in a script, an empty grep, a 404 on a guessed endpoint.
-2. **Verify endpoint shape before parsing.** Nested envelopes (`{"dispatch": {...}}`, `{"data": [...]}`) silently return None when accessed flat. One curl + raw inspection before you write the parser.
-3. **Try every relevant scope.** Multi-repo / multi-tenant / multi-cluster systems return different rows for the same id depending on query params. Iterate all reasonable filters before "no row found."
-4. **Match against ALL known producers, not just the one you remember.** Other workers, other hosts, other sessions, other operator-launched processes are valid producers.
+1. **Read the source-of-truth record yourself.** Fetch + quote it. Do not infer "no record" from a parser returning None, an empty grep, a 404 on a guessed endpoint, or any other negative result derived from a single attempt.
+2. **Verify the response shape before parsing it.** Envelope wrappers around the payload silently return None to a flat accessor. Inspect raw output once before trusting any extractor.
+3. **Exhaust the legitimate query parameters.** "Not found here" ≠ "does not exist." Try the obvious filters / scopes / namespaces before concluding absence.
+4. **Enumerate every plausible owner, not just the one you remember.** Other sessions, other users, other tools may have spawned it.
 
-Only after all four → "orphan" is a defensible label. Still does not authorize kill — Iron Rule above stands. The label changes nothing destructive.
+Only after all four → "orphan" is a defensible label. The label still does not authorize kill — Iron Rule above stands. Re-labelling is not a side door around it.
 
-A miscalled orphan is the second most expensive mistake in this skill (after killing a session you don't own). Wrong label → wrong story to user → wrong reap → real work destroyed.
+Miscalled orphan = second-most-expensive mistake in this skill. Wrong label → wrong story to operator → wrong reap → real work destroyed.
 
 ## Why Skill Exists
 
