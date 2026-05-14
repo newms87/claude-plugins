@@ -1,15 +1,17 @@
 ---
 name: git-discipline
 description: |-
-  MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/worktree-fork without current-HEAD base) as TodoWrite checklist. Triggers on:
-  - Any file deletion request, explicit or implicit (including "delete [file]", `git clean`, untracked file removal, or cleanup instructions);
+  MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/rebase without current-HEAD base) as TodoWrite checklist. Triggers on:
+  - Any file or directory deletion request, explicit or implicit (including "delete [file]", `git clean`, untracked file removal, cleanup instructions, or references to removing/deleting files);
   - Any git command that modifies working tree or history (stash, checkout, restore, revert, reset, clean, cherry-pick, apply, rebase, merge);
-  - Any commit operation or request to revert/undo a commit (before committing or after revert/reset request);
-  - Any branch switch, pull, or remote synchronization (checkout branch, pull from remote, fetch with intent to integrate);
-  - Any cherry-pick, rebase, or apply operation from another branch/worktree;
+  - Any commit operation, or request to revert/undo/squash a commit (before committing or after revert/reset request);
+  - Any branch switch or checkout operation (including "checkout main", "switch to [branch]", or branch navigation);
+  - Any pull, fetch, or remote synchronization (pull from remote, fetch with integration intent, or sync with origin);
+  - Any cherry-pick, rebase, or apply operation from another branch/ref, including explicit commit references (e.g., "cherry-pick abc123", "rebase feature/foo");
   - Any git push or integration of work from another branch/worktree;
-  - Any Agent dispatch with isolation:"worktree" or cross-worktree synchronization.
-  Block or require approval for: destructive operations without explicit consent, checkout/restore/revert/reset/clean/cherry-pick/apply without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation, file deletion without confirmation, stash operations without explicit approval, branch switching without safety checklist.
+  - Any Agent dispatch with isolation:"worktree" or cross-worktree synchronization;
+  - Any stash operation or request to set aside/restore work (including `git stash` or "stash changes").
+  Block or require approval for: destructive operations without explicit consent, file/directory deletion without confirmation, checkout/restore/revert/reset/clean/cherry-pick/apply/rebase without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation, stash operations without explicit approval, branch switching without safety checklist. Discriminators: trigger on literal action words ("delete", "checkout", "cherry-pick", "stash", "clean", "revert", "pull", "push") and compound requests that combine multiple risky operations (e.g., "checkout and pull" or "stash and switch branches").
 ---
 
 # Git Operations
