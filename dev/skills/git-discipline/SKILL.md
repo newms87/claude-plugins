@@ -1,44 +1,6 @@
 ---
 name: git-discipline
-description: |-
-  MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/rebase without current-HEAD base) as TodoWrite checklist. Triggers on:
-
-  **File/directory deletion:**
-  - Explicit deletion requests ("delete [file]", "remove [file]", "drop [file]");
-  - Implicit deletion (untracked file removal, cleanup instructions, "clean up");
-  - `git clean`, untracked file removal, or references to removing/deleting/clearing files;
-  - **Even when preceded by rationale or context** ("Delete the file src/legacy/old-router.ts — it's unused").
-
-  **Working tree or history modification:**
-  - Any git command that modifies working tree or history (stash, checkout, restore, revert, reset, clean, cherry-pick, apply, rebase, merge);
-  - Commit operations or requests to revert/undo/squash a commit;
-  - **Explicit commit references** ("Revert the last commit", "undo commit", "revert/reset requests", "Revert the last commit on this branch").
-
-  **Branch operations:**
-  - Any branch switch or checkout operation ("checkout [branch]", "switch to [branch]", "switch [branch]", "go to", "move to");
-  - **Compound actions combining branch ops with other risky ops** ("Checkout the main branch and pull the latest from origin").
-
-  **Remote synchronization:**
-  - Any pull, fetch, or remote synchronization (pull from remote, fetch with integration intent, sync with origin);
-  - **Descriptive phrases referencing sync** ("pull the latest", "pull the latest from origin");
-  - Any git push or integration of work from another branch/worktree.
-
-  **Cherry-pick, rebase, apply:**
-  - Any operation from another branch/ref;
-  - **Explicit commit hash references** ("Cherry-pick commit abc123 from feature/foo onto main", "cherry-pick abc123");
-  - Cherry-pick/rebase/apply without confirmed current-HEAD baseline.
-
-  **Stash operations:**
-  - Any stash operation or request to set aside/restore work;
-  - **Descriptive phrases referencing stash intent** ("set aside work", "set aside the WIP changes", `git stash`).
-
-  **Worktree/cross-repo:**
-  - Any Agent dispatch with isolation:"worktree" or cross-worktree synchronization;
-  - Repository deletion.
-
-  **Block or require approval for:** destructive operations without explicit consent, file/directory deletion without confirmation, checkout/restore/revert/reset/clean/cherry-pick/apply/rebase without safety review, repository deletion, cherry-pick/rebase/apply without confirmed current-HEAD baseline, push without prior commit validation, stash operations without explicit approval, branch switching without safety checklist.
-
-  **Discriminators:** Trigger on literal action words ("delete", "checkout", "switch", "cherry-pick", "stash", "clean", "revert", "pull", "push", "rebase") AND on descriptive/intent phrases that reference those actions ("set aside", "pull the latest", "revert the last commit", "clean up untracked", "go to [branch]"). Trigger on compound requests combining multiple risky operations. **Critically: trigger even when action is preceded by context, rationale, file paths, or narrative** — scan entire user message for trigger patterns, not just leading intent. Do NOT skip safety review based on explanation or justification text.
+description: 'MANDATORY before any git operation. Loads safety rules (no destructive ops without approval, no checkout/restore/revert, never delete repos, push after commit, no cherry-pick/apply/worktree-fork without current-HEAD base) as TodoWrite checklist. Triggers — about to run git stash/checkout/restore/revert/reset/clean/cherry-pick/apply/worktree; about to commit; about to delete files; about to dispatch an Agent with isolation:"worktree"; about to integrate work from another worktree or branch.'
 ---
 
 # Git Operations
