@@ -1,32 +1,34 @@
 ---
 name: issue-card-workflow
 description: |-
-  MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist.
+  MANDATORY when reading, writing, saving, or commenting on any issue card, epic, phase card, or work tracked in `.danxbot/issues/`. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist.
 
   TRIGGERS (cumulative; ANY match loads skill):
   (1) File path touching `<repo>/.danxbot/issues/` OR calling `mcp__danx-issue__*`
-  (2) Explicit issue/card reference: `ISS-N`, `DX-N`, `.yml` file path, or "issue card [ID]"
-  (3) Work-tracking verbs + issue/card/ticket/epic/phase language (including "comment on", "add comment to"):
-    - "read", "summarize", "interpret", "explain", "tell me what work is left" + issue/card/YAML/tracked work
-    - "add comment to [card]", "comment on [issue]", "summarize progress on [ID]"
-    - "create" + ticket/card/issue/epic/phase
+  (2) Explicit issue/card/epic reference: `ISS-N`, `DX-N`, `.yml` file path, or "issue card [ID]"
+  (3) Work-tracking verbs + issue/card/ticket/epic/phase/bug language (including comment verbs):
+    - "read", "summarize", "interpret", "explain", "tell me what work is left" + issue/card/YAML/ticket/tracked work
+    - "add comment to [card]", "comment on [issue]", "comment on [card ID]", "add comment summarizing"
+    - "create" + ticket/card/issue/epic/phase/bug report (with or without explicit ID)
     - "split" + feature/work/epic + "phases" or "cards"
-    - "make" + card/ticket/issue/epic/bug report
+    - "make" + card/ticket/issue/epic/bug report/bug
   (4) Terminal save with retro
-  (5) Reading, summarizing, interpreting, or explaining existing issue card state, YAML content, or work progress
-  (6) ANY plan to write YAML under `.danxbot/issues/`
-  (7) Requests to comment on, add context to, explain, report on, or answer questions about work tracked in cards, issues, or epics
-  (8) Creating tickets for bugs, missing work, or uncovered cases (even without explicit card ID)
-  (9) Splitting features, work items, or bugs into multiple phase cards or cards under an epic
+  (5) Reading, summarizing, interpreting, or explaining existing issue card state, YAML content, work progress, or tracked work
+  (6) ANY plan to write or create YAML under `.danxbot/issues/`
+  (7) Requests to comment on, add context to, explain, report on, or answer questions about work tracked in cards, issues, tickets, or epics
+  (8) Creating tickets for bugs, missing work, uncovered cases, or test gaps — with or without explicit card/issue ID (e.g., "ticket for missing test coverage on [file]", "card for bug where [behavior]")
+  (9) Splitting features, work items, bugs, or large tasks into multiple phase cards or cards under an epic
+  (10) Creating an epic and splitting it into phase cards in the same turn
 
   NO exemptions:
   - NO "I already know the schema" — schema knowledge ≠ lifecycle knowledge
   - NO "just one card" — one card is exactly when epic-without-phases trap fires
-  - NO casual-language exemption — "make a card", "add a ticket", "summarize progress on [ID]", "comment on issue card", "split into phases" trigger this skill
+  - NO casual-language exemption — "make a card", "add a ticket", "summarize progress on [ID]", "comment on issue card", "add comment to [card]", "split into phases" trigger this skill
   - NO partial-work exemption — "create an epic and split it into phases" REQUIRES skill load BEFORE any YAML write, because the same-turn phase-card requirement is only spelled out in this skill body
   - NO "no explicit ID" exemption — "create a ticket for the missing test coverage on [file]" or "make a card for the bug where [behavior]" still triggers this skill
+  - NO "reading only" exemption — reading YAML at `.danxbot/issues/` paths and extracting work status requires schema/contract knowledge
 
-  If request involves: creating/reading/commenting-on cards, creating epics, splitting work into phases, creating tickets of any kind (with or without explicit ID), reporting on or explaining tracked work, or adding comments to existing cards — load this skill BEFORE writing YAML or composing responses.
+  If request involves: creating/reading/commenting-on cards, creating or splitting epics, splitting work into phases, creating tickets of any kind (with or without explicit ID), reporting on or explaining tracked work, adding comments to existing cards, or reading YAML from `.danxbot/issues/` — load this skill BEFORE writing YAML or composing responses.
 ---
 
 # Issue Workflow
