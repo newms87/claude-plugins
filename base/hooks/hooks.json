@@ -1,5 +1,5 @@
 {
-  "description": "Plugin skill load mandate + convey high-yield-communication mandate. Both fire on SessionStart and UserPromptSubmit so every session has the baseline discipline injected before the first agent action.",
+  "description": "Plugin skill load mandate + convey high-yield-communication mandate. Both fire on SessionStart only — per-prompt re-injection wastes tokens; the discipline persists across the session.",
   "hooks": {
     "SessionStart": [
       {
@@ -11,20 +11,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/convey-mandate.sh SessionStart"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plugin-skill-mandate.sh UserPromptSubmit"
-          },
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/convey-mandate.sh UserPromptSubmit"
           }
         ]
       }
