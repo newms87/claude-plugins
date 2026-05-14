@@ -1,30 +1,32 @@
 ---
 name: issue-card-workflow
 description: |-
-  MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist. 
+  MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist.
 
   TRIGGERS (cumulative; ANY match loads skill):
   (1) File path touching `<repo>/.danxbot/issues/` OR calling `mcp__danx-issue__*`
   (2) Explicit issue/card reference: `ISS-N`, `DX-N`, `.yml` file path, or "issue card [ID]"
-  (3) Commands with work-tracking verbs + issue/card/ticket language:
-    - "read", "summarize", "interpret", "explain" + issue/card/YAML/tracked work
-    - "add comment to [card]", "comment on [issue]", "explain work on [card]"
+  (3) Work-tracking verbs + issue/card/ticket/epic/phase language (including "comment on", "add comment to"):
+    - "read", "summarize", "interpret", "explain", "tell me what work is left" + issue/card/YAML/tracked work
+    - "add comment to [card]", "comment on [issue]", "summarize progress on [ID]"
     - "create" + ticket/card/issue/epic/phase
     - "split" + feature/work/epic + "phases" or "cards"
-    - "make" + card/ticket/issue/epic
-    - "tell me what work is left" + card reference
+    - "make" + card/ticket/issue/epic/bug report
   (4) Terminal save with retro
-  (5) Reading, summarizing, or interpreting existing issue card state, YAML content, or work progress
+  (5) Reading, summarizing, interpreting, or explaining existing issue card state, YAML content, or work progress
   (6) ANY plan to write YAML under `.danxbot/issues/`
-  (7) Requests to comment on, add context to, explain, or report on work tracked in cards, issues, or epics
+  (7) Requests to comment on, add context to, explain, report on, or answer questions about work tracked in cards, issues, or epics
+  (8) Creating tickets for bugs, missing work, or uncovered cases (even without explicit card ID)
+  (9) Splitting features, work items, or bugs into multiple phase cards or cards under an epic
 
-  NO exemptions: 
+  NO exemptions:
   - NO "I already know the schema" — schema knowledge ≠ lifecycle knowledge
   - NO "just one card" — one card is exactly when epic-without-phases trap fires
-  - NO casual-language exemption — "make a card", "add a ticket", "summarize progress on [ID]" trigger this skill
+  - NO casual-language exemption — "make a card", "add a ticket", "summarize progress on [ID]", "comment on issue card", "split into phases" trigger this skill
   - NO partial-work exemption — "create an epic and split it into phases" REQUIRES skill load BEFORE any YAML write, because the same-turn phase-card requirement is only spelled out in this skill body
+  - NO "no explicit ID" exemption — "create a ticket for the missing test coverage on [file]" or "make a card for the bug where [behavior]" still triggers this skill
 
-  If request involves: creating/reading/commenting-on cards, creating epics, splitting work into phases, creating tickets of any kind, or explaining tracked work — load this skill BEFORE writing YAML or composing responses.
+  If request involves: creating/reading/commenting-on cards, creating epics, splitting work into phases, creating tickets of any kind (with or without explicit ID), reporting on or explaining tracked work, or adding comments to existing cards — load this skill BEFORE writing YAML or composing responses.
 ---
 
 # Issue Workflow
