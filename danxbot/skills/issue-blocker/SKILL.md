@@ -23,6 +23,20 @@ uncommitted diffs an agent should have ignored. Every one of those
 re-dispatches the next agent into the same trap. The cost of one false
 Blocked move > the cost of running this 8-item checklist.
 
+## Field selection — `blocked` vs `waiting_on` vs `conflict_on[]`
+
+Three orthogonal fields. Picking the wrong one is itself a workflow violation — `blocked` is NOT the generic "stop dispatch" verb.
+
+| symptom | correct field | meaning |
+|---|---|---|
+| Human must take an action you cannot do (rotate token, grant access, restart prod infra) | `status: "Blocked"` + `blocked: {reason, timestamp}` | hard halt, only operator clears |
+| This card must wait for ONE specific other card to terminate (semantic dependency declared up-front on the YAML) | `waiting_on: {reason, by: [DX-N, ...], timestamp}` | durable dispatch gate, independent of status; picker skips while any `by[]` partner non-terminal |
+| File-overlap or in-flight race with sibling card(s) discovered at dispatch time by `/danx-prep` | `conflict_on: [{id, reason}, ...]` | dynamic dispatch gate stamped by the prep verdict; picker skips while any partner non-terminal |
+
+Wrong choice consequences — `blocked` for a sibling-wait pattern parks the card behind an operator gate that nobody will ever clear; `waiting_on` for an operator-needed action silently dispatches when the named card terminates without the human action having happened.
+
+If you're about to write `status: Blocked` because "this can't dispatch right now," check the table above FIRST. If the right field is `waiting_on` or `conflict_on[]`, use that instead — and do NOT also flip status to Blocked.
+
 ## The Checklist — every item MUST pass
 
 Create a TodoWrite todo for each item. Mark each `in_progress` while
