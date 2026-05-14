@@ -66,6 +66,19 @@ No such thing as "administrative" kill, "quick cleanup" kill, "obviously-mine" k
 
 When in doubt, process stays alive. Stale orphan ∞ cheaper than destroyed session.
 
+## "Orphan" Is a Strong Claim — Prove It End-to-End
+
+Before labelling any process / scope / container / row an orphan (and especially before proposing reap):
+
+1. **Read the canonical record yourself.** API row, DB row, registry entry — fetch and quote it. Do not infer "no row" from a parsing miss, a None in a script, an empty grep, a 404 on a guessed endpoint.
+2. **Verify endpoint shape before parsing.** Nested envelopes (`{"dispatch": {...}}`, `{"data": [...]}`) silently return None when accessed flat. One curl + raw inspection before you write the parser.
+3. **Try every relevant scope.** Multi-repo / multi-tenant / multi-cluster systems return different rows for the same id depending on query params. Iterate all reasonable filters before "no row found."
+4. **Match against ALL known producers, not just the one you remember.** Other workers, other hosts, other sessions, other operator-launched processes are valid producers.
+
+Only after all four → "orphan" is a defensible label. Still does not authorize kill — Iron Rule above stands. The label changes nothing destructive.
+
+A miscalled orphan is the second most expensive mistake in this skill (after killing a session you don't own). Wrong label → wrong story to user → wrong reap → real work destroyed.
+
 ## Why Skill Exists
 
 An agent killed user's unrelated Claude Code session by guessing ownership from `ps` columns. Cost = hours of lost context. Future agent reaching for `kill` without Proof Block → about to repeat that incident. Stop. Ask.
