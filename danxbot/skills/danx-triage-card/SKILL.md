@@ -182,6 +182,14 @@ Distinguishing `Approve` vs `Cancel` vs `Keep`:
 - Card is implementable but the chosen direction needs sanity-check? → **Approve**.
 - Card is no longer desired / superseded by a different approach / duplicate? → **Cancel**.
 
+**Validate `effort_level` on every Review save (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy file carries the operator-tunable assignment prompt and the operator-configured 7-row level ladder. For the card under triage, compute the level that matches the work the description implies (default `medium`; bump UP only for deep reasoning / multi-file refactor / subtle concurrency; bump DOWN for mechanical edits / single-file fixes / doc tweaks). Compare against the YAML's existing `effort_level`:
+
+- Unset (`null`) → set it to the computed level.
+- Set but mismatched (the description has visibly grown or shrunk in scope since the previous triage) → overwrite with the computed level.
+- Set and matches → leave alone.
+
+`effort_level` validation runs on `Keep` and `Approve` outcomes (the card will be dispatched eventually). Skip on `Cancel` — a cancelled card never dispatches so the level is moot.
+
 `triage.expires_at = now + 24h` on every Review save (even when promoting to ToDo — if the card bounces back to Review later, it'll be re-triaged on schedule).
 
 ### Status = `Blocked` — Hard Gate audit

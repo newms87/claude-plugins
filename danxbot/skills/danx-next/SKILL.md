@@ -139,6 +139,8 @@ This step is read-only against your worktree's existing work — if `git status`
 
 The YAML carries `status: ToDo` at this point — the poller picked it up and hydrated it. Your first edit is to flip `status: ToDo` → `status: In Progress`. That's how you "claim" the card — the watcher mirrors the change immediately to the DB and the next poller tick pushes it to the tracker.
 
+**Before the In Progress flip, set `effort_level` if it is unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy file carries the operator-tunable assignment prompt and the operator-configured 7-row level ladder. If the YAML's `effort_level` is `null`, pick the lowest level that can plausibly complete the card per the policy file (default `medium`; bump DOWN aggressively for mechanical edits / single-file fixes / doc tweaks; bump UP only for deep reasoning / multi-file refactor). Edit the YAML to set both `effort_level: "<level>"` and `status: "In Progress"` in the same save. If `effort_level` is already set, leave it alone — the triage agent owns the level on Review cards; the pickup path only fills the unset case.
+
 If the YAML's `status` is already `In Progress`, treat this as resumption — skip the flip + save and proceed.
 
 If the YAML doesn't exist or fails to parse, signal `danxbot_complete({status: "critical_failure"})` per `.claude/rules/danx-halt-flag.md` — the poller is broken if it dispatched without a YAML.

@@ -244,6 +244,16 @@ park a card on an external action they will perform later.
 
 `[Project > Domain] verb phrase` for features. `Fix:` prefix for bugs. Phase cards: `Epic Title > Phase N: Description`. Keep under ~80 chars.
 
+## Effort Levels (`effort_level` field, DX-509/DX-511/DX-512)
+
+Every card carries an `effort_level` slot on its YAML — a 7-rung ladder (`min`, `very_low`, `low`, `medium`, `high`, `very_high`, `max`) that maps to a `(model, effort)` pair the dispatch layer uses to size the worker. The mapping table and the operator-tunable assignment policy live in the workspace's auto-rendered `.claude/rules/danx-effort-policy.md` (the inject pipeline re-writes that file every tick from `<repo>/.danxbot/settings.json` so operator edits propagate without a restart).
+
+**When creating a card:** read `.claude/rules/danx-effort-policy.md` and pick the lowest level that can plausibly complete the card. Default to `medium` when uncertain; lean DOWN, not up. Mechanical rule of thumb — bump UP only when the card genuinely needs deeper reasoning (multi-file refactor, architectural decision, subtle concurrency, novel domain modelling); bump DOWN aggressively for mechanical edits, single-file fixes, doc tweaks, well-scoped renames, additive endpoints with no business logic.
+
+**When picking up a card:** if `effort_level` is unset (`null`), set it per the policy file BEFORE flipping `status` to `In Progress`. See `danx-next/SKILL.md` Step 1 for the pickup sequence.
+
+**When triaging a Review card:** validate `effort_level` is sensible for the work the description implies. Unset or mismatched → set / correct it per the policy file. See `danx-triage-card/SKILL.md` `Status = Review` for the audit step.
+
 ## Card Descriptions (`description` field)
 
 Must pass **zero-context test** — fresh agent with no conversation history can implement from description alone. No code blocks — prose only.
@@ -304,6 +314,8 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 **Large multi-step work → Epic + child phase cards.** `type: Epic` on the parent. Each phase is its own full card (own `description`, own `ac[]`, own commit, own retro). Epic stays In Progress while phases work; flips Done when all children reach Done.
 
 **When to split into epic:** Each phase looks like substantial work (multiple files, own tests, full session). Smaller related tasks → keep as `ac[]` items on one card.
+
+**Combine adjacent phases when possible (DX-512).** Three good phases beat seven mediocre ones. Every phase costs a dispatch: a fresh worker, a fresh context load, a fresh review cycle, a fresh commit. Before adding a phase, ask "does the combined unit still fit one TDD pass + one commit?" — if yes, combine and keep it as a single phase card. Phase fan-out is a cost multiplier; treat it like adding a dependency, not like adding a checklist item.
 
 **CRITICAL: An epic without its phase cards is INVALID and a workflow violation.** A `type: Epic` YAML with empty `children[]` is never an acceptable end-state for any turn. The instant you create the epic, you create every phase card in the SAME response — no "phases sketched in description, will split later," no "wait for user to confirm phases," no "user only asked for the epic." Phase split lives in your head while you wrote the epic body; persist it to disk before the turn ends.
 
