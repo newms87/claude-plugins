@@ -1,6 +1,30 @@
 ---
 name: issue-card-workflow
-description: MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist. Triggers — (1) touching `<repo>/.danxbot/issues/` or calling `mcp__danx-issue__*`; (2) picking up an `ISS-N`, `DX-N`, or `.yml` file reference in any context; (3) ANY user request containing "epic", "phase", "split", "ticket", "card", "bug", "feature", "comment on", "summariz*", "progress", "create", "make", or "read" when paired with work-tracking language (issue, card, track, work, remain*); (4) terminal save with retro; (5) reading, summarizing, or interpreting existing issue card state or YAML content; (6) ANY plan to write YAML under `.danxbot/issues/`; (7) requests to comment on, add context to, or explain work tracked in any card. NO "I already know the schema" exemption — schema knowledge does not equal lifecycle knowledge. NO "just one card" exemption — one card is exactly when the epic-without-phases trap fires. If the request involves creating an epic, splitting work into phases, creating tickets or cards of any kind, or commenting on tracked work, you MUST load this skill BEFORE writing YAML or composing responses, because creating an epic without same-turn phase cards is a workflow violation the body of this skill is the only place that spells out. Include skill load for any request that reads, interprets, comments on, or explains existing issue cards or tracked work items. Load this skill even if the request uses casual language ("make a card", "add a ticket", "summarize progress on DX-244") because the workflow contract applies regardless of formality.
+description: |-
+  MANDATORY when reading, writing, or saving any issue card. Loads YAML schema, tracker contract, danx-issue MCP usage, lifecycle rules (status moves, retro, action items, phase cards, EPIC-MUST-SHIP-WITH-PHASE-CARDS-IN-SAME-TURN) as TodoWrite checklist. 
+
+  TRIGGERS (cumulative; ANY match loads skill):
+  (1) File path touching `<repo>/.danxbot/issues/` OR calling `mcp__danx-issue__*`
+  (2) Explicit issue/card reference: `ISS-N`, `DX-N`, `.yml` file path, or "issue card [ID]"
+  (3) Commands with work-tracking verbs + issue/card/ticket language:
+    - "read", "summarize", "interpret", "explain" + issue/card/YAML/tracked work
+    - "add comment to [card]", "comment on [issue]", "explain work on [card]"
+    - "create" + ticket/card/issue/epic/phase
+    - "split" + feature/work/epic + "phases" or "cards"
+    - "make" + card/ticket/issue/epic
+    - "tell me what work is left" + card reference
+  (4) Terminal save with retro
+  (5) Reading, summarizing, or interpreting existing issue card state, YAML content, or work progress
+  (6) ANY plan to write YAML under `.danxbot/issues/`
+  (7) Requests to comment on, add context to, explain, or report on work tracked in cards, issues, or epics
+
+  NO exemptions: 
+  - NO "I already know the schema" — schema knowledge ≠ lifecycle knowledge
+  - NO "just one card" — one card is exactly when epic-without-phases trap fires
+  - NO casual-language exemption — "make a card", "add a ticket", "summarize progress on [ID]" trigger this skill
+  - NO partial-work exemption — "create an epic and split it into phases" REQUIRES skill load BEFORE any YAML write, because the same-turn phase-card requirement is only spelled out in this skill body
+
+  If request involves: creating/reading/commenting-on cards, creating epics, splitting work into phases, creating tickets of any kind, or explaining tracked work — load this skill BEFORE writing YAML or composing responses.
 ---
 
 # Issue Workflow
