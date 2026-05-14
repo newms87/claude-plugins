@@ -53,6 +53,19 @@ paths: ["src/api/**", "routes/**"]
 - Only show a "bad" example if the mistake is non-obvious from the good example alone.
 - No dissertations. Keep entries concise.
 
+### Step 3a: Domain-Neutrality Gate (MANDATORY for plugin source edits)
+
+Before writing into ANY plugin under `~/web/claude-plugins/<plugin>/` — except the one plugin that owns the named domain — STOP and scrub the draft for domain-specific vocab. The plugin's audience is every consumer of the marketplace, not just the repo where the failure surfaced.
+
+Mechanical pre-write check — answer YES to all FOUR before saving:
+
+1. **No repo names** in prose or examples (`danxbot`, `gpt-manager`, `<my-project>`, etc.). Use "this system" or drop the example.
+2. **No app-specific nouns** (e.g. `dispatch row`, `card YAML`, `worker`, `poller`, `Trello`, `Slack listener`). Replace with the generic primitive ("source-of-truth record", "queue entry", "background process").
+3. **No tool / make-target / file-path names from a single repo.** Replace with the action they perform ("the registry lookup", "the cron entry").
+4. **Lead with the principle, not the trigger.** The failure that produced this edit is one instance of a class — write the class. The repo-specific trigger goes in the COMMIT MESSAGE, not the skill body.
+
+If any answer is NO → rewrite or relocate. Domain-specific rules belong in the plugin that owns the domain (e.g. `danxbot:*`), or in the project's own `.claude/rules/`, never in a base/dev/pipeline/human-collaboration plugin.
+
 ## Step 4: Verify and Report
 
 1. Read the file you're updating first
