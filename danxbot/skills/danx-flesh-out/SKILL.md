@@ -67,11 +67,13 @@ Cards eligible for flesh-out:
 
 | YAML state | Action |
 |---|---|
+| `status: Blocked` AND `blocked.reason` starts with `"Awaiting flesh-out"` (DX-544 create-flow sentinel) | **Flesh out.** This is the canonical entry path when the operator creates a card via the dashboard's Create Card dialog. The dialog stamps the sentinel block to keep the poller from dispatching a work-agent before this flesh-out completes. Parse the embedded starting status out of the sentinel reason (` start as <Review\|ToDo>` token; default `ToDo` if absent / malformed). Run the full flesh-out pass per `status` semantics (stamp triage iff embedded status is Review). **As the FINAL YAML edit** (after every other edit in the "YAML changes — checklist" section), clear `blocked: null` AND set `status: <embedded-target>` in the SAME save — the schema invariant `status === "Blocked" ⟺ blocked !== null` requires both flips in one write. |
 | `status: Review` AND short / thin `description` AND empty / placeholder `ac[]` | **Flesh out** — full pass; rewrite `description`, populate `ac[]`, stamp `triage{}` (Review path). |
 | `status: ToDo` AND short / thin `description` AND empty / placeholder `ac[]` | **Flesh out** — full pass; rewrite `description`, populate `ac[]`. Do NOT stamp `triage{}` (ToDo cards skip triage). |
 | `status: ToDo / Review` AND `description` already detailed AND `ac[]` already populated | **Refine only** — re-read the description; if it passes the zero-context-test, leave it alone. Add missing `ac[]` items if you find any. Do NOT regress quality. |
-| `status: In Progress / Done / Cancelled / Blocked` | **Refuse.** Flesh-out is for un-started cards only — modifying an in-flight or terminal card's `description` / `ac[]` mid-stream corrupts the contract the worker dispatch is operating under. `danxbot_complete({status: "failed", summary: "..."})`. |
-| `waiting_on != null` OR `blocked != null` OR `requires_human != null` | **Refuse.** Parked cards are out of scope; flesh-out only operates on dispatchable cards. `danxbot_complete({status: "failed", summary: "..."})`. |
+| `status: In Progress / Done / Cancelled` | **Refuse.** Flesh-out is for un-started cards only — modifying an in-flight or terminal card's `description` / `ac[]` mid-stream corrupts the contract the worker dispatch is operating under. `danxbot_complete({status: "failed", summary: "..."})`. |
+| `status: Blocked` AND `blocked.reason` does NOT start with `"Awaiting flesh-out"` | **Refuse.** A non-sentinel self-block means a human (or prior agent) decided this card needs human action — flesh-out is not the right vehicle. `danxbot_complete({status: "failed", summary: "..."})`. |
+| `waiting_on != null` OR `requires_human != null` | **Refuse.** Parked cards are out of scope; flesh-out only operates on dispatchable cards. `danxbot_complete({status: "failed", summary: "..."})`. |
 | `children[]` non-empty (epic already split) | **Refuse.** Re-flesh-out of an epic would orphan its phase children. `danxbot_complete({status: "failed", summary: "Already split — refusing to re-flesh-out an epic with children"})`. |
 
 The dashboard's Create-Card flow only invokes this skill on cards that
@@ -346,12 +348,25 @@ Before the final save:
 3. If split: `type: Epic`, `children[]` populated, phase cards
    created via `danx_issue_create`, `waiting_on` chain stamped on
    phase 2..N.
-4. If `status: Review`: `triage.{expires_at, last_status,
-   last_explain, ice, history}` stamped.
+4. If embedded status is `Review` (DX-544 sentinel path) OR
+   `status: Review`: `triage.{expires_at, last_status, last_explain,
+   ice, history}` stamped.
 5. `comments[]` — append ONE `## Flesh-out` entry summarizing what
    you did (rewrite, AC count, split count if applicable).
-6. NO other field touched (status, dispatch, blocked, waiting_on on
-   THIS card, retro, parent_id).
+6. **DX-544 sentinel-block clear (REQUIRED on the create-flow entry
+   path).** When the dispatch entered with `blocked.reason` starting
+   with `"Awaiting flesh-out"`, your FINAL YAML edit MUST clear the
+   block AND restore the embedded starting status in the same save:
+   set `blocked: null` AND set `status: <embedded-target>` (parsed
+   from the sentinel reason's ` start as <Review|ToDo>` token;
+   default `ToDo` if parsing fails). Both edits MUST land in the
+   same file write — the schema invariant
+   `status === "Blocked" ⟺ blocked !== null` rejects a half-flipped
+   YAML at parse time. On every OTHER entry path (existing `Review`
+   / `ToDo` card, refine-only, epic), do NOT touch `status` /
+   `blocked` — they are owned by other lifecycle steps.
+7. NO other field touched (dispatch, waiting_on on THIS card,
+   retro, parent_id).
 
 After saving, re-read the file with `Read`. Confirm the YAML parses
 (no indentation breakage). The chokidar watcher mirrors every YAML
