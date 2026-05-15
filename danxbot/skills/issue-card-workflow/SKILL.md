@@ -63,9 +63,10 @@ All under prefix `mcp__danx-issue__*` (note hyphen). Error shape: `{<verb>: fals
 | Tool | Args | Purpose |
 |---|---|---|
 | `danx_issue_create` | `{type, title, description, parent_id?, children?, status?, ac?, comments?}` | Allocate next `ISS-N`, build canonical YAML, write to `<repo>/.danxbot/issues/open/<id>.yml`. Returns `{created: true, id, path, external_id}` or `{created: false, errors[]}`. Atomic id allocation needs server-side coordination — this is the only mutation tool agents need beyond `Edit` / `Write`. The worker's orphan-push mirrors the new card to the tracker on the next poll tick. |
-| `danx_issue_get` | `{id}` | Read the YAML for a given `ISS-N` and return parsed object. Use to inspect parents, siblings, etc. without re-parsing manually. |
-| `danx_issue_list` | `{status?, type?, parent_id?}` | Enumerate open issues filtered by status / type / parent. Avoid reading every YAML by hand. |
+| `danx_issue_list` | `{status?, type?, parent_id?}` | **Preferred for any multi-card scan or discovery** (status sweeps, sibling lookups, parent→children walks, "find all blocked", "what's in Review"). Returns `[{id, title, status, type, parent_id}]`. Always reach for this BEFORE hand-globbing the issues dir or guessing ids. |
 | `danx_issue_close` | `{id}` | Explicit terminal close (sets `status: Cancelled` if not already terminal, fills retro, moves file `open/` → `closed/`). |
+
+**Reading a single card by id:** `Read .danxbot/issues/open/<id>.yml` directly. Fall back to `closed/<id>.yml` if not found. No MCP wrapper — the YAML is the source of truth and the file path is deterministic.
 
 **Edit semantics:** Edit the YAML directly with `Edit` (preferred — preserves other agents' uncommitted edits) or `Write` for full rewrites. The chokidar watcher (`src/db/issues-mirror.ts` in the danxbot worker) mirrors every file change to Postgres on the file event, and the post-completion auto-sync (`src/worker/auto-sync.ts`) pushes terminal state to the tracker when `danxbot_complete` fires. The worker's per-tick mirror (~60s) is the steady-state safety net for tracker pushes that miss the auto-sync window. There is no agent-facing save verb to call — agents edit the YAML in place and let the worker do the mirroring.
 
@@ -287,7 +288,7 @@ Always read full context before starting:
 - `children[]` (look up each child YAML — those are the phase cards on epics, sub-cards otherwise)
 - `triage.last_status` / `triage.last_explain` (if non-empty — the most recent triage decision)
 
-`mcp__danx-issue__danx_issue_get({id})` returns the full parsed object. Never work from title alone.
+`Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`) returns the full YAML. Never work from title alone.
 
 ## Creating a Card != Implementing It
 
@@ -377,7 +378,7 @@ All comments append to `comments[]` as `{author, timestamp, text}` (no `id` — 
 
 ## The Card IS the Plan
 
-Issue card assigned (`ISS-N`): never use `EnterPlanMode`, never invoke `writing-plans` or `executing-plans` skills. The YAML's `description` + `ac[]` + `children[]` + `comments[]` ARE the plan. Re-fetch via `mcp__danx-issue__danx_issue_get({id})` after context compaction, when unsure what's left, before marking Done.
+Issue card assigned (`ISS-N`): never use `EnterPlanMode`, never invoke `writing-plans` or `executing-plans` skills. The YAML's `description` + `ac[]` + `children[]` + `comments[]` ARE the plan. Re-Read `.danxbot/issues/open/<id>.yml` after context compaction, when unsure what's left, before marking Done.
 
 ## Backend Tracker
 

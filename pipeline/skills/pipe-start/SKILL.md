@@ -95,7 +95,7 @@ Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` ->
 
 ### 10. Issue Card IS the Plan
 
-When an issue card is assigned (e.g. `ISS-N`), never use EnterPlanMode. The YAML (`description` + `ac[]` + `phases[]` + `comments[]`) IS the plan. Read the full card before starting via `mcp__danx-issue__danx_issue_get`. Re-read after context compaction.
+When an issue card is assigned (e.g. `ISS-N`), never use EnterPlanMode. The YAML (`description` + `ac[]` + `phases[]` + `comments[]`) IS the plan. `Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`) before starting. Re-read after context compaction.
 
 ### 11. Complete ALL Work
 

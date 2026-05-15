@@ -1,6 +1,6 @@
 ---
 name: unblock
-description: 'MANDATORY when working on, picking up, or about to touch any issue card whose status is `Blocked` or has non-null `waiting_on`, OR when explicitly invoked via `/unblock <ISS-N>`. Triggers — `mcp__danx-issue__danx_issue_get` returns `status: Blocked` or non-null `waiting_on`; reading a card from `.danxbot/issues/open/` whose status is Blocked; user says "unblock", "get unstuck", "what does this card need", "fix the blocker on", "operator action for"; about to start phase work that overlaps with a Blocked card (same parent epic, same files, same AC scope). Loads the unblock-report contract — extract blocker, summarize what is done vs what operator must do, give exact commands, define the success/failure branch — so the human gets one terse actionable report instead of a re-investigation.'
+description: 'MANDATORY when working on, picking up, or about to touch any issue card whose status is `Blocked` or has non-null `waiting_on`, OR when explicitly invoked via `/unblock <ISS-N>`. Triggers — Read of `.danxbot/issues/open/<id>.yml` shows `status: Blocked` or non-null `waiting_on`; user says "unblock", "get unstuck", "what does this card need", "fix the blocker on", "operator action for"; about to start phase work that overlaps with a Blocked card (same parent epic, same files, same AC scope). Loads the unblock-report contract — extract blocker, summarize what is done vs what operator must do, give exact commands, define the success/failure branch — so the human gets one terse actionable report instead of a re-investigation.'
 ---
 
 # Unblock Skill
@@ -26,7 +26,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
 ## Procedure
 
-1. **Load the card.** `mcp__danx-issue__danx_issue_get` with the issue id. If user gave a vague ask ("unstick the urgent one"), call `mcp__danx-issue__danx_issue_list` filtered by `status: Blocked`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest `updated_at` first if priority ties.
+1. **Load the card.** `Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`). If user gave a vague ask ("unstick the urgent one"), call `mcp__danx-issue__danx_issue_list` filtered by `status: Blocked`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest `updated_at` first if priority ties.
 
 2. **Find the authoritative blocker comment.** Scan `comments[]` from newest to oldest. The last `author: danxbot` comment containing a "Blocked" / "Operator action" / "What's still needed" section is the contract. If absent, fall back to card description + `blocked.reason` + open AC items.
 

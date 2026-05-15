@@ -19,10 +19,10 @@ as the new turn — there is no skill prompt re-injection on resume.
 
 For every turn (first message OR resumed):
 
-1. If this is the FIRST turn (no prior conversation history): read the card
-   YAML via `mcp__danx-issue__danx_issue_get({id: "<PREFIX>-N"})` to anchor
-   the conversation. Skip on resume — the YAML's prior state already lives
-   in the conversation history.
+1. If this is the FIRST turn (no prior conversation history): Read the card
+   YAML at `<repo>/.danxbot/issues/open/<PREFIX>-N.yml` (fall back to
+   `closed/<PREFIX>-N.yml`) to anchor the conversation. Skip on resume —
+   the YAML's prior state already lives in the conversation history.
 2. Read the user's message.
 3. **If the user asks for a YAML change** (status flip, AC edit, description
    rewrite, retro fill, comment append, etc.): edit the YAML directly with
@@ -53,12 +53,12 @@ during this dispatch must be disarmed (or have already fired and exited).
 
 ## Reading the card
 
-Every workspace this skill runs in (`issue-chat`) ships the `danx-issue`
-MCP server. Use `mcp__danx-issue__danx_issue_get({id})` to load the YAML
-on the first turn — fast, structured, and avoids guessing the path. On
-subsequent turns the conversation history already carries the prior YAML
-state, but if the conversation drifts and you need to re-anchor, calling
-`get` again is cheap.
+Read the YAML directly with the `Read` tool against
+`<repo>/.danxbot/issues/open/<PREFIX>-N.yml` (fall back to
+`closed/<PREFIX>-N.yml` if the card is terminal). On subsequent turns the
+conversation history already carries the prior YAML state, but if the
+conversation drifts and you need to re-anchor, Read again — cheap and
+deterministic.
 
 ## Editing the card
 
@@ -133,8 +133,8 @@ with "I read your message and considered…" — the user knows.
   fix it in another `Edit`, re-read again. If you can't recover after one
   retry, `danxbot_complete({status: "failed", summary: "..."})` describing
   what went wrong.
-- `mcp__danx-issue__danx_issue_get` returns `{error: ...}` →
-  `danxbot_complete({status: "failed", summary: "Failed to load <PREFIX>-N: <error>"})`.
+- `Read` of `.danxbot/issues/open/<PREFIX>-N.yml` (and `closed/`) both fail →
+  `danxbot_complete({status: "failed", summary: "Failed to load <PREFIX>-N: not found"})`.
   Do NOT edit the file blind.
 - MCP tool itself errors (server unreachable, tool not registered) →
   `danxbot_complete({status: "critical_failure", summary: "..."})` per

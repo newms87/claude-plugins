@@ -104,7 +104,7 @@ After every commit:
 
 4. **Update parent epic** (phase cards only) — If the card's `parent_id` is non-null (or the title contains `>` for phase-card pattern like `Epic > Phase N`):
 
-   **a. Read the epic:** `mcp__danx-issue__danx_issue_get({id: "<parent-id>"})` — returns the epic YAML.
+   **a. Read the epic:** `Read .danxbot/issues/open/<parent-id>.yml` (fall back to `closed/<parent-id>.yml`).
 
    **b. Check off epic items:** Edit the epic YAML — mark the completed phase on its `phases[]` (set the matching entry's `status: Complete`). Also set `ac[i].checked: true` for any epic-level AC items this phase satisfies — epic AC items map to specific phases and must be marked complete as the work is verified, not deferred until the epic is fully done.
 
@@ -125,7 +125,7 @@ After every commit:
 
    **e. Persist the epic edits.** The chokidar watcher mirrors the change to the DB on the file event; no save call needed.
 
-   **f. Update the next phase card.** Read each child id from the epic's `children[]` until you find the next phase still in `ToDo` / `In Progress` with unchecked work. `mcp__danx-issue__danx_issue_get({id: "<next-iss-n>"})`, then Edit the next phase's YAML to append a "Notes from Phase N" entry to its `comments[]` covering anything that could cause the next agent to waste time or make mistakes: discovered constraints, timing gotchas, reusable helpers and their paths, cost/budget observations, dependencies between phases. The chokidar watcher mirrors the edit to the DB. The next agent has ZERO context — it reads only the YAML description and `comments[]`.
+   **f. Update the next phase card.** Read each child id from the epic's `children[]` until you find the next phase still in `ToDo` / `In Progress` with unchecked work. `Read .danxbot/issues/open/<next-iss-n>.yml`, then Edit the next phase's YAML to append a "Notes from Phase N" entry to its `comments[]` covering anything that could cause the next agent to waste time or make mistakes: discovered constraints, timing gotchas, reusable helpers and their paths, cost/budget observations, dependencies between phases. The chokidar watcher mirrors the edit to the DB. The next agent has ZERO context — it reads only the YAML description and `comments[]`.
 
    **g. Check if epic is complete.** If every entry in the epic's `phases[]` is `status: Complete` AND every `ac[i].checked: true`, set the epic's `status: Done` and fill its `retro.*` (see step 5). Do not leave the epic In Progress or ToDo when all phases are Done. Edit the YAML directly — the post-completion auto-sync pushes terminal state to the tracker; the worker handles the retro comment + `open/` → `closed/` move on its next poll.
 

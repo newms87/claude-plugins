@@ -24,7 +24,7 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
    ```
    Invoke the `danxbot:danx-triage-card` skill via the Skill tool to triage card <ID>.
 
-   Follow the skill exactly: load the YAML via `mcp__danx-issue__danx_issue_get`, apply the per-status decision tree, Edit the YAML's `triage{}` block (and `status` / `blocked` if the decision is terminal), confirm with Read.
+   Follow the skill exactly: Read the YAML at `.danxbot/issues/open/<ID>.yml` (fall back to `closed/<ID>.yml`), apply the per-status decision tree, Edit the YAML's `triage{}` block (and `status` / `blocked` if the decision is terminal), confirm with Read.
 
    DO NOT call `danxbot_complete` — this is a subagent inside an orchestrator. Return a one-line summary instead: `<ID>: <decision>` (e.g. `DX-515: kept Review, ICE 64 → 72`).
 

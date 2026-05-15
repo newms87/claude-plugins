@@ -1,6 +1,6 @@
 ---
 name: danx-triage-card
-description: 'Per-card triage agent. Single Claude session reads ONE card via mcp__danx-issue__danx_issue_get, decides per status (Review / Blocked / Waiting On), writes the TTL-stamped triage{} block back with the Edit tool. Dispatched 1-card-per-tick by the poller (Phase 4 / ISS-94). Replaces the bulk-triage orchestrator.'
+description: 'Per-card triage agent. Single Claude session Reads ONE card YAML, decides per status (Review / Blocked / Waiting On), writes the TTL-stamped triage{} block back with the Edit tool. Dispatched 1-card-per-tick by the poller (Phase 4 / ISS-94). Replaces the bulk-triage orchestrator.'
 argument-hint: <PREFIX>-N card id
 ---
 
@@ -8,13 +8,13 @@ argument-hint: <PREFIX>-N card id
 
 You triage **ONE** card per dispatch. No orchestrator, no sub-agents. You:
 
-1. `mcp__danx-issue__danx_issue_get({id: "<PREFIX>-N"})` — load the YAML and learn its filesystem path.
+1. `Read .danxbot/issues/open/<PREFIX>-N.yml` (fall back to `closed/<PREFIX>-N.yml`) — load the YAML.
 2. Decide per `status` (Review / Blocked / Waiting On) — apply the per-status decision tree below.
 3. Edit the YAML's `triage{}` block (always) + `status` / `blocked` fields when the decision is terminal, using the `Edit` tool directly on `<repo>/.danxbot/issues/{open,closed}/<PREFIX>-N.yml`.
 4. Re-read the file with `Read` to confirm the edit landed and the YAML parses (look for the new `triage.expires_at` value).
 5. `danxbot_complete({status: "completed", summary: "..."})` — signal done.
 
-You read the YAML through the `danx-issue` MCP server (which exposes the get/list tools) and write it through `Edit` / `Write` directly. You do NOT make tracker calls — the chokidar watcher in the worker (`src/db/issues-mirror.ts`) catches every YAML edit and mirrors it to Postgres; the poller's per-tick mirror pushes it to the tracker.
+You read the YAML directly with `Read` and write it through `Edit` / `Write`. The `danx-issue` MCP server provides `danx_issue_list` for any multi-card scans you need (e.g. checking blocker cards). You do NOT make tracker calls — the chokidar watcher in the worker (`src/db/issues-mirror.ts`) catches every YAML edit and mirrors it to Postgres; the poller's per-tick mirror pushes it to the tracker.
 
 ## /loop and ScheduleWakeup — narrow contract
 
@@ -227,7 +227,7 @@ A card with `waiting_on != null` is parked waiting on other in-flight cards. You
 Procedure:
 
 1. Read `waiting_on.by[]` from the YAML. For each `<PREFIX>-N`:
-   - `mcp__danx-issue__danx_issue_get({id: "<PREFIX>-N"})` to read the blocker.
+   - `Read .danxbot/issues/open/<PREFIX>-N.yml` (fall back to `closed/<PREFIX>-N.yml`) to load the blocker.
    - Note its `status`. Terminal = `Done` or `Cancelled`. Non-terminal = anything else.
 2. Decide:
 
@@ -238,7 +238,7 @@ Procedure:
 
 `triage.expires_at = now + 1h` on every Waiting On save. The 1h cadence is intentionally short — a phase sibling can move from In Progress to Done at any minute, and we want the dependent card dispatched as soon as possible.
 
-**Edge case — blocker not found.** If `mcp__danx-issue__danx_issue_get` returns `{error: "..."}` for a blocker id (file missing on disk and not in tracker), treat that blocker as **Cancelled** (a non-existent card cannot block) and proceed with the rest. Note in `last_explain`: `"Blocker <PREFIX>-N not found — treated as Cancelled."`
+**Edge case — blocker not found.** If both `Read` calls (`open/<PREFIX>-N.yml` and `closed/<PREFIX>-N.yml`) fail for a blocker id, treat that blocker as **Cancelled** (a non-existent card cannot block) and proceed with the rest. Note in `last_explain`: `"Blocker <PREFIX>-N not found — treated as Cancelled."`
 
 ### Out-of-scope cards
 
@@ -312,7 +312,7 @@ Any mismatch on the above is a skill-body bug; file as a follow-up issue and sur
 
 ## Failure handling
 
-- YAML parse error / `danx_issue_get` returns `{error: ...}` → `danxbot_complete({status: "failed", summary: "Failed to load <PREFIX>-N: <error>"})`. Do NOT edit the file.
+- YAML parse error / `Read` of `.danxbot/issues/open/<PREFIX>-N.yml` (and `closed/`) both fail → `danxbot_complete({status: "failed", summary: "Failed to load <PREFIX>-N: <error>"})`. Do NOT edit the file.
 - Re-read after `Edit` shows the YAML is malformed → fix it via another `Edit`, re-read again. If you can't recover after one retry, `danxbot_complete({status: "failed", summary: "..."})` describing what went wrong.
 - MCP tool itself errors (server unreachable, tool not registered) → `danxbot_complete({status: "critical_failure", summary: "mcp__danx-issue__* tools not available — workspace .mcp.json wiring broken"})` per `claude-plugins/issue-worker/skills/halt-flag/SKILL.md`.
 
@@ -384,6 +384,6 @@ OR
 **Boundaries (conflict-check mode only):**
 
 - DO NOT edit any YAML. The conflict-check is read-only — your only output is the JSON in `danxbot_complete.summary`.
-- DO NOT call `mcp__danx-issue__danx_issue_get` or any other MCP tool. Every input you need is in `/tmp/conflict-check/<dispatch-id>/`.
+- DO NOT call any `mcp__danx-issue__*` tool. Every input you need is in `/tmp/conflict-check/<dispatch-id>/` — Read those staged files only.
 - DO NOT investigate the underlying bugs / features. The decision is "do these cards likely touch the same files?" not "are these cards good cards?"
 - DO NOT include preamble / explanation prose in `summary`. The poller's parser tolerates fenced ```json blocks but a bare JSON object is preferred.

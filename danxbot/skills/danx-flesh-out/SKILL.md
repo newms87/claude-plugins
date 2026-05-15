@@ -395,7 +395,7 @@ One comment per flesh-out. Don't append more than one.
 
 ## Failure handling
 
-- YAML parse error / `danx_issue_get` returns `{error: ...}` →
+- YAML parse error / `Read` of `.danxbot/issues/open/<PREFIX>-N.yml` (and `closed/`) both fail →
   `danxbot_complete({status: "failed", summary: "Failed to load <PREFIX>-N: <error>"})`.
   Do NOT edit the file.
 - Re-read after `Edit` shows the YAML is malformed → fix it via
