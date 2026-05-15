@@ -72,6 +72,29 @@ All under prefix `mcp__danx-issue__*` (note hyphen). Error shape: `{<verb>: fals
 
 **Status terminal moves:** when you set `status: Done` or `status: Cancelled` and the dispatch completes, the worker moves the file `open/` → `closed/` on its next poll as part of the auto-sync. `Blocked` keeps the YAML in `open/` (non-terminal — a human or next dispatch may resume). Never move the file yourself.
 
+## Status on Creation — ALWAYS start in Review
+
+**Every newly created card MUST be created with `status: "Review"`** — without exception. `Review` is the holding pen for cards that have not yet been audited for scope, quality, or fit. The per-card triage agent (`danx-triage-card`) is the only mover from `Review` → `ToDo`, and it makes that decision against the description + `ac[]` + parent context the human / creating agent left behind.
+
+This applies to:
+
+- Human-typed cards via the dashboard "Create Card" affordance.
+- Agent-created cards via `mcp__danx-issue__danx_issue_create` (pass `status: "Review"` explicitly; do not rely on tool defaults).
+- Cards created as part of a same-turn epic + phase fan-out (the epic AND every phase card start `Review` — see Phases vs Epics below).
+- Action-item cards spawned mid-retro for follow-up work.
+
+**Why.** A card in `ToDo` is dispatchable on the very next poller tick. If the description is half-written, the AC is vague, or the scope overlaps another in-flight card, the poller will hand it to a worker that wastes a dispatch flailing on under-specified work. `Review` forces a single agent (the triage agent — or a human via the dashboard's status patch) to read the card cold and either Approve (→ `ToDo`), Cancel (→ `Cancelled`), or Keep (refresh expires_at, +24h, give the author time to flesh it out).
+
+**Promotion to ToDo is a SEPARATE action, never co-located with creation.** Even when you are sure the card is well-formed and ready, leave it `Review` on the create call. The promotion happens via one of:
+
+- Triage agent ICE-scores it Approve and writes `status: ToDo` (the normal path).
+- Human operator promotes it from the dashboard.
+- The CREATING agent, AFTER having (a) finished the description + ac[] in the same turn, (b) verified zero-context-test pass against its own output, and (c) confirmed the card genuinely belongs in the dispatch queue right now, edits the YAML in a SECOND step to flip `status: Review → ToDo`. This two-step pattern (create-in-Review then promote-to-ToDo) is explicit, intentional, and visible on the card history — it is NOT a shortcut for skipping triage in general. Use this only when you are the creating agent and you are absolutely certain; default is to leave it Review for the triage agent.
+
+**Interaction with `waiting_on`.** The validator invariant `waiting_on !== null ⇒ status === ToDo` means a card in `Review` cannot carry a `waiting_on` record. For sequential phase chains, the correct shape is: create all phases in `Review` with `waiting_on: null` first; the triage agent (or the creating-agent two-step above) stamps the `waiting_on.by[]` chain at the moment it flips each phase to `ToDo`. This means phase YAMLs are written twice in the same turn (create-with-Review, then edit-to-ToDo-with-waiting_on) when the creating agent intends to ship the chain immediately — that is the expected pattern, not duplication.
+
+**Interaction with epic status derivation.** The poller derives parent epic status from its children's union (see "Epic status is computed, not edited" below). When all phase children start `Review`, the epic also derives to `Review` automatically (rule 4: "All non-cancelled children Review → parent Review"). When the creating agent two-step-promotes some phases to `ToDo`, the epic auto-derives to `ToDo` (rule 3: "Any child ToDo → parent ToDo"). The agent does NOT manually edit the epic's status — derivation owns it.
+
 ## Triage Lifecycle
 
 The `triage{}` block on each YAML is owned by the **per-card triage agent** dispatched by the poller. The poller picks one card per tick whose `triage.expires_at <= now` and dispatches `/danx-triage-card <ISS-N>` (the new direct-mode skill). One card per dispatch — the legacy bulk-orchestrator (`/danx-triage`) was retired in Phase 5 of ISS-90.
@@ -294,6 +317,8 @@ Always read full context before starting:
 
 **Spawn → DONE.** Don't implement, don't pick up, don't start work. The card hands work to a different agent in a different session. After `danx_issue_create`, only valid actions: tell user the card was created (show `ISS-N`), continue previous work, or stop.
 
+**Always create with `status: "Review"`.** See the "Status on Creation" section above. The triage agent is the default mover from `Review` → `ToDo`; the creating agent only promotes via the explicit two-step pattern when it has finished the description + ac[] in the same turn AND it is certain the card belongs in the dispatch queue right now. Never pass `status: "ToDo"` to `danx_issue_create`.
+
 ## CRITICAL: Never Check Off an Unverified AC Item
 
 Before setting `ac[i].checked: true`, must have direct evidence: passing test, command output, verified runtime result. "By construction" / "obviously correct" are NOT evidence. Cannot verify an AC item in current environment → leave `checked: false` and say so — never check off with an excuse for why verification was skipped.
@@ -322,7 +347,9 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 If a user prompt looks like it asks for "just an epic," it does not. Read it as "epic + every phase card" — that is the unit of work. Asking the user "want me split phases now?" after writing the epic is the violation; do not do that.
 
-**Epic mechanics:** Set epic's `type: Epic`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type`. Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`. Stamp `waiting_on.by` on phase 2..N referencing the prior phase so the poller dispatches them in order (default sequential — skip only when phases are genuinely independent). Planning agent has full context — capture into phase cards NOW, not later.
+**Epic mechanics:** Set epic's `type: Epic` with `status: "Review"`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type` AND `status: "Review"` (per the "Status on Creation" rule — every new card starts Review without exception). Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`.
+
+Sequential-phase `waiting_on` chains cannot land at creation time — the validator invariant `waiting_on !== null ⇒ status === ToDo` rejects `Review` + `waiting_on` together. The chain lands at the moment each phase flips to `ToDo`: the triage agent stamps it during Approve, OR the creating agent does the explicit two-step (write all phases at `Review` with `waiting_on: null` → in a second edit pass, flip each phase to `ToDo` and stamp `waiting_on.by[]` referencing the prior phase) ONLY when the agent is certain the chain is correct and the descriptions pass zero-context-test. Default: leave them all `Review` and let triage do the chain stamping. Planning agent has full context — capture into phase cards NOW, not later.
 
 ### Epic status is computed, not edited (ISS-98)
 
