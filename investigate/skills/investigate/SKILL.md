@@ -92,16 +92,26 @@ Do NOT silently retcon the hypothesis to match evidence after the fact. If the o
 
 Output follows `base:convey` — concept-first headline, tables, ASCII flow, caveats, verify line. Investigation budget under convey: **≤20 lines**. Map the standard convey sections to the investigation-specific items below:
 
-1. **Headline** = the specific question being answered (≤12 words).
-2. **Goal / Answer** — one sentence. The direct answer.
-3. **Evidence** (replaces "Behavior diff" / "Flow" for this skill) — the verbatim `file:line` / command output / row that supports the answer. Cite paths and line numbers. Quote no more than one short snippet (per copyright discipline). Tabular when evidence has multiple axes.
-4. **What was wrong with my initial hypothesis** (if applicable) — one sentence. Honest delta. Skip if hypothesis matched.
-5. **Options for next steps** — numbered list. Each option = one specific action the user could authorize. Include the option "do nothing" when reasonable. This is the convey "Caveats / next actions" section, retitled.
+**Audience default — write for a reader with ZERO codebase context.** Plain English first; file paths and symbol names are footnotes, not the report. If the reader could not understand the report without already knowing what `pickCardForAgent` / `assigned_agent` / `DX-368` mean, you have failed the audience gate. Only switch to code-anchored framing when the user explicitly says "I know the code" / "give me file:lines" / "I'm in the source already."
+
+Required sections in this order — every one mandatory, no skipping:
+
+1. **Headline** = the specific question being answered (≤12 words). Plain English.
+2. **Problem statement** — one or two sentences. What is broken, in user-visible terms. No code names.
+3. **Steps to reproduce** — numbered, observable from outside the code. ("Open card X." "Wait one tick." "Watch the dashboard.") If the failure is passive ("system idles when it shouldn't"), say so explicitly.
+4. **Expected behavior** — one sentence. What a reasonable observer would expect to see.
+5. **Actual behavior** — one sentence. What is happening instead. Include the user-visible symptom (idle queue, repeated error banner, etc.), not the internal error string.
+6. **Root cause — in plain English** — one or two sentences. Translate the mechanism into an analogy or everyday-language description first ("the picker picks the first agent alphabetically, asks 'can you take this card', gets a no, and gives up instead of asking the next agent"). Symbol names allowed only AFTER the plain-English version, in parentheses.
+7. **Evidence (footnotes)** — `file:line` / command output / row references. One short bullet list. This is for the user to verify later if they want; it is NOT the explanation.
+8. **What was wrong with my initial hypothesis** (if applicable) — one sentence. Honest delta. Skip if hypothesis matched.
+9. **Fix options — in plain English** — numbered list. Each option = one sentence describing the change in user-visible terms ("teach the picker to keep trying the next agent when the first one can't take the card"). No code, no diffs, no file paths inside the option text. Include "do nothing" when reasonable.
 
 Forbidden in the report:
 - Hedging language about local behavior ("probably," "typically," "should be") — if you reached for it, you didn't gather enough evidence
 - Generic prescriptions not backed by the evidence ("you should add monitoring") unless explicitly asked
 - A unilateral fix description as the first option — fixes are only options the user can pick from
+- Leading with a file:line table, an internal symbol name, an issue tracker ID, or any term that requires codebase context to parse. Plain English first; symbols and paths belong in the "Evidence (footnotes)" section.
+- Fix options written as code snippets, diffs, function signatures, or "change X line N to Y". Options describe behavior change, not the patch.
 
 ### 7. STOP
 
@@ -134,24 +144,35 @@ Both can run in the same session — investigate first, debug after the user pic
 
 ## Reporting format reference
 
-Skeleton you can copy:
+Skeleton you can copy (audience-default form — plain English, footnotes for code):
 
 ```
-## Investigation: <one-line question>
+## <one-line question, plain English>
 
-**Answer.** <one sentence>
+**Problem.** <what is broken, user-visible, no code names>
 
-**Evidence.**
+**Steps to reproduce.**
+1. <observable action>
+2. <observable action>
+3. <where to look>
+
+**Expected.** <what should happen>
+
+**Actual.** <what happens instead — user-visible symptom>
+
+**Root cause (plain English).** <mechanism described as if to a non-coder. Symbol names allowed only in parentheses after the plain-English version.>
+
+**Evidence (footnotes).**
 - `path/to/file.ts:42` — <what's there>
-- `docker logs danxbot-worker-<repo>` — exit code 137 at 12:04 UTC; OOMKilled per `docker inspect`
-- DB: `dispatches` row id=830cbd99 has `status=failed`, `summary='Agent timed out after 600s'`
+- `docker logs <thing>` — <observation>
+- DB row id=… → status=…
 
 **Hypothesis check.** I expected <X>; evidence shows <Y>. Delta: <one sentence>.
 
-**Options.**
-1. Increase the timeout to N seconds (small, low-risk).
-2. Reduce the prompt size by stripping the inject step (medium).
-3. Investigate further — specifically <next question> — before changing anything.
+**Fix options (plain English — no code).**
+1. <behavior change in one sentence>
+2. <behavior change in one sentence>
+3. Investigate further before changing anything.
 4. Do nothing; current behavior is acceptable.
 ```
 
