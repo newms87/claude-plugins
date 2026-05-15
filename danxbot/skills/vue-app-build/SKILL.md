@@ -138,7 +138,7 @@ This skill assumes the following danxbot infrastructure cards have shipped:
 
 - **DX-539** — `POST /api/template-build` endpoint registered on the danxbot worker. The synchronous build invoked by Step 5 lives here.
 - **DX-540** — `/srv/sfc-deps/<shell_version>/node_modules/` provisioned per active shell version. The symlink Step 5 depends on lives here.
-- **DX-542** — Playwright MCP `playwright_host_static` + `vue_build_and_preview` orchestrator. Hosts the dist on `127.0.0.1:<ephemeral>` so Step 6's preview works without depending on a consumer-repo proxy.
+- **DX-542** — Playwright MCP `playwright_host_static` + `playwright_host_static_stop` + `vue_build_and_preview` orchestrator. Hosts the dist on `127.0.0.1:<ephemeral>` so Step 6's preview works without depending on a consumer-repo proxy. **Minimum required**: `@thehammer/danxbot-playwright-mcp-server@0.2.0` — earlier versions (0.1.x) shipped only `playwright_screenshot` + `playwright_html` and Step 6 falls back to consumer-proxy preview when those tools are absent.
 
 If any of those are missing on the host, this loop breaks at the named step — escalate to a Waiting-On card pointing at the unshipped phase.
 
