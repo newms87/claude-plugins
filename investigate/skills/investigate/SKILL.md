@@ -104,12 +104,14 @@ Required sections in this order — every one mandatory, no skipping:
 6. **Root cause — in plain English** — one or two sentences. Translate the mechanism into an analogy or everyday-language description first ("the picker picks the first agent alphabetically, asks 'can you take this card', gets a no, and gives up instead of asking the next agent"). Symbol names allowed only AFTER the plain-English version, in parentheses.
 7. **Evidence (footnotes)** — `file:line` / command output / row references. One short bullet list. This is for the user to verify later if they want; it is NOT the explanation.
 8. **What was wrong with my initial hypothesis** (if applicable) — one sentence. Honest delta. Skip if hypothesis matched.
-9. **Fix options — in plain English** — numbered list. Each option = one sentence describing the change in user-visible terms ("teach the picker to keep trying the next agent when the first one can't take the card"). No code, no diffs, no file paths inside the option text. Include "do nothing" when reasonable.
+9. **Fix options — in plain English** — numbered list. Each option = one sentence describing the change in user-visible terms ("teach the picker to keep trying the next agent when the first one can't take the card"). No code, no diffs, no file paths inside the option text. NEVER include "do nothing" — the user invoked an investigation to act, not to be told inaction is on the menu. Include "investigate further" ONLY when one of these is true: (a) the root cause is still uncertain and a specific next probe is named, (b) the fix may interact with other behavior / hidden dependencies you have not yet mapped, (c) a behavioral invariant elsewhere relies on the current (buggy) shape and changing it risks regression. State which condition applies in one phrase. Otherwise omit.
 
 Forbidden in the report:
 - Hedging language about local behavior ("probably," "typically," "should be") — if you reached for it, you didn't gather enough evidence
 - Generic prescriptions not backed by the evidence ("you should add monitoring") unless explicitly asked
 - A unilateral fix description as the first option — fixes are only options the user can pick from
+- "Do nothing" / "leave as-is" / "no action" as an option. The user asked for an investigation because they want to act; offering inaction insults the ask.
+- "Investigate further" as a filler option when root cause is verified and no coupling risk exists. Only include when uncertainty or dependency-risk is named.
 - Leading with a file:line table, an internal symbol name, an issue tracker ID, or any term that requires codebase context to parse. Plain English first; symbols and paths belong in the "Evidence (footnotes)" section.
 - Fix options written as code snippets, diffs, function signatures, or "change X line N to Y". Options describe behavior change, not the patch.
 
@@ -172,7 +174,8 @@ Skeleton you can copy (audience-default form — plain English, footnotes for co
 **Fix options (plain English — no code).**
 1. <behavior change in one sentence>
 2. <behavior change in one sentence>
-3. Investigate further before changing anything.
+<!-- Add "Investigate further — <named uncertainty or dependency risk>" ONLY when root cause uncertain OR a hidden coupling may regress. Never include "do nothing". -->
+
 4. Do nothing; current behavior is acceptable.
 ```
 
