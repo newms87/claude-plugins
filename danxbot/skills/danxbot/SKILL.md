@@ -84,7 +84,10 @@ Inside each connected repo:
 | `<repo>/.danxbot/.env.<target>` | Per-deploy-target overlay | gitignored |
 | `<repo>/.danxbot/issues/{open,closed}/<id>.yml` | Issue cards (`ISS-N`) | yes (open + closed both committed) |
 | `<repo>/.danxbot/workspaces/<name>/` | Generated dispatch workspaces | gitignored |
-| `<repo>/.danxbot/settings.json` | Per-repo three-valued runtime toggles (Slack, Trello, Dispatch) | yes |
+| `<repo>/.danxbot/settings.json` | Per-repo three-valued runtime toggles (Slack, Trello, Dispatch) + per-repo `agents{}` roster (each repo owns its own set of named agents — `sage` in gpt-manager and `sage` in danxbot are different agents) | yes |
+| `<repo>/.danxbot/worktrees/<agent>/` | Per-agent git worktree + per-agent `docker-compose.yml` w/ worktree-unique port allocation (consumer-repo stack — pgsql/redis/etc — runs once per agent, isolated from primary) | gitignored |
+
+**Multi-repo agent lookup — mechanical pre-claim check.** Before claiming an agent name "does not exist" / "never landed" / "is missing", enumerate EVERY connected repo: `for r in ~/web/danxbot/repos/*/; do grep -l <name> "$r/.danxbot/settings.json" 2>/dev/null; done` AND `ls ~/web/danxbot/repos/*/.danxbot/worktrees/`. Agents are per-repo; cwd `.danxbot/` is just one repo's roster. Same applies to worktrees — checking `git worktree list` from the danxbot source repo shows ONLY danxbot's worktrees, not gpt-manager's or platform's. "I checked the agents dir" w/o naming which repo's agents dir is the failure mode this rule blocks.
 
 Per-target overlays are layered ONLY at deploy time (`make deploy TARGET=<x>`). Local dev never reads them.
 
