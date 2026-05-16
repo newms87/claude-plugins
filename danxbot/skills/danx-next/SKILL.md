@@ -174,9 +174,23 @@ Mechanical procedure (every dispatch, no exceptions):
    - **Any mismatch** (file missing, test fails, commit not in log,
      diff doesn't deliver the AC) → flip `ac[i].checked: false`, save,
      treat as work to do.
-3. **For each sha in `retro.commits[]`:** run `git cat-file -t <sha>`.
-   Output not `commit` (or `git log` doesn't show it on `origin/main`)
-   → drop the stale sha from the list, save.
+3. **For each sha in `retro.commits[]`:** run `git cat-file -t <sha>`
+   in THIS card's repo. Output not `commit` (or `git log origin/main`
+   doesn't show it) → the sha is one of:
+   - **Stale** (rebased away / typo / never pushed) → drop from
+     `retro.commits[]`, save.
+   - **Cross-repo** (`git cat-file -t <sha>` resolves in `~/web/claude-plugins/`
+     or another sibling repo but not in THIS card's repo) → drop from
+     `retro.commits[]` AND append a `comments[]` entry titled
+     `## External repo work` naming the repo + sha + what shipped.
+     Save. See Step 7 — `retro.commits[]` is owned-repo only.
+
+   If the card is Blocked with reason starting `DX-559 enforcement:`,
+   this self-heal is exactly what unblocks it: walk each missing sha,
+   route to stale-drop or cross-repo-comment, save, then clear
+   `blocked: null` + stamp `ready_at: <now>` and call
+   `danxbot_complete({status: "completed", summary: "Reconciled
+   retro.commits[] after DX-559 block — <one-line summary>"})`.
 4. **If `status: "Done"` or `"Cancelled"`** AND every AC verifies in
    step 2 AND every commit verifies in step 3 AND `retro.good` +
    `retro.bad` non-empty: the prior session truly finished. Call
@@ -372,6 +386,20 @@ If you cannot verify an item — repo this worker cannot commit to, depends on e
 ## Step 7 — Commit
 
 Two paths — pick the one that matches THIS dispatch.
+
+**`retro.commits[]` scope — owned-repo ONLY (DX-559 gate).** Only shas reachable from THIS card's repo's `origin/main` belong in `retro.commits[]`. If your dispatch edited a sibling repo (plugin source under `~/web/claude-plugins/`, another connected repo, any path outside this card's worktree), that work does NOT go in `retro.commits[]`. Instead, append a `comments[]` entry naming the external repo + sha(s) + what shipped. Example:
+
+```
+## Plugin work
+
+Edited `~/web/claude-plugins/danxbot/skills/<skill>/SKILL.md`. Published `danxbot v0.3.10`.
+
+Commits (claude-plugins repo):
+- `67eefe9` — skill body rewrite
+- `1e0a570` — version bump + publish
+```
+
+Putting cross-repo shas in `retro.commits[]` makes the DX-559 gate Block your `danxbot_complete({status: "completed"})` call — the gate verifies every sha against this repo's `origin/main` and treats unresolvable shas as missing.
 
 ### Step 7a — Multi-worker agent dispatch (persona block present)
 
