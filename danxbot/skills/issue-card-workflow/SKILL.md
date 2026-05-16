@@ -42,7 +42,12 @@ Quick reference:
 | `parent_id` | `string \| null` | Child card → parent's `id`. On phases of an epic = epic's `id`. Reverse linkage to `children[]`. |
 | `children` | `string[]` (ids) | Ordered list of child issue ids (`ISS-N`). Available on every card type. On `type: Epic` = the ordered phase cards (UI label "Phases"). On non-epic = sub-cards (UI label "Children"). One field, two labels. Phases MUST be cards — there is no in-card phase checklist (ISS-81 retired the old `phases[]` field). Maintained by `danx-epic-link` skill (human-created phase cards) and by `danx_issue_create` (drafts with `parent_id` set). |
 | `dispatch` | `{id, pid, host, kind, started_at, ttl_seconds} \| null` | Poller-managed dispatch record (replaces the bare `dispatch_id`). `null` when no agent is running on the card; non-null is a structured snapshot of the active dispatch (UUID, OS PID + host for cross-host correlation, kind = `"work"` \| `"triage"`, ISO start, liveness TTL in seconds). Don't touch. |
-| `status` | `Review` \| `ToDo` \| `In Progress` \| `Blocked` \| `Done` \| `Cancelled` | Editing this field IS how you "move" the card. `Blocked` is the non-dispatchable parking status (self-block — see "Blocked vs Waiting On"). The orthogonal `requires_human` field is a separate dispatch gate that may co-exist with any open status — see "Requires Human vs Blocked vs Waiting On". |
+| `status` | `Review` \| `Backlog` \| `ToDo` \| `In Progress` \| `Blocked` \| `Done` \| `Cancelled` | **Derived — agents NEVER write this field.** Computed every read by `deriveStatus()` (`src/issue/derive-status.ts`) from lifecycle timestamps + gate fields. The worker stamps the relevant timestamp on lifecycle transitions; the read path projects that into a status value. Direct status writes in agent skills are FORBIDDEN — see CLAUDE.md "Forbidden Patterns". To move a card, write the trigger field: pickup → worker auto-flips via `dispatch != null`; ready → `ready_at`; complete → `completed_at` (worker stamps on `danxbot_complete({status: "completed"})`); cancel → `cancelled_at`; block → `blocked.at`. |
+| `ready_at` | `string \| null` (ISO 8601) | Triage Approve / agent-marks-ready / move into a `ready`-type list → worker stamps. Derived rule 5: populated + no higher-precedence trigger → `ToDo`. |
+| `completed_at` | `string \| null` (ISO 8601) | Worker stamps on `danxbot_complete({status: "completed"})` via `stampIssueCompleted`. Derived rule 2 → `Done`. Worker also clears `dispatch: null` at the same write. |
+| `cancelled_at` | `string \| null` (ISO 8601) | Triage Cancel / move into a `cancelled`-type list → worker stamps via `stampIssueCancelled`. Derived rule 1 → `Cancelled`. Worker also clears `dispatch: null`. |
+| `archived_at` | `string \| null` (ISO 8601) | Move into an `archived`-type list → worker stamps. Derived rule 6 → `Backlog`. Parking back to Backlog REQUIRES `ready_at: null` (rule 5 outranks rule 6). |
+| `list_name` | `string \| null` | **Display-only — workers NEVER read this field for state-machine decisions.** Auto-resolved by the worker to the default list of the derived semantic type on every write that changes timestamps. Humans may override by moving the card to any list via the dashboard. The semantic state machine = 100% timestamp + `dispatch` + `blocked.at` + `waiting_on` + `requires_human` + `conflict_on[]` — `list_name` is a pure UI affordance. |
 | `type` | `Bug` \| `Feature` \| `Epic` | Required. |
 | `title` | string | Card name (no `#ISS-N:` prefix — worker prefixes when pushing). |
 | `description` | string | Full markdown body. |
@@ -51,7 +56,7 @@ Quick reference:
 | `comments` | `[{id?, author, timestamp, text}]` | Append `{author, timestamp, text}` (no `id`) — worker pushes. |
 | `retro` | `{good, bad, action_item_ids[], commits[]}` | Fill on Done / Cancelled / Blocked only. Worker auto-renders ONE `## Retro` comment. `action_item_ids[]` is a `string[]` of `ISS-N` references (e.g., `["ISS-12", "ISS-14"]`). Create each action item card first via `danx_issue_create`, then push its returned `id` here. Unknown or malformed `ISS-N` values render as `<ISS-N: unknown>` in the retro comment. |
 | `waiting_on` | `null` OR `{reason, timestamp, by[]}` | **Dep-chain dispatch gate, status-independent.** `null` when nothing queues the card. Set to a record when the card is waiting on **other in-flight work** (a phase sibling, an Action Items card, a separately-scoped task). `reason` is a non-empty sentence; `timestamp` is ISO 8601; `by[]` is a non-empty list of `ISS-N` ids that must reach Done / Cancelled before the picker may dispatch this card. If no card describes the unblock work, **create one** (`danx_issue_create`) and reference it. The picker skips dispatch while any id in `by[]` is non-terminal; the field itself is a **durable record** — the system NEVER auto-clears it on dep resolution or status change. Only the agent / operator clears it (when they decide the link was a mistake). **Status-independent — the validator does NOT couple `waiting_on` to any status** (yaml.ts: "Any status legal with any waiting_on shape"). A card may carry `waiting_on` while at `Review`, `ToDo`, `In Progress`, OR `Blocked`. The picker's runtime release path flips an actively-assigned card to `ToDo` + clears `assigned_agent` when a gate re-fires at pickup (multi-agent-pick.ts) — that is a runtime side effect, not a write-time invariant. **Waiting On is NOT Blocked** — see "Blocked vs Waiting On" below. |
-| `blocked` | `null` OR `{reason, timestamp}` | **Self-block reason cache.** `null` when the card itself can proceed. Non-null = the card itself cannot make progress on its own work; a human (or a subsequent agent dispatch) must clear the block. No `by[]` — that lives on `waiting_on`. **Invariant: `status === "Blocked" ⟺ blocked !== null`** (worker enforces both directions; setting one without the other is a validation error). `reason` is a non-empty sentence; `timestamp` is ISO 8601. |
+| `blocked` | `null` OR `{at, reason}` | **Self-block lifecycle trigger.** `null` when the card itself can proceed. Non-null = the card itself cannot make progress on its own work; a human (or a subsequent agent dispatch) must clear the block. No `by[]` — that lives on `waiting_on`. `at` is ISO 8601 (the timestamp the block was stamped, derived precedence rule 3 → status `Blocked`); `reason` is a non-empty sentence. **Status is derived from `blocked.at`** — populated `blocked.at` → derived status `Blocked`; cleared `blocked: null` → status falls through to the next-precedence trigger. Agents never write `status: "Blocked"` directly. |
 | `requires_human` | `null` OR `{reason, steps[], set_by, set_at}` | **Orthogonal "this card needs a human" indicator.** `null` when no human action needed. Non-null = the card cannot make progress until a human acts on something the agent has zero programmatic reach into (3rd-party token rotation, granting access to an external dashboard, manual deploy of external infra). Independent from `blocked` and `waiting_on`; all three are dispatch gates and may co-exist. The poller's dispatch filter (`src/poller/local-issues.ts`) skips any card with `requires_human != null`. `set_by` is `"agent"` (rare 3rd-party blockers) or `"human"` (operator flagged the card via the dashboard). `set_at` is ISO 8601. Cleared by the human via the dashboard's "Mark Resolved" affordance. See "Requires Human vs Blocked vs Waiting On" below. |
 
 ## MCP Tool Surface
@@ -68,7 +73,7 @@ All under prefix `mcp__danx-issue__*` (note hyphen). Error shape: `{<verb>: fals
 
 **Edit semantics:** Edit the YAML directly with `Edit` (preferred — preserves other agents' uncommitted edits) or `Write` for full rewrites. The chokidar watcher (`src/db/issues-mirror.ts` in the danxbot worker) mirrors every file change to Postgres on the file event, and the post-completion auto-sync (`src/worker/auto-sync.ts`) pushes terminal state to the tracker when `danxbot_complete` fires. The worker's per-tick mirror (~60s) is the steady-state safety net for tracker pushes that miss the auto-sync window. There is no agent-facing save verb to call — agents edit the YAML in place and let the worker do the mirroring.
 
-**Status terminal moves:** when you set `status: Done` or `status: Cancelled` and the dispatch completes, the worker moves the file `open/` → `closed/` on its next poll as part of the auto-sync. `Blocked` keeps the YAML in `open/` (non-terminal — a human or next dispatch may resume). Never move the file yourself.
+**Status terminal moves:** when the worker stamps `completed_at` or `cancelled_at` (on `danxbot_complete({status: "completed"})` / `danxbot_complete({status: "cancelled"})` respectively) and the dispatch finishes, the worker moves the file `open/` → `closed/` on its next poll as part of the auto-sync. `blocked.at` populated keeps the YAML in `open/` (non-terminal — a human or next dispatch may clear `blocked: null`). Never move the file yourself.
 
 ## Status on Creation — ALWAYS start in Review
 
@@ -83,15 +88,15 @@ This applies to:
 
 **Why.** A card in `ToDo` is dispatchable on the very next poller tick. If the description is half-written, the AC is vague, or the scope overlaps another in-flight card, the poller will hand it to a worker that wastes a dispatch flailing on under-specified work. `Review` forces a single agent (the triage agent — or a human via the dashboard's status patch) to read the card cold and either Approve (→ `ToDo`), Cancel (→ `Cancelled`), or Keep (refresh expires_at, +24h, give the author time to flesh it out).
 
-**Promotion to ToDo is a SEPARATE action, never co-located with creation.** Even when you are sure the card is well-formed and ready, leave it `Review` on the create call. The promotion happens via one of:
+**Promotion to ToDo is a SEPARATE action, never co-located with creation.** Even when you are sure the card is well-formed and ready, leave it derived `Review` on the create call. The promotion happens via one of:
 
-- Triage agent ICE-scores it Approve and writes `status: ToDo` (the normal path).
-- Human operator promotes it from the dashboard.
-- The CREATING agent, AFTER having (a) finished the description + ac[] in the same turn, (b) verified zero-context-test pass against its own output, and (c) confirmed the card genuinely belongs in the dispatch queue right now, edits the YAML in a SECOND step to flip `status: Review → ToDo`. This two-step pattern (create-in-Review then promote-to-ToDo) is explicit, intentional, and visible on the card history — it is NOT a shortcut for skipping triage in general. Use this only when you are the creating agent and you are absolutely certain; default is to leave it Review for the triage agent.
+- Triage agent ICE-scores it Approve and stamps `ready_at = <now ISO>` (derived status `ToDo` via rule 5) — the normal path.
+- Human operator promotes it from the dashboard (PATCH writes `ready_at`).
+- The CREATING agent, AFTER having (a) finished the description + ac[] in the same turn, (b) verified zero-context-test pass against its own output, and (c) confirmed the card genuinely belongs in the dispatch queue right now, edits the YAML in a SECOND step to stamp `ready_at = <now ISO>`. This two-step pattern (create-in-Review then stamp ready_at) is explicit, intentional, and visible on the card history — it is NOT a shortcut for skipping triage in general. Use this only when you are the creating agent and you are absolutely certain; default is to leave the card to the triage agent.
 
 **Interaction with `waiting_on`.** `waiting_on` is status-independent — a card may carry the dep-chain record at any status (Review, ToDo, In Progress, Blocked). The validator does not couple them. For sequential phase chains, you may stamp `waiting_on.by[]` at creation time alongside `status: Review` and the chain rides through Review → ToDo cleanly; no second-pass edit required. Cards in Review with `waiting_on` populated wait for both triage approval AND every `by[]` blocker to terminate before the picker dispatches.
 
-**Interaction with epic status derivation.** The poller derives parent epic status from its children's union (see "Epic status is computed, not edited" below). When all phase children start `Review`, the epic also derives to `Review` automatically (rule 4: "All non-cancelled children Review → parent Review"). When the creating agent two-step-promotes some phases to `ToDo`, the epic auto-derives to `ToDo` (rule 3: "Any child ToDo → parent ToDo"). The agent does NOT manually edit the epic's status — derivation owns it.
+**Interaction with epic status derivation.** The poller propagates parent epic triggers from its children's derived-status union (see "Epic status is computed, not edited" below). When all phase children derive `Review`, the epic also derives `Review` automatically (rule 4: "All non-cancelled children Review → parent Review"). When the creating agent two-step-promotes some phases by stamping `ready_at`, the parent epic gets its own `ready_at` stamped by the poller (rule 3: "Any child ToDo → parent ToDo"). The agent does NOT manually stamp the epic's triggers — derivation owns them.
 
 ## Triage Lifecycle
 
@@ -99,31 +104,31 @@ The `triage{}` block on each YAML is owned by the **per-card triage agent** disp
 
 **Cadence per status (the TTL the agent stamps onto `triage.expires_at`):**
 
-| Status | Triage decision | Default TTL |
-|---|---|---|
-| `Review` | ICE-score → Keep (→ ToDo) / Cancel (→ Cancelled) / Approve (→ ToDo + populate `requires_human`) | 24h |
-| `Blocked` (`blocked != null`) | Hard Gate audit → Demote to ToDo OR Confirm + write `reassess_hint` | 3h |
-| `Waiting On` (`waiting_on != null`) | Re-check `waiting_on.by[]` — clear if every dependency is terminal | 1h |
-| `ToDo` / `In Progress` | Not triaged | n/a |
-| `Done` / `Cancelled` | Terminal — never re-triaged | n/a |
+| Derived status | Triage decision | Trigger write | Default TTL |
+|---|---|---|---|
+| `Review` | ICE-score → Keep / Cancel / Approve | Keep: refresh `triage.expires_at` only (no trigger write). Cancel: stamp `cancelled_at = <now ISO>` + retro. Approve: stamp `ready_at = <now ISO>` (and optionally populate `requires_human`). | 24h |
+| `Blocked` (`blocked.at != null`) | Hard Gate audit → Demote OR Confirm | Demote: clear `blocked: null` (derived status falls through to next trigger). Confirm: refresh `triage.expires_at` + write `reassess_hint`. | 3h |
+| `Waiting On` (`waiting_on != null`) | Re-check `waiting_on.by[]` — clear if every dep is terminal | Clear: `waiting_on: null` (no trigger write needed; status independent). | 1h |
+| `ToDo` / `In Progress` | Not triaged | n/a | n/a |
+| `Done` / `Cancelled` | Terminal — never re-triaged | n/a | n/a |
 
 **ToDo dispatch sort** is **untriaged first** (`triage.expires_at === ""` — never been scored) **then triaged by `triage.ice.total` DESC**. ICE = Impact × Confidence × Ease, each axis 1-5, total ranges 1-125. Within each tier, FIFO by mtime. The poller's `listDispatchableYamls` enforces this order; agents do not need to think about ranking themselves — write a good description and the triage agent's ICE score governs priority.
 
 **`Action Items` is not a status concept.** Cards on the Trello "Action Items" list hydrate as `status: Review` so the per-card triage agent picks them up alongside the Review list. The list itself stays on the board as a UX bucket; the YAML stores `status: Review`.
 
-**Triage state machine:**
+**Triage state machine (derived statuses; transitions = trigger writes):**
 
 ```mermaid
 stateDiagram-v2
     [*] --> Review: tracker hydrate (incl. Action Items list)
-    Review --> ToDo: triage Approve (ICE >= threshold)
-    Review --> Cancelled: triage Cancel
+    Review --> ToDo: triage Approve — stamp ready_at
+    Review --> Cancelled: triage Cancel — stamp cancelled_at
     Review --> Review: triage Keep (refresh expires_at, +24h)
-    ToDo --> InProgress: poller dispatch (untriaged first, then ICE DESC)
-    InProgress --> Blocked: agent escalates (self-block — human action required)
-    InProgress --> Done: agent completes
-    InProgress --> Cancelled: agent cancels
-    Blocked --> ToDo: triage Demote (Hard Gate audit clears the punt)
+    ToDo --> InProgress: poller dispatch sets dispatch != null (derived rule 4)
+    InProgress --> Blocked: agent self-blocks — stamp blocked.at
+    InProgress --> Done: agent danxbot_complete — worker stamps completed_at
+    InProgress --> Cancelled: agent danxbot_complete cancel — worker stamps cancelled_at
+    Blocked --> ToDo: triage Demote — clear blocked: null (ready_at still set)
     Blocked --> Blocked: triage Confirm (refresh expires_at, +3h)
     ToDo --> InProgress: deps terminal → picker dispatches (waiting_on stays as durable record)
     Done --> [*]
@@ -140,18 +145,18 @@ gate. Cleared by humans only via "Mark Resolved".
 
 Two different states for "this card cannot proceed right now":
 
-- **Blocked** (`status: "Blocked"` + `blocked: {reason, timestamp}`): the card itself cannot complete on its own work — typically because **a human must act**. Credentials, deploy, secrets rotation, ambiguous spec needing a human design call, architectural decision that changes the goal of the card, write-only repo. The card sits in `Blocked` until a human (or a subsequent agent dispatch) clears the block. **Invariant: `status === "Blocked" ⟺ blocked !== null`** — the worker enforces both directions.
+- **Blocked** (stamp `blocked: {at: <now ISO>, reason: <one sentence>}`; derived status becomes `Blocked` via rule 3): the card itself cannot complete on its own work — typically because **a human must act**. Credentials, deploy, secrets rotation, ambiguous spec needing a human design call, architectural decision that changes the goal of the card, write-only repo. The card sits at derived `Blocked` until a human (or a subsequent agent dispatch) clears `blocked: null`. **Invariant: `blocked.at !== null` ⇒ derived status is `Blocked`** (rule 3). Agents never write `status: "Blocked"` directly — stamp the trigger, the read path derives the status.
 - **Waiting On** (`waiting_on: {reason, timestamp, by[]}`): the card is queued behind **other in-flight work** that does NOT need a human — phase siblings shipping first, an Action Items card landing, a separately-scoped task. The poller auto-unblocks and dispatches the card once every dependency in `by[]` reaches Done / Cancelled. `waiting_on` is status-independent; the field may coexist with any open status. NEVER set `status: "Blocked"` AS A SUBSTITUTE for `waiting_on` — they model different causes; if a sibling-card-wait is the only cause, populate `waiting_on` only.
 
 When the unblock work itself needs a human, the right shape is: keep this card on `waiting_on`, and put the human task in a NEW `Blocked` card referenced from `waiting_on.by[]`. The original card auto-unblocks the moment the human-task card moves to Done / Cancelled.
 
-**All four dispatch gates may coexist on one card simultaneously — by design.** `blocked`, `waiting_on`, `requires_human`, and `conflict_on[]` each model a different real-world cause; the picker AND-s them and dispatches only when every gate is null/empty. A card may legitimately carry all four at once (e.g. queued behind a prior phase AND conflicting with a sibling AND blocked on a design decision AND awaiting a 3rd-party token rotation). Each gate is cleared by a different actor / event independently — see `issue-blocker/SKILL.md` "Field selection" table for the routing rules + the example clearance timeline. The ONLY enforced validator invariant coupling any gate to status is `status === "Blocked" ⟺ blocked !== null` (mirror invariant; set both together OR null both together). `waiting_on`, `requires_human`, and `conflict_on[]` are fully status-independent — populate freely regardless of status.
+**All four dispatch gates may coexist on one card simultaneously — by design.** `blocked`, `waiting_on`, `requires_human`, and `conflict_on[]` each model a different real-world cause; the picker AND-s them and dispatches only when every gate is null/empty. A card may legitimately carry all four at once (e.g. queued behind a prior phase AND conflicting with a sibling AND blocked on a design decision AND awaiting a 3rd-party token rotation). Each gate is cleared by a different actor / event independently — see `issue-blocker/SKILL.md` "Field selection" table for the routing rules + the example clearance timeline. The ONLY enforced derived-status linkage is `blocked.at !== null ⇒ derived status is Blocked` (rule 3 of `deriveStatus`). `waiting_on`, `requires_human`, and `conflict_on[]` are fully status-independent — populate freely regardless of derived status.
 
 **Picking up a Blocked / Waiting On card → invoke the `unblock` skill first.** Same applies if the card you are about to start **overlaps** an existing Blocked card (same parent epic, same key files, same domain) — surface the dependency before doing work that the upstream resolution may invalidate. `unblock` produces the operator playbook; once the human acts and reports back, resume normal `issue-card-workflow` for the AC update.
 
 ## Blocked — Hard Gate Before Saving
 
-Before saving `status: "Blocked"` (with the matching `blocked: {reason, timestamp}` record) you MUST name the **specific human-only resource** that blocks completion. Pick exactly one:
+Before stamping `blocked: {at: <now ISO>, reason: <one sentence>}` (which makes the derived status `Blocked` via rule 3) you MUST name the **specific human-only resource** that blocks completion. Pick exactly one:
 
 | Allowed reason | Example |
 |---|---|
@@ -163,7 +168,7 @@ Before saving `status: "Blocked"` (with the matching `blocked: {reason, timestam
 
 If you cannot name one — **status stays `In Progress` and you do the work.** "Operator should verify in production", "human should run these commands and report back", "live operator-driven runs are the only honest way" are NOT valid reasons. If the verification step is `.env` edit + `artisan` + `make` + `yarn` + log grep, the agent runs it.
 
-**Rationalization detector — if your `Blocked` comment / `blocked.reason` contains any of these phrases, you are punting:**
+**Rationalization detector — if your `Blocked` comment / `blocked.reason` contains any of these phrases, you are punting (don't stamp `blocked.at` — fix in-session):**
 - "operator-driven verification"
 - "production-shaped infra"
 - "honest way to verify"
@@ -197,8 +202,8 @@ the right one mechanically — guessing produces noisy operator queues.
 
 | Signal | Field | When | Cleared by |
 |---|---|---|---|
-| **Blocked** | `status: "Blocked"` + `blocked: {reason, timestamp}` | The card *itself* is stuck — a human must **supply information / take an action the agent does not have** but COULD perform if it had it (credentials, deploy access, ambiguous spec needing a design call, missing decision input, write-only repo the agent cannot reach). | Human writes a comment / opens the card; next dispatch (or human) flips `status` back to ToDo and clears `blocked`. |
-| **Requires Human** | `requires_human: {reason, steps[], set_by, set_at}` (any open `status`) | The card needs a human to act on a **system the agent has zero programmatic reach into** — 3rd-party API token rotation, granting access to an external dashboard, manual deploy of external infra. Independent from `blocked` / `waiting_on`. | Human via the dashboard's "Mark Resolved" affordance (PATCHes `requires_human: null`). Re-enables dispatch on the next poll tick. |
+| **Blocked** | `blocked: {at, reason}` (derived status `Blocked` via rule 3) | The card *itself* is stuck — a human must **supply information / take an action the agent does not have** but COULD perform if it had it (credentials, deploy access, ambiguous spec needing a design call, missing decision input, write-only repo the agent cannot reach). | Human writes a comment / opens the card; next dispatch (or human) clears `blocked: null` — derived status falls through to the next-precedence trigger (`ready_at` → ToDo, etc). |
+| **Requires Human** | `requires_human: {reason, steps[], set_by, set_at}` (any derived status) | The card needs a human to act on a **system the agent has zero programmatic reach into** — 3rd-party API token rotation, granting access to an external dashboard, manual deploy of external infra. Independent from `blocked` / `waiting_on`. | Human via the dashboard's "Mark Resolved" affordance (PATCHes `requires_human: null`). Re-enables dispatch on the next poll tick. |
 | **Waiting On** | `waiting_on: {reason, timestamp, by[]}` (status independent) | The card is queued behind **other in-flight work** that does NOT need a human — phase siblings shipping first, an Action Items card landing, a separately-scoped task. | Picker dispatches the card the moment every blocker in `by[]` reaches Done / Cancelled. The `waiting_on` record itself stays on the card as a durable dep-history note. |
 
 ### Why three signals instead of one
@@ -296,7 +301,7 @@ Every description must include: exact file paths, known gotchas, how to verify. 
 
 If you catch yourself authoring such an AC, drop it. ACs gate Done; transient operator nicety does not.
 
-There is no separate "Progress" or "Phases" checklist on the YAML schema (ISS-81 retired the old `phases[]` field). Multi-step work either fits in `ac[]` on a single card OR splits into an Epic + child phase cards (`children[]`). Progress lives in the agent's pipeline (TDD test pass, code review pass, commit) and is reflected on terminal save via `status: Done` + `retro.commits[]`.
+There is no separate "Progress" or "Phases" checklist on the YAML schema (ISS-81 retired the old `phases[]` field). Multi-step work either fits in `ac[]` on a single card OR splits into an Epic + child phase cards (`children[]`). Progress lives in the agent's pipeline (TDD test pass, code review pass, commit) and is reflected on terminal save via `completed_at` (worker-stamped) + `retro.commits[]`.
 
 `update_checklist_item` analogue: Edit `ac[i].checked: true` (match by exact `title` text — `check_item_id` may be empty for new items the worker hasn't synced yet). The chokidar watcher mirrors the change to the DB; the per-tick mirror pushes the AC state to the tracker.
 
@@ -323,11 +328,11 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 ## Card Lifecycle
 
-**Pick up:** Edit YAML → set `status: In Progress`. Save. Read full context (description, all comments, all AC, children, labels-equivalent via `type`). Plan work (complex: use writing-plans skill; simple: start immediately).
+**Pick up:** The worker auto-flips status to derived `In Progress` by setting `dispatch != null` on the candidate YAML BEFORE spawning the agent (DX-584 dispatch core auto-flip + rule 4). The agent does NOT write `status:` on pickup. First agent edit is `effort_level` (if unset per `danx-effort-policy.md`). Read full context (description, all comments, all AC, children, labels-equivalent via `type`). Plan work.
 
-**During:** Append review results / discoveries to `comments[]`, save. Status moves + checklist edits handled by `flow-commit` skill.
+**During:** Append review results / discoveries to `comments[]`, save. AC checklist edits flip `ac[i].checked: true` with direct evidence.
 
-**Complete:** All completion actions (check off ACs, fill retro, set `status: Done`) happen via `flow-commit`. Don't perform manually outside the pipeline.
+**Complete:** Agent fills `retro.{good, bad, action_item_ids, commits}` and calls `danxbot_complete({status: "completed", summary})`. The worker stamps `completed_at = <now ISO>` via `stampIssueCompleted`, clears `dispatch: null`, renders the `## Retro` comment, moves the file `open/` → `closed/`, and pushes terminal state. Derived status becomes `Done` via rule 2. Agent never writes `status: Done` directly.
 
 ## Phases vs Epics
 
@@ -345,22 +350,22 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 If a user prompt looks like it asks for "just an epic," it does not. Read it as "epic + every phase card" — that is the unit of work. Asking the user "want me split phases now?" after writing the epic is the violation; do not do that.
 
-**Epic mechanics:** Set epic's `type: Epic` with `status: "Review"`, then in the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type` AND `status: "Review"` (per the "Status on Creation" rule — every new card starts Review without exception). Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`.
+**Epic mechanics:** Set epic's `type: Epic` (no `status:` literal — creation defaults derive to `Review`; the worker leaves `ready_at`/`completed_at`/`cancelled_at`/`blocked` all null so rule 7 falls through to the raw `status` field which `danx_issue_create` writes as `Review`). In the SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with its own description / `ac[]` / `type` and the same creation default (all derive to `Review`). Set each phase's `parent_id` to the epic's `id`. Append each phase's `id` to the epic's `children[]`.
 
-Sequential-phase `waiting_on` chains may land at creation time — `waiting_on` is status-independent, so a phase card may carry `status: Review` + `waiting_on: {by: [<prior-phase>]}` together. The creating agent stamps the `by[]` chain in the same pass it writes the phase YAMLs; no second-pass edit required. The picker holds each phase off dispatch until both triage approves (status: Review → ToDo) AND every `by[]` blocker reaches a terminal state. Planning agent has full context — capture into phase cards NOW, not later.
+Sequential-phase `waiting_on` chains may land at creation time — `waiting_on` is status-independent, so a phase card may carry derived `Review` + `waiting_on: {by: [<prior-phase>]}` together. The creating agent stamps the `by[]` chain in the same pass it writes the phase YAMLs; no second-pass edit required. The picker holds each phase off dispatch until both triage approves (Approve stamps `ready_at` → derived `ToDo`) AND every `by[]` blocker reaches a terminal state. Planning agent has full context — capture into phase cards NOW, not later.
 
 ### Epic status is computed, not edited (ISS-98)
 
-A parent's `status` (Epic OR any non-epic with non-empty `children[]`) is **derivation-owned by the poller**. Every tick the poller walks every YAML with non-empty `children[]` and rewrites the parent's `status` from the union of its children's statuses. Manual edits to a parent's status are **overwritten on the next tick** — there is no manual override.
+A parent's derived status (Epic OR any non-epic with non-empty `children[]`) is **derivation-owned by the poller**. Every tick the poller walks every YAML with non-empty `children[]` and writes the parent's lifecycle triggers (`completed_at`, `cancelled_at`, `blocked`) so the union of children's derived statuses propagates correctly. Manual edits to a parent's status / triggers are **overwritten on the next tick** — there is no manual override.
 
 Priority rules (first match wins):
 
-1. Any child `Blocked` → parent `Blocked` (worker synthesizes the parent's `blocked` record on promote, clears on demote — preserves the status⇔blocked invariant).
-2. Any child `In Progress` → parent `In Progress`.
-3. Any child `ToDo` → parent `ToDo`.
-4. All non-cancelled children `Review` → parent `Review`.
-5. All non-cancelled children `Done` → parent `Done`.
-6. All children `Cancelled` (no exclusion) → parent `Cancelled`.
+1. Any child derives `Blocked` → parent stamped `blocked: {at, reason}` (worker synthesizes the parent's record on promote, clears on demote — preserves rule 3).
+2. Any child derives `In Progress` → parent derives `In Progress` (worker mirrors via parent's own `dispatch` or rule fallthrough).
+3. Any child derives `ToDo` → parent stamped `ready_at` (rule 5).
+4. All non-cancelled children derive `Review` → parent derives `Review`.
+5. All non-cancelled children derive `Done` → parent stamped `completed_at` (rule 2).
+6. All children derive `Cancelled` (no exclusion) → parent stamped `cancelled_at` (rule 1).
 
 Cancelled children are excluded from rules 4 and 5 — a single non-cancelled child shifts the answer. Rule 6 fires only when EVERY child is Cancelled. Mixed terminal states (e.g. `Review` + `Done` with no `Cancelled`) leave the parent's current status untouched.
 
@@ -371,10 +376,10 @@ phase has `requires_human != null`.
 
 **Implications for agents:**
 
-- When you finish a phase card, set the **phase's** `status: Done` and save. The poller flips the parent epic on its next tick. Do **not** touch the epic's status yourself — your edit will be overwritten.
-- When a phase moves to `Blocked`, the parent epic inherits that status automatically. The operator triages from the parent's view; no need to also flip the epic by hand. (Phase `requires_human` is NOT propagated — surface it on the epic children list instead of via parent status.)
-- An Epic stays in whatever state derivation produces. Manually setting `status: Done` on an Epic with one child still `In Progress` is a no-op and re-derives next tick.
-- Parents with `waiting_on != null` are skipped by parent-status derivation — the parent's own dep-chain note takes precedence over a derived status from children. Set the parent's `waiting_on` record explicitly when needed; derivation doesn't fight it.
+- When you finish a phase card, call `danxbot_complete({status: "completed"})` — the worker stamps the phase's `completed_at`, which derives the phase to `Done`. The poller propagates the parent epic's trigger on its next tick. Do **not** touch the epic yourself — your edit will be overwritten.
+- When a phase stamps `blocked.at`, the parent epic's `blocked` record is synthesized by the poller. The operator triages from the parent's view; no need to also stamp the epic by hand. (Phase `requires_human` is NOT propagated — surface it on the epic children list instead.)
+- An Epic stays in whatever state derivation produces. Stamping `completed_at` on an Epic with one child still derived `In Progress` is a no-op and the next tick clears it.
+- Parents with `waiting_on != null` are skipped by parent-status derivation — the parent's own dep-chain note takes precedence over derivation from children. Set the parent's `waiting_on` record explicitly when needed; derivation doesn't fight it.
 
 **Forbidden end-states for any turn that creates an epic:**
 - Epic written, `children: []`, no phase YAMLs on disk.
@@ -383,9 +388,9 @@ phase has `requires_human != null`.
 
 If you find yourself about to end a turn in any of those states — stop and write the phase cards first.
 
-**Where phase cards go:** Same `status` as parent epic at creation time. Epic in Review → phase cards Review. Epic In Progress → phase cards In Progress. Phase cards move with the epic through lifecycle.
+**Where phase cards go:** Same derived status as parent epic at creation time. Epic derives Review → phase cards derive Review. Epic derives In Progress → phase cards inherit via their own triggers. Phase cards move with the epic through lifecycle.
 
-**After completing each phase card:** Set its `status: Done`, fill retro, save. The worker handles the file move + retro comment + action-item spawn on its next poll. Do **not** edit the epic's status yourself — the poller derives the epic's status from its children's union on the next tick (see "Epic status is computed, not edited" above). The next phase card's notes go in `comments[]` per the rule below; once all phase cards are Done, the poller flips the epic to Done automatically.
+**After completing each phase card:** Fill `retro.{good, bad, action_item_ids, commits}`, call `danxbot_complete({status: "completed"})`. The worker stamps `completed_at`, clears `dispatch: null`, renders the `## Retro` comment, spawns action-item cards, and moves the file `open/` → `closed/`. Do **not** edit the epic yourself — the poller propagates the parent's triggers from its children's derived statuses on the next tick (see "Epic status is computed, not edited" above). The next phase card's notes go in `comments[]` per the rule below; once all phase cards derive Done, the poller stamps the epic's `completed_at` automatically.
 
 **CRITICAL: Update next phase card before ending session.** Append a "Notes from Phase N" entry to the next phase card's `comments[]` and save. Capture: discovered constraints, timing gotchas, reusable helpers + paths, cost/budget observations, dependencies between phases, corrections to the description. Assume the next agent reads ONLY `description` + `comments[]` — not epic handoff, not conversation history, not git log.
 

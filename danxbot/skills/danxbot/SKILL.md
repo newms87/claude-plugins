@@ -138,7 +138,7 @@ Every multi-agent dispatch begins with the `danxbot:danx-prep` skill running on 
 |---|---|
 | `ok` | Combined-mode → dispatch keeps running, agent proceeds into `/danx-next`. Separate-mode → stop; poller re-picks next tick for the work pass. |
 | `conflict_on` | Append `{id, reason}` entries to the candidate YAML's `conflict_on[]` for each partner. The poller's `isAnyKindBlocked` filter skips dispatch while any partner is non-terminal; auto-resolves on the partner reaching terminal status. |
-| `blocked` | Stamp `status: "Blocked"` + `blocked: {reason, timestamp}` on the candidate YAML. |
+| `blocked` | Stamp `blocked: {at: <now ISO>, reason}` on the candidate YAML; `deriveStatus` rule 3 projects the card to `Blocked`. |
 | `abort` | Stamp `agents.<name>.broken = {reason, suggested_steps, set_at}` on `<repo>/.danxbot/settings.json`. The picker filters this agent out on every subsequent tick until the operator clears the field via the dashboard Agents tab. |
 
 Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json` (`combined` default). DX-297 retired the separate `runConflictCheck` precursor dispatch + the `dispatchInRecoveryMode` recovery prompt; the prep agent now owns file-overlap reasoning + branch state inspection directly on the agent's worktree.
