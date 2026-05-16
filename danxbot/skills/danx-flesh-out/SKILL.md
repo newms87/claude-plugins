@@ -223,7 +223,7 @@ context (you create the children in the SAME dispatch):
    `<worktree>/.danxbot/issues/open/<slug>.yml` with every required
    field populated. Required shape (template):
 
-       schema_version: 7
+       schema_version: 10
        tracker: <copied from parent>
        id: ""                     # worker assigns
        parent_id: "<epic id>"

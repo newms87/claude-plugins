@@ -71,7 +71,7 @@ re-fire the loop after the dispatch is logically over.
      - `ac: [{check_item_id: "", title: "...", checked: false}, ...]`
      - `comments: []`
      - `retro: {good: "", bad: "", action_item_ids: [], commits: []}`
-     - `schema_version: 3`
+     - `schema_version: 10`
      - `tracker: "memory"` (or whichever tracker the repo uses — leave the value the parent YAML carries)
    - Calls `danx_issue_create({filename: "<filename>"})` for each draft. The worker validates, allocates the next `<PREFIX>-N`, stamps it back into the YAML, and renames the file to `<id>.yml`. Captures the returned `id`.
    - Saves discoveries back to `docs/features.md`.

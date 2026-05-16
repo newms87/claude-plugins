@@ -138,7 +138,7 @@ Every multi-agent dispatch begins with the `danxbot:danx-prep` skill running on 
 | `blocked` | Stamp `status: "Blocked"` + `blocked: {reason, timestamp}` on the candidate YAML. |
 | `abort` | Stamp `agents.<name>.broken = {reason, suggested_steps, set_at}` on `<repo>/.danxbot/settings.json`. The picker filters this agent out on every subsequent tick until the operator clears the field via the dashboard Agents tab. |
 
-Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json` (`combined` default). DX-297 retired the legacy `runConflictCheck` precursor dispatch + the `dispatchInRecoveryMode` recovery prompt; the prep agent now owns file-overlap reasoning + branch state inspection directly on the agent's worktree.
+Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json` (`combined` default). DX-297 retired the separate `runConflictCheck` precursor dispatch + the `dispatchInRecoveryMode` recovery prompt; the prep agent now owns file-overlap reasoning + branch state inspection directly on the agent's worktree.
 
 The `agents.<name>.broken` field is a persistent dispatch gate, distinct from per-tick quarantine (DX-221) and `<repo>/.danxbot/CRITICAL_FAILURE` (whole-repo halt). Broken means "this specific agent's worktree is wedged" — the operator clears it after manually unwedging the worktree (e.g. resolving a `git rebase` conflict, force-pushing the agent's branch).
 
@@ -153,7 +153,7 @@ curl -sS -X POST https://<your-danxbot-deployment>/api/launch \
 
 - `workspace` is required. Must match a directory under `<connected-repo>/.danxbot/workspaces/`.
 - `api_token` (Bearer) → `DANXBOT_DISPATCH_TOKEN`. Per-deployment, persisted to SSM at `/<ssm_prefix>/shared/DANXBOT_DISPATCH_TOKEN`.
-- Worker rejects bodies that include legacy `allow_tools` / `agents` / `schema_*` fields — workspace defines the tool surface, not the caller.
+- Worker rejects bodies that include the retired `allow_tools` / `agents` / `schema_*` fields — workspace defines the tool surface, not the caller.
 - Full route table: `/api/launch`, `/api/resume`, `/api/status/:id`, `/api/cancel/:id`, `/api/stop/:id`. See `danxbot/.claude/rules/agent-dispatch.md#external-entry`.
 
 Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That HTTP call IS the boundary. Anything fancier (FS sharing, cross-host kills, `/proc` walks across the boundary) is wrong.

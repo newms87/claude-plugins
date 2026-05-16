@@ -1,6 +1,6 @@
 ---
 name: settings-deep
-description: 'MANDATORY when touching `<repo>/.danxbot/settings.json` schema, ownership, lifecycle, or any reader/writer code. Triggers — editing `src/settings-file.ts`, `src/poller/index.ts` settings reads, `src/slack/listener.ts` settings reads, `src/worker/dispatch.ts` settings reads, `src/worker/syncSettingsFileOnBoot`, dashboard Agents tab handlers (`GET /api/agents[/repo]`, toggle PATCH), `setup` skill seeding logic, `deploy` writers; about to add a new feature toggle or display field; about to bypass `isFeatureEnabled` in an enforcement path; investigating why operator toggles got clobbered after a deploy or worker restart; investigating legacy `trelloPoller` key migration. Loads the schema, ownership matrix, writer-merge invariants, the `isFeatureEnabled` hot-path contract, the why-worker-not-deploy-writes-display rationale, and the legacy key migration as a TodoWrite checklist.'
+description: 'MANDATORY when touching `<repo>/.danxbot/settings.json` schema, ownership, lifecycle, or any reader/writer code. Triggers — editing `src/settings-file.ts`, `src/poller/index.ts` settings reads, `src/slack/listener.ts` settings reads, `src/worker/dispatch.ts` settings reads, `src/worker/syncSettingsFileOnBoot`, dashboard Agents tab handlers (`GET /api/agents[/repo]`, toggle PATCH), `setup` skill seeding logic, `deploy` writers; about to add a new feature toggle or display field; about to bypass `isFeatureEnabled` in an enforcement path; investigating why operator toggles got clobbered after a deploy or worker restart; investigating the pre-rename `trelloPoller` key fallback. Loads the schema, ownership matrix, writer-merge invariants, the `isFeatureEnabled` hot-path contract, the why-worker-not-deploy-writes-display rationale, and the pre-rename key fallback as a TodoWrite checklist.'
 ---
 
 # Per-Repo Settings File Deep Contract
@@ -9,7 +9,7 @@ Always-on reminder: `.claude/rules/settings-file.md` carries the load-bearing 5-
 
 ## TodoWrite checklist (mandatory on first invoke)
 
-1. Identify which contract applies: schema / ownership / writer-merge / reader hot-path / display-refresh / legacy migration.
+1. Identify which contract applies: schema / ownership / writer-merge / reader hot-path / display-refresh / pre-rename key fallback.
 2. If editing an enforcement path (`slack/listener.ts`, `poller/index.ts`, `worker/dispatch.ts`) → MUST go through `isFeatureEnabled`, never `readSettings` directly.
 3. If adding a feature toggle → extend the schema, update `normalize`, update `isFeatureEnabled`, default to env-driven value (or `false` for cost-bearing toggles).
 4. If touching a writer → merge `display` and `overrides` independently; never let one section's patch clobber the other.
@@ -33,7 +33,7 @@ Lock file `<repo>/.danxbot/.settings.lock` serializes concurrent writes via `fs.
 | `deploy`                | `display` + `meta` (indirectly, via worker restart) | After secrets materialize + worker relaunch |
 | `setup`                 | `display` + `meta` (seed) + `overrides` reset to null | Initial `setup` skill run                   |
 
-`SettingsWriter = \`dashboard:${string}\` | "deploy" | "setup" | "worker"` — bare `"dashboard"` is rejected by `normalizeUpdatedBy` and falls back to the default writer on read, so legacy Phase 2/3 files auto-heal on the next write.
+`SettingsWriter = \`dashboard:${string}\` | "deploy" | "setup" | "worker"` — bare `"dashboard"` is rejected by `normalizeUpdatedBy` and falls back to the default writer on read, so pre-Phase-4 files auto-heal on the next write.
 
 **Invariant:** a patch containing only `display` NEVER clobbers `overrides`, and vice versa. `writeSettings` enforces this by merging each section independently. Operator toggles survive every deploy and every restart.
 
@@ -98,8 +98,8 @@ No remote JSON-writing script, no drift between deploy and worker views of confi
 }
 ```
 
-### Legacy `trelloPoller` key migration
+### Pre-rename `trelloPoller` key fallback
 
-Pre-rename settings.json files (deployed boxes that haven't been re-written since the rename) carry `overrides.trelloPoller` instead of `overrides.issuePoller`. Read-side (`normalize` in `src/settings-file.ts`) accepts the legacy key for one release and copies its value into the `issuePoller` slot so operator toggles + `pickupNamePrefix` survive across the rename. Write-side ALWAYS emits `issuePoller`; no code path emits the legacy key. The very next `writeSettings` call canonicalizes the file. A follow-up card retires the read fallback after one release.
+Pre-rename settings.json files (deployed boxes that haven't been re-written since the rename) carry `overrides.trelloPoller` instead of `overrides.issuePoller`. Read-side (`normalize` in `src/settings-file.ts`) accepts the pre-rename key for one release and copies its value into the `issuePoller` slot so operator toggles + `pickupNamePrefix` survive across the rename. Write-side ALWAYS emits `issuePoller`; no code path emits the old key. The very next `writeSettings` call canonicalizes the file. A follow-up card retires the read fallback after one release.
 
 See `src/settings-file.ts` for the canonical TypeScript types and `docs/superpowers/specs/2026-04-20-agents-tab-design.md` for the full design document.

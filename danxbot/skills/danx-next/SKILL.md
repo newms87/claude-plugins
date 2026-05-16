@@ -292,7 +292,7 @@ If you decide NOT to split, skip ahead to Step 4.
 
 1. Edit the parent YAML: set `type: Epic`. Keep `status: In Progress` — the epic stays open while phases work. Append a comment summarizing the split (no `id` field). Don't fill `children[]` yet — you don't have the phase ids until after `danx_issue_create` returns. Save.
 2. For each phase, write a draft YAML at `<repo>/.danxbot/issues/open/<slug>.yml` (filename can be the kebab-case slug; `.yml` suffix optional in the create call — both forms accepted) with every required field populated. Use this template (`<DRAFT_TEMPLATE>`):
-   - `schema_version: 3`
+   - `schema_version: 10`
    - `tracker: <same as parent>`
    - `id: ""` (worker assigns the next `<PREFIX>-N`)
    - `parent_id: "<epic id>"` (the epic's `id`, e.g. `ISS-12`)
@@ -399,9 +399,9 @@ If your dispatch prompt's first paragraph reads `You are <name>.` followed by a 
 
 5. **No-op safety net.** If the script's stdout is `NO_OP` (and stderr contains `no commits ahead of origin/main`) you ran finalize without making any code changes — your dispatch was docs-only, or you forgot to actually edit code. Decide which: docs-only → still Done, leave `retro.commits[]` empty; missing edits → fix them in this dispatch, then re-run finalize. Do NOT push the literal token `NO_OP` into `retro.commits[]`.
 
-### Step 7b — Legacy single-workspace dispatch (no persona block)
+### Step 7b — Single-workspace dispatch (no persona block)
 
-If your dispatch prompt has no `You are <name>.` first paragraph, you are running in the legacy single-workspace mode (`<repo>/.danxbot/workspaces/issue-worker/`). Consult `Git Mode` in `.claude/rules/danx-repo-config.md`:
+If your dispatch prompt has no `You are <name>.` first paragraph, you are running in the single-workspace mode (`<repo>/.danxbot/workspaces/issue-worker/`). Consult `Git Mode` in `.claude/rules/danx-repo-config.md`:
 
 - `auto-merge`: feature branch `danxbot/<kebab-case-title>`, stage + commit, push, merge to main, delete branch.
 - `pr`: feature branch, stage + commit, push, `gh pr create`.

@@ -1,17 +1,16 @@
 ---
 name: requires-human
-description: 'MANDATORY before populating the `requires_human` field on any issue YAML (DX-231, schema_version 6). Triggers — about to set `requires_human: {reason, steps, set_by, set_at}` on a card; about to flip `requires_human` from null to populated mid-dispatch; about to call `danxbot_complete` after setting the field. Loads the whitelist (3rd-party API token rotation, granting access to an external dashboard, manual deploy of vendor infra agent has no programmatic reach into) + blacklist (ambiguous spec, failing test, merge conflict, missing local dependency, manual UI smoke, post-terminal-save state, "needs deploy" — all of which are Blocked or in-session work, NOT requires_human) + termination contract (populate all four fields, save YAML, call danxbot_complete, do NOT also flip status to a terminal value) as TodoWrite checklist. Setting requires_human incorrectly parks a card that the next agent could finish — same class of error as a false `status: Blocked`.'
+description: 'MANDATORY before populating the `requires_human` field on any issue YAML. Triggers — about to set `requires_human: {reason, steps, set_by, set_at}` on a card; about to flip `requires_human` from null to populated mid-dispatch; about to call `danxbot_complete` after setting the field. Loads the whitelist (3rd-party API token rotation, granting access to an external dashboard, manual deploy of vendor infra agent has no programmatic reach into) + blacklist (ambiguous spec, failing test, merge conflict, missing local dependency, manual UI smoke, post-terminal-save state, "needs deploy" — all of which are Blocked or in-session work, NOT requires_human) + termination contract (populate all four fields, save YAML, call danxbot_complete, do NOT also flip status to a terminal value) as TodoWrite checklist. Setting requires_human incorrectly parks a card that the next agent could finish — same class of error as a false `status: Blocked`.'
 audience: worker
 ---
 
 # `requires_human` — Rare 3rd-Party Blockers Only
 
-`requires_human` is an orthogonal field on every issue YAML (DX-231,
-schema_version 6) that signals "this card cannot make progress until a
-human acts." It is **separate** from `status` — the card stays at
-whatever open status it was at, and the poller's dispatch filter
-(`src/poller/local-issues.ts`) skips any card with `requires_human !=
-null` until the field is cleared.
+`requires_human` is an orthogonal field on every issue YAML that signals
+"this card cannot make progress until a human acts." It is **separate**
+from `status` — the card stays at whatever open status it was at, and
+the poller's dispatch filter (`src/poller/local-issues.ts`) skips any
+card with `requires_human != null` until the field is cleared.
 
 This rule defines when an agent may set the field. **Setting it
 incorrectly is the same class of error as a false `status: Blocked`** —
