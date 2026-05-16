@@ -67,7 +67,7 @@ Cards eligible for flesh-out:
 
 | YAML state | Action |
 |---|---|
-| `status: Blocked` AND `blocked.reason` starts with `"Awaiting flesh-out"` (DX-544 create-flow sentinel) | **Flesh out.** This is the canonical entry path when the operator creates a card via the dashboard's Create Card dialog. The dialog stamps the sentinel block to keep the poller from dispatching a work-agent before this flesh-out completes. Parse the embedded starting status out of the sentinel reason (` start as <Review\|ToDo>` token; default `ToDo` if absent / malformed). Run the full flesh-out pass per `status` semantics (stamp triage iff embedded status is Review). **As the FINAL YAML edit** (after every other edit in the "YAML changes — checklist" section), clear `blocked: null` AND set `status: <embedded-target>` in the SAME save — the schema invariant `status === "Blocked" ⟺ blocked !== null` requires both flips in one write. |
+| `status: Blocked` AND `blocked.reason` starts with `"Awaiting flesh-out"` (DX-544 create-flow sentinel) | **Flesh out.** This is the canonical entry path when the operator creates a card via the dashboard's Create Card dialog. The dialog stamps the sentinel block to keep the poller from dispatching a work-agent before this flesh-out completes. Parse the embedded starting status out of the sentinel reason (` start as <Review\|ToDo>` token; default `ToDo` if absent / malformed). Run the full flesh-out pass per `status` semantics (stamp triage iff embedded status is Review). **As the FINAL YAML edit** (after every other edit in the "YAML changes — checklist" section), clear `blocked: null` AND — when the embedded target is `ToDo` — stamp `ready_at: "<current ISO>"` so `deriveStatus` rule 5 projects the card back to `ToDo`. When the embedded target is `Review`, leave `ready_at: null` (the derivation falls through rule 7 to the raw `status: Review` literal on disk). Both edits land in the SAME save. **No direct `status` write** — the field is derived. |
 | `status: Review` AND short / thin `description` AND empty / placeholder `ac[]` | **Flesh out** — full pass; rewrite `description`, populate `ac[]`, stamp `triage{}` (Review path). |
 | `status: ToDo` AND short / thin `description` AND empty / placeholder `ac[]` | **Flesh out** — full pass; rewrite `description`, populate `ac[]`. Do NOT stamp `triage{}` (ToDo cards skip triage). |
 | `status: ToDo / Review` AND `description` already detailed AND `ac[]` already populated | **Refine only** — re-read the description; if it passes the zero-context-test, leave it alone. Add missing `ac[]` items if you find any. Do NOT regress quality. |
@@ -356,15 +356,24 @@ Before the final save:
 6. **DX-544 sentinel-block clear (REQUIRED on the create-flow entry
    path).** When the dispatch entered with `blocked.reason` starting
    with `"Awaiting flesh-out"`, your FINAL YAML edit MUST clear the
-   block AND restore the embedded starting status in the same save:
-   set `blocked: null` AND set `status: <embedded-target>` (parsed
-   from the sentinel reason's ` start as <Review|ToDo>` token;
-   default `ToDo` if parsing fails). Both edits MUST land in the
-   same file write — the schema invariant
-   `status === "Blocked" ⟺ blocked !== null` rejects a half-flipped
-   YAML at parse time. On every OTHER entry path (existing `Review`
-   / `ToDo` card, refine-only, epic), do NOT touch `status` /
-   `blocked` — they are owned by other lifecycle steps.
+   block AND restore the embedded starting status via lifecycle
+   triggers in the same save. Parse the ` start as <Review|ToDo>`
+   token from the sentinel reason (default `ToDo` if parsing fails),
+   then:
+   - **Embedded target `ToDo`** — set `blocked: null` AND stamp
+     `ready_at: "<current ISO>"`. `deriveStatus` rule 3 stops firing
+     once `blocked.at` clears; rule 5 then projects the card to
+     `ToDo` off `ready_at`.
+   - **Embedded target `Review`** — set `blocked: null` AND leave
+     `ready_at: null`. With no lifecycle trigger populated,
+     `deriveStatus` rule 7 falls through to the raw `status: Review`
+     literal already on disk.
+   Both edits MUST land in the same file write. **Do NOT write
+   `status:` directly** — the field is derived; the raw literal on
+   disk is round-trip stability only. On every OTHER entry path
+   (existing `Review` / `ToDo` card, refine-only, epic), do NOT
+   touch `status` / `blocked` / `ready_at` — they are owned by
+   other lifecycle steps.
 7. NO other field touched (dispatch, waiting_on on THIS card,
    retro, parent_id).
 
