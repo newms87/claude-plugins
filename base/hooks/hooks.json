@@ -1,5 +1,5 @@
 {
-  "description": "Plugin skill load mandate + convey high-yield-communication mandate. Both fire on SessionStart only — per-prompt re-injection wastes tokens; the discipline persists across the session.",
+  "description": "Plugin skill load mandate + convey high-yield-communication mandate (SessionStart) and destructive-DB-operation deny guard (PreToolUse Bash).",
   "hooks": {
     "SessionStart": [
       {
@@ -11,6 +11,17 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/convey-mandate.sh SessionStart"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/deny-destructive-db.sh"
           }
         ]
       }
