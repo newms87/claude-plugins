@@ -5,33 +5,28 @@ description: 'Stage and commit changes with a summary table.'
 
 # Commit Workflow
 
-`/pipe-commit` IS the confirmation. Never ask "Ready to commit?" — just do it.
+`/pipe-commit` IS the confirmation. Never ask "Ready to commit?" — just do it. Never gate on pipe-review / pipe-quality having run.
 
 ---
 
-## Step 0 — Pipeline Preflight (MANDATORY)
+## Order of Operations (LOAD-BEARING)
 
-Before any other action, verify in the CURRENT phase's turn window:
-
-1. `/pipe-review` (or the `pipe-review` skill) was invoked AND every finding was addressed (fixes committed/staged, or explicitly classified out-of-scope/rationalization-rejected).
-2. `/pipe-quality` was invoked.
-
-**If either is missing, ABORT with this exact text and stop:**
+When the user says "commit" — or invokes `/pipe-commit` — **save the code immediately**. Commit + push first. Code review happens AFTER, as a separate commit.
 
 ```
-Phase pipeline incomplete. Missing: [code-review | quality-check].
-Run those before /pipe-commit.
+[user says "commit"] → /pipe-commit (commit A: implementation)
+                     → /pipe-review (3 reviewer agents)
+                     → fix findings
+                     → /pipe-quality (audit skips)
+                     → /pipe-commit again (commit B: review fixes)
 ```
 
-Then wait for the user. Do NOT stage, do NOT commit, do NOT proceed to Step 1.
+**Why this order:**
+- A commit is durable storage. Delaying it to "first run review" risks losing work to a crash / session timeout / user interruption.
+- Reviewers operate against pushed code — every other consumer (CI, the user's editor, sibling agents) reads from `origin/main`, not from the unstaged tree. Push first → review sees the same bytes everyone else does.
+- Two commits cleanly separate "what the agent implemented" from "what the reviewers caught" — the diff history shows the cost of each round.
 
-**This gate applies even under `/danx-start`, `/danx-next`, or any "all phases pre-approved" mode.** Pre-approval covers RUNNING the pipeline, not skipping it.
-
-**Single legitimate bypass:** the user passes `--skip-pipeline` in `/pipe-commit`'s arguments AND the commit body explains why (emergency hotfix, revert, doc-only typo, etc.). Without both, never bypass.
-
-**Detection mechanism:** scan the recent conversation turns for explicit invocations of `pipe-review` / `pipe-quality` skills (their `Skill` tool calls or `<command-name>` markers) within the current phase boundary. The phase boundary is the most recent `/pipe-start`, `/next-phase`, or session start, whichever is later. Honor-system self-attestation is ALSO required — if you can't quote a specific tool call or marker, the gate is missing.
-
-The point of this step is to invert the cost: skipping the pipeline must be MORE work (arguing with this gate, getting `--skip-pipeline` user-auth) than following it.
+**Forbidden gate:** there is NO Step 0 preflight that checks whether pipe-review or pipe-quality already ran. The previous version of this skill aborted with "Phase pipeline incomplete" when those skills hadn't fired — that was wrong. Commit-on-instruction is unconditional. Review-then-commit-fixes is the second loop, not a prerequisite.
 
 ---
 

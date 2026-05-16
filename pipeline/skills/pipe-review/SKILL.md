@@ -1,11 +1,13 @@
 ---
 name: pipe-review
-description: 'Post-implementation review. Runs reviewer agents in parallel, fixes ALL findings before committing.'
+description: 'Post-commit review. Runs reviewer agents in parallel against the just-pushed commit; ALL findings ship as a SEPARATE follow-up commit.'
 ---
 
-# Post-Implementation Code Review
+# Post-Commit Code Review
 
-Post-implementation review step in the development pipeline. Runs reviewer agents and fixes ALL findings before committing. The primary goal is that every file you touched is in perfect shape — feature delivery is secondary to code quality.
+Post-commit review step in the development pipeline. Runs reviewer agents AFTER the implementation commit has been pushed. The primary goal is that every file you touched is in perfect shape — feature delivery is secondary to code quality.
+
+**Order of operations:** `/pipe-commit` (implementation commit) → `/pipe-review` (this skill) → fix findings → `/pipe-quality` → `/pipe-commit` (review-fixes commit). Two commits per cycle. The implementation commit is durable BEFORE the reviewers run; the review-fixes commit captures everything they caught.
 
 ---
 
@@ -88,7 +90,7 @@ If any finding reveals a pattern that could prevent future mistakes (a missing r
 ## Rules
 
 - **You are the author — agents are the reviewers.** Never skip this step because you're confident in your code.
-- **Fix before committing.** ALL findings must be fixed before `/pipe-commit`. No deferring, no "flagging for later."
+- **Fix every finding in the review-fixes commit.** All findings ship as a separate `/pipe-commit` AFTER this skill runs. No deferring, no "flagging for later" — the review-fixes commit closes the cycle.
 - **Always create a revisions plan.** Never fix findings ad-hoc without a plan. The plan ensures nothing gets lost and provides a clear record of what was done.
 - **Never pollute the main plan file.** Review findings and revision tracking belong in the temp revisions plan only.
 - **Always run `/pipe-quality` after fixing.** This is what catches rationalizations and skipped findings.
