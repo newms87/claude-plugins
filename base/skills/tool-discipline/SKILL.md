@@ -52,6 +52,8 @@ Long-running process (worker, dev server, build watch, deploy, test suite that t
 
 The Bash tool's background mode is the single canonical mechanism. Shell `&` is never the right choice in Claude Code.
 
+**Per-command gate, NOT per-session.** Every individual Bash command containing `nohup`, trailing `&`, `disown`, or `setsid` is a fresh trigger — re-confirm `run_in_background: true` is set on THIS Bash call before issuing it. Prior correct use of `run_in_background` earlier in the session does NOT amortize the check; copying a pattern from an earlier turn that used shell `&` is a known failure mode (observed 2026-05-16: agent relaunched a worker via `nohup … &` because the previous turn that started it also used `nohup … &` and the agent copied the shape without re-evaluating). Treat every long-running spawn as if it is the first one this session. The "I already did this once correctly" / "same kind of relaunch as last time" reflex is exactly when this rule rots.
+
 ## Browser Automation
 
 Use `mcp__claude-in-chrome__*` tools only, never Playwright. Start with `tabs_context_mcp`, then `tabs_create_mcp`, `navigate`, `computer` (screenshot/click/type), `read_page` (accessibility tree), `read_console_messages` (with pattern filter).
