@@ -9,10 +9,10 @@ Purpose: turn a `Blocked` card (or one with non-null `waiting_on`) into a one-sc
 
 ## v4 vocabulary primer
 
-- **`status: "Blocked"`** + `blocked: {reason, timestamp}` — **self-block.** The card itself cannot proceed (formerly `Needs Help`). A human or next dispatch must clear it. Invariant: `status === "Blocked" ⟺ blocked !== null`.
+- **`blocked: {at, reason}`** — **self-block.** Stamping `blocked.at` derives the card's status to `Blocked` via `deriveStatus` (rule 3). The card itself cannot proceed (formerly `Needs Help`). A human or next dispatch must clear it. Invariant: `blocked.at !== null` → derived status is `Blocked`.
 - **`waiting_on: {reason, timestamp, by[]}`** — **dep-chain dispatch gate, independent of `status`.** The card is fine; it's waiting for the issues in `by[]` to terminal-finish. Picker skips dispatch while any dep is non-terminal; the record itself is durable (never auto-cleared by the system).
 
-This skill applies to BOTH — `Blocked` (because a human likely needs to act) and `waiting_on` (because the operator may want to know what the card is queued behind).
+This skill applies to BOTH — derived `Blocked` (because a human likely needs to act) and `waiting_on` (because the operator may want to know what the card is queued behind).
 
 ## When to invoke
 
@@ -47,7 +47,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
    Mixed (some local, some human-only) → write the playbook only for the human-only steps; execute the local steps yourself first, then surface only what remains.
 
    **Demote procedure:**
-   - Set `status: "In Progress"`. If the YAML had a `blocked` record, set `blocked: null` in the same edit (the worker enforces `status === "Blocked" ⟺ blocked !== null` and will reject the save otherwise).
+   - Clear `blocked: null`. Worker derives status away from `Blocked` once `blocked.at` is null; the next dispatch start re-stamps `ready_at` + populates the dispatch sidecar (auto-flips derived status to `In Progress`). Never write `ready_at` from this skill — `ready_at` is set by triage Approve OR by the dispatch auto-flip.
    - Append a comment naming the misclassification: which steps were local-runnable, what you ran, what the outcome was.
    - Do the work.
    - Update AC + close per normal `issue-card-workflow`.
@@ -111,7 +111,7 @@ Overlap found → invoke `unblock` on the upstream card FIRST and surface the de
 | Single-path "do these steps and you're done" | Always two outcome branches |
 | Verbose narrative | Bullets + commands; no prose paragraphs in the report |
 | Skip the operator-action section because "obvious" | Operator did not read the card; spell it out |
-| Set `status: "Blocked"` without setting `blocked: {reason, timestamp}` (or vice versa) | Both move together — worker rejects the save otherwise |
+| Stamp `blocked.at` without `blocked.reason` (or vice versa) | Both fields move together — `deriveStatus` reads `blocked.at`, the operator reads `blocked.reason` |
 
 ## Boundary with `issue-card-workflow`
 
@@ -119,6 +119,6 @@ Overlap found → invoke `unblock` on the upstream card FIRST and surface the de
 
 ## Blocked Gate (Pre-Write Check)
 
-Before setting any issue card to `status: "Blocked"` (with the matching `blocked: {reason, timestamp}` record): walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation.
+Before stamping `blocked: {at, reason}` on any issue card (which derives the card to `Blocked` via `deriveStatus`): walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation.
 
 This is the symmetric write-side check: `unblock` (above) catches misclassified cards on the read side. The Blocked gate catches them on the write side. A card that fails this check should never have been marked `Blocked` in the first place — fix the work, not the status.

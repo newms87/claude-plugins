@@ -9,7 +9,7 @@ audience: worker
 You are about to mark a card Blocked. STOP. Most "blockers" are not real
 blockers — they are rationalizations of avoidable work. Run this
 checklist first. EVERY item must pass. If even one fails, you are NOT
-authorized to write `status: Blocked` — return to in-session work,
+authorized to stamp `blocked: {at, reason}` — return to in-session work,
 Action Item creation, or AC rewrite per the path the failed item names.
 
 ## Why this gate exists
@@ -29,7 +29,7 @@ Blocked move > the cost of running this 8-item checklist.
 
 | symptom | correct field | cleared by |
 |---|---|---|
-| Human must supply *information / a decision* the agent cannot derive (ambiguous spec, design call, write-only repo, missing input the agent could use if it had it) | `status: "Blocked"` + `blocked: {reason, timestamp}` | Human (writes comment / opens card / next dispatch flips status back to ToDo + clears `blocked`) |
+| Human must supply *information / a decision* the agent cannot derive (ambiguous spec, design call, write-only repo, missing input the agent could use if it had it) | `blocked: {at, reason}` (derives status → `Blocked` via `deriveStatus` rule 3) | Human (writes comment / opens card / next dispatch clears `blocked: null` — worker re-stamps `ready_at` + populates dispatch sidecar) |
 | Human must take *external action on a system the agent has zero programmatic reach into* (3rd-party token rotation, vendor dashboard click-through, manual deploy of external infra, restart of infrastructure the agent cannot launch) | `requires_human: {reason, steps[], set_by, set_at}` | Human via dashboard "Mark Resolved" affordance (PATCHes field to `null`) |
 | This card waits for ONE+ specific other card(s) to terminate (semantic dep declared up-front on the YAML — phase sibling, action-item card, separately-scoped task) | `waiting_on: {reason, by: [ISS-N, ...], timestamp}` | Picker auto-dispatches the moment every id in `by[]` reaches Done/Cancelled. The `waiting_on` record itself stays as durable dep-history note. |
 | File-overlap / in-flight race with sibling card(s) discovered at dispatch time by `/danx-prep` | `conflict_on: [{id, reason}, ...]` | Prep verdict re-stamps the field next dispatch attempt; partner card termination clears it |
@@ -72,7 +72,7 @@ At T0 the card had ALL FOUR set; the four clearance events are independent + eac
 - `waiting_on` for an operator-needed action → silently dispatches the moment the named card terminates, without the human action having happened.
 - `requires_human` for an information gap → parks the card on the human-action queue when the unblock is a comment reply; operator scans the wrong queue.
 
-If you're about to write `status: Blocked` because "this can't dispatch right now," check the table above FIRST. If the right field is `requires_human` or `waiting_on` or `conflict_on[]`, use that — and use it INSTEAD OF Blocked (don't flip status to Blocked just because Blocked is the field name you remember). Multiple causes → set multiple fields. The picker handles the rest.
+If you're about to stamp `blocked: {at, reason}` because "this can't dispatch right now," check the table above FIRST. If the right field is `requires_human` or `waiting_on` or `conflict_on[]`, use that — and use it INSTEAD OF stamping `blocked` (don't reach for `blocked.at` just because Blocked is the gate name you remember). Multiple causes → set multiple fields. The picker handles the rest.
 
 ## The Checklist — every item MUST pass
 
@@ -206,10 +206,9 @@ the root cause?
 ## After all 8 items pass
 
 Only then are you authorized to:
-1. Set `status: "Blocked"`.
-2. Populate `blocked: {reason, timestamp}` per Step 10 of `danx-next/SKILL.md`.
-3. Append the `## Blocked` comment.
-4. Call `danxbot_complete({status: "failed", summary: "..."})`.
+1. Stamp `blocked: {at: <now ISO>, reason: <one sentence>}` per Step 10 of `danx-next/SKILL.md`. Worker derives `Blocked` from `blocked.at` (rule 3) — do NOT also write `status:`.
+2. Append the `## Blocked` comment.
+3. Call `danxbot_complete({status: "failed", summary: "..."})`.
 
 Quote the 8 PASS results into a `## Blocker self-audit` section of the
 Blocked comment so the operator can audit your reasoning. If you

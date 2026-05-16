@@ -7,8 +7,9 @@ audience: worker
 # Don't Block On These — False Blocker Patterns
 
 Three patterns commonly mistaken for human-action blockers. **None of them
-are valid `status: Blocked` reasons.** Use the in-session resolution below;
-keep the card moving.
+are valid reasons to stamp `blocked: {at, reason}` (which derives the card to
+`Blocked` via `deriveStatus`).** Use the in-session resolution below; keep the
+card moving.
 
 These extend (do NOT override) `danx-next/SKILL.md` Step 10 — Step 10 stays
 the authoritative menu. This rule names the patterns Step 10 does not yet
@@ -184,9 +185,9 @@ derivation function IS the verification.
 
 ## Generalized rule
 
-A card is **Blocked** only when a HUMAN ACTION (credential rotation,
-external repo write access, ambiguous spec needing a design decision) is
-the next step. Three things that are NOT human actions:
+A card derives to **Blocked** (via `blocked.at`) only when a HUMAN ACTION
+(credential rotation, external repo write access, ambiguous spec needing a
+design decision) is the next step. Three things that are NOT human actions:
 
 | Apparent blocker | Actual class | Resolution |
 |---|---|---|
@@ -194,7 +195,8 @@ the next step. Three things that are NOT human actions:
 | "Manual UI smoke" AC | Wording defect or programmatic substitute available | Component test → playwright → rewrite AC |
 | Post-terminal-save behavior verification | Self-referential AC | Rewrite AC to point at the unit test for the code path |
 
-Before writing `status: Blocked`, mechanically run this checklist:
+Before stamping `blocked: {at, reason}` (which derives the card to `Blocked`),
+mechanically run this checklist:
 
 1. Does this require a HUMAN to act (rotate credentials, push to SSM,
    make a design decision, edit a repo I cannot write to)? **No → not

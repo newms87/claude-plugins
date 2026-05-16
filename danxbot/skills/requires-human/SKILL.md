@@ -13,11 +13,11 @@ the poller's dispatch filter (`src/poller/local-issues.ts`) skips any
 card with `requires_human != null` until the field is cleared.
 
 This rule defines when an agent may set the field. **Setting it
-incorrectly is the same class of error as a false `status: Blocked`** —
-it parks a card that the next agent could finish, costs operator
-attention, and inflates the visible "needs human" queue until someone
-audits it. Use the whitelist + blacklist below mechanically; do not
-improvise.
+incorrectly is the same class of error as a false `blocked: {at, reason}`
+stamp** — it parks a card that the next agent could finish, costs
+operator attention, and inflates the visible "needs human" queue until
+someone audits it. Use the whitelist + blacklist below mechanically; do
+not improvise.
 
 ## What it is
 
@@ -77,21 +77,24 @@ keyring is this gated on?"
 ## When NOT to set — blacklist (typical Blocked cases must stay Blocked)
 
 Do NOT set `requires_human` for any of the following — these are
-`status: Blocked` cases (or in-session work):
+`blocked: {at, reason}` cases (which derive the card's status to
+`Blocked` via `deriveStatus`) or in-session work:
 
-- **Ambiguous spec** → `status: Blocked` with the question in the comment.
-  The human is supplying *information*, not performing an external
-  action. Blocked is the right channel.
-- **Failing test the agent can't fix** → `status: Blocked` (after
-  exhausting `danx-next/SKILL.md` Step 1.5 fix-it-yourself). The agent
-  needs a human to investigate, not to rotate a token.
-- **Merge conflict** → `status: Blocked`. The next dispatched agent (or
-  the operator on the host) resolves it; nothing 3rd-party is involved.
+- **Ambiguous spec** → stamp `blocked: {at, reason}` with the question
+  in the comment. The human is supplying *information*, not performing
+  an external action. Blocked (derived) is the right channel.
+- **Failing test the agent can't fix** → stamp `blocked: {at, reason}`
+  (after exhausting `danx-next/SKILL.md` Step 1.5 fix-it-yourself). The
+  agent needs a human to investigate, not to rotate a token.
+- **Merge conflict** → stamp `blocked: {at, reason}`. The next dispatched
+  agent (or the operator on the host) resolves it; nothing 3rd-party is
+  involved.
 - **Missing local dependency** (npm package, vendor lib, container) →
-  `status: Blocked`. The host's dependency state is not a 3rd-party
-  system; the operator runs a local install.
-- **Need to ask a clarifying question** → `status: Blocked` with the
-  question in the comment. The reply is information, not external action.
+  stamp `blocked: {at, reason}`. The host's dependency state is not a
+  3rd-party system; the operator runs a local install.
+- **Need to ask a clarifying question** → stamp `blocked: {at, reason}`
+  with the question in the comment. The reply is information, not
+  external action.
 - **Pre-existing flaky test in unrelated file** → `.claude/rules/danx-no-false-blockers.md` Pattern 1. File an Action Item card; check the AC; proceed. Neither Blocked nor `requires_human`.
 - **AC says "manual UI smoke" / "operator clicks X"** → `.claude/rules/danx-no-false-blockers.md` Pattern 2. Component test or playwright drive; check the AC; proceed.
 - **AC verifies post-`danxbot_complete` state** → `.claude/rules/danx-no-false-blockers.md` Pattern 3. Rewrite the AC against the unit test for the derivation function.
@@ -102,8 +105,8 @@ The rule is enforced by skill text + reviewer judgment, not by code.
 The triage agent and the worker dispatch path read this file; the next
 dispatched agent reads it; the dashboard reviewer reads it. If you set
 `requires_human` for a blacklisted reason, the next triage pass is
-allowed to clear it and re-route the card to `Blocked` — your save
-will be undone.
+allowed to clear it and re-route the card to derived `Blocked` (by
+stamping `blocked: {at, reason}`) — your save will be undone.
 
 ## How to set
 
@@ -124,11 +127,18 @@ that was not knowable at pickup time:
 2. Save the YAML with `Edit` / `Write`. The watcher mirrors the change
    to the DB; the post-completion auto-sync pushes the tracker label.
 
-3. Do NOT also flip `status`. The field is enough — the poller's
-   dispatch filter handles the rest. Leave `status` at whatever open
-   value it was at (`Review`, `ToDo`, `In Progress`, `Blocked` are all
-   fine; `Done` / `Cancelled` cards should never get `requires_human`
-   set since they are already terminal).
+3. Do NOT also write `status` or stamp any lifecycle trigger
+   (`completed_at`, `cancelled_at`, `blocked.at`). The `requires_human`
+   field is enough — the poller's dispatch filter handles the rest.
+   Status is derived; leave the trigger fields alone (`Review`, `ToDo`,
+   `In Progress`, derived `Blocked` are all fine starting points; `Done`
+   / `Cancelled` cards should never get `requires_human` set since they
+   are already terminal). On the terminating `danxbot_complete` call,
+   the worker auto-stamps the right lifecycle trigger based on the
+   `status` arg you pass — for the requires_human path, use
+   `status: "completed"` (see termination contract below); the worker
+   does NOT add a competing terminal stamp because the dispatch ended
+   with `requires_human != null`.
 
 ### Example — good
 
@@ -156,7 +166,8 @@ requires_human:
 
 The reason is information-supplying ("need someone to look at"), not an
 external action; the step is not executable by a non-engineer; the gate
-is `status: Blocked`, not `requires_human`.
+is `blocked: {at, reason}` (which derives the card to `Blocked`), not
+`requires_human`.
 
 ## Termination contract
 
@@ -165,8 +176,13 @@ from `null` to populated during this session), the dispatch ends:
 
 1. Save the YAML with the populated `requires_human` block.
 2. Call `danxbot_complete({status: "completed", summary: "Set requires_human — see field"})` and stop.
-3. Do NOT also flip `status` to a terminal value, do NOT fill `retro`,
-   do NOT continue working on the card.
+3. Do NOT stamp any terminal lifecycle trigger (`completed_at`,
+   `cancelled_at`, `blocked.at`), do NOT write `status` directly, do NOT
+   fill `retro`, do NOT continue working on the card. The worker's
+   post-completion auto-sync detects `requires_human != null` as the
+   terminal dispatch state — it does not add a competing lifecycle
+   stamp, so the card's derived status stays at its pre-dispatch value
+   while the human gate holds.
 
 The human is the next actor. The poller will skip the card on every
 subsequent tick until the human clears the field. When they do, the
