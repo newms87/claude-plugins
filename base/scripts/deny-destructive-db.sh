@@ -41,7 +41,7 @@ if [ -z "$MATCH" ]; then
   exit 0
 fi
 
-REASON="BLOCKED: destructive database operation detected (\"$MATCH\"). Resetting / refreshing / wiping / dropping the database is NEVER permitted for any agent in any situation — not even on a testing database. This is a HUMAN-ONLY operation. You have just attempted an illegal action. DO NOT try to accomplish the same effect by another route (raw psql DROP, TRUNCATE loops, delete-then-migrate, recreating the docker volume, etc.) — every workaround is also forbidden. If the database genuinely must be reset, STOP and report to the human operator that you need them to do it manually. Continue your task without resetting the database."
+REASON="BLOCKED: destructive database operation detected (\"$MATCH\"). Direct destructive commands are NEVER permitted at the Bash boundary. DO NOT try to accomplish the same effect by another route (raw psql DROP, TRUNCATE loops, delete-then-migrate, recreating the docker volume, chmod-ing or editing the sanctioned script, copying its body into your own command, etc.) — every workaround is also forbidden and will be blocked. The sanctioned path for resetting the WORKTREE'S OWN database is the \`danxbot:db-reset\` skill — invoke it via the Skill tool. The skill loads the contract and points you at \`<worktree>/.danxbot/safe-reset-db.sh\`, the only command authorized to reset a worktree DB (safe because Phase 1 / DX-571 guarantees the worktree role cannot reach primary). If no \`safe-reset-db.sh\` exists at that path for this consumer repo, STOP and report to the human operator — do not invent a workaround. Continue your task without bypassing this guard."
 
 jq -n --arg reason "$REASON" '{
   hookSpecificOutput: {
