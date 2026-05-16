@@ -53,7 +53,7 @@ Never manually run `git add` + `git commit`. Always invoke `/flow-commit` via Sk
 
 Every commit followed by `git push` in same flow. Push not optional + not gated on separate user request — `/flow-commit` runs automatically. Only exceptions:
 
-- **Push rejected non-fast-forward** — run `git pull --rebase` ONCE. Clean rebase → push again, report outcome. Rebase conflicts → `git rebase --abort` immediately, then STOP and ask the user per-file. Never auto-resolve, never `-Xtheirs` / `-Xours`, never `git checkout` / `git restore` to "fix" a conflict (see ABSOLUTE rules above). Conflict resolution is wholesale-overwrite territory — user must direct it.
+- **Push rejected non-fast-forward** — run `git pull --rebase` ONCE. Clean rebase → push again, report outcome. Rebase conflicts → **resolve in place by hand**: read BOTH sides of every `<<<<<<<` / `=======` / `>>>>>>>` marker, produce a merged result that keeps the intent of both edits (do NOT pick one side wholesale unless semantically identical), `git add` resolved paths, run the relevant tests + typecheck, `git rebase --continue`. Repeat for further commits. Re-push after the rebase completes. Conflict resolution is YOUR job — "I don't know which side wins" is a research question, not an operator question; read both diffs + decide. Only abort + ask the user when the conflict is genuinely outside both cards' scope (e.g. a file deleted by a third party with no clear intent). FORBIDDEN shortcuts: `-Xtheirs` / `-Xours` strategy options, `git checkout HEAD -- <path>`, `git restore <path>`, any wholesale-overwrite (see ABSOLUTE rules above) — those destroy one side's intent. The ban is on wholesale overwrite, NOT on resolution itself.
 - **Push fails for other reasons** (no upstream, auth, network) — report failure + stop. Never force-push to recover.
 - **User explicitly says "don't push"** for this commit.
 
@@ -162,7 +162,7 @@ Wrote 100% of everything in every repo — committed, uncommitted, tracked, untr
 
 **Via pipeline:** `git add` + `git commit` + `git push` when executing `/flow-commit` (automatically allowed)
 
-**`git pull --rebase` on push rejection:** allowed ONCE per push-rejection. Conflict-free rebase → re-push. Conflict → `git rebase --abort` + ask user. Interactive rebase, rebase onto arbitrary ref, `--continue` past conflicts, `-X` strategy options: not allowed without explicit user request.
+**`git pull --rebase` on push rejection:** allowed ONCE per push-rejection. Conflict-free rebase → re-push. Conflict → resolve in place by hand (read both diffs, merge intents, `git add`, run tests, `git rebase --continue`); see "Push rejected non-fast-forward" above for the full procedure. Abort + ask the user ONLY when the conflict is outside both cards' scope. Interactive rebase, rebase onto arbitrary ref, `-X` strategy options: not allowed without explicit user request.
 
 **Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request
 
