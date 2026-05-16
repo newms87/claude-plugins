@@ -28,11 +28,12 @@ if [ -z "$COMMAND" ]; then
 fi
 
 # Patterns that destroy or globally reset database state.
-# - migrate:fresh / migrate:refresh / migrate:reset / migrate:rollback — Laravel destructive migrations
+# - migrate:fresh / migrate:refresh / migrate:reset — Laravel destructive migrations
+#   (migrate:rollback is allowed — reversible during migration dev work)
 # - db:wipe — Laravel drop-all-tables
 # - DROP DATABASE / DROP SCHEMA — raw SQL
 # - dropAllTables / dropAllViews / dropAllTypes — schema builder destructive APIs
-PATTERN='(artisan[[:space:]]+(migrate:fresh|migrate:refresh|migrate:reset|migrate:rollback|db:wipe)|DROP[[:space:]]+DATABASE|DROP[[:space:]]+SCHEMA)'
+PATTERN='(artisan[[:space:]]+(migrate:fresh|migrate:refresh|migrate:reset|db:wipe)|DROP[[:space:]]+DATABASE|DROP[[:space:]]+SCHEMA)'
 
 MATCH=$(echo "$COMMAND" | grep -oiE "$PATTERN" | head -1 || true)
 
