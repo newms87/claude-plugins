@@ -23,19 +23,56 @@ uncommitted diffs an agent should have ignored. Every one of those
 re-dispatches the next agent into the same trap. The cost of one false
 Blocked move > the cost of running this 8-item checklist.
 
-## Field selection — `blocked` vs `waiting_on` vs `conflict_on[]`
+## Field selection — `blocked` vs `waiting_on` vs `requires_human` vs `conflict_on[]`
 
-Three orthogonal fields. Picking the wrong one is itself a workflow violation — `blocked` is NOT the generic "stop dispatch" verb.
+**Four orthogonal dispatch gates. ALL FOUR may coexist on one card simultaneously — by design.** Each models a different real-world reason a card cannot dispatch right now, each is cleared by a different actor / event, and the picker AND-s them: card dispatches only when EVERY gate is null. Picking the wrong field for a given cause is the workflow violation — NOT setting more than one. `blocked` is NOT the generic "stop dispatch" verb.
 
-| symptom | correct field | meaning |
+| symptom | correct field | cleared by |
 |---|---|---|
-| Human must take an action you cannot do (rotate token, grant access, restart prod infra) | `status: "Blocked"` + `blocked: {reason, timestamp}` | hard halt, only operator clears |
-| This card must wait for ONE specific other card to terminate (semantic dependency declared up-front on the YAML) | `waiting_on: {reason, by: [DX-N, ...], timestamp}` | durable dispatch gate, independent of status; picker skips while any `by[]` partner non-terminal |
-| File-overlap or in-flight race with sibling card(s) discovered at dispatch time by `/danx-prep` | `conflict_on: [{id, reason}, ...]` | dynamic dispatch gate stamped by the prep verdict; picker skips while any partner non-terminal |
+| Human must supply *information / a decision* the agent cannot derive (ambiguous spec, design call, write-only repo, missing input the agent could use if it had it) | `status: "Blocked"` + `blocked: {reason, timestamp}` | Human (writes comment / opens card / next dispatch flips status back to ToDo + clears `blocked`) |
+| Human must take *external action on a system the agent has zero programmatic reach into* (3rd-party token rotation, vendor dashboard click-through, manual deploy of external infra, restart of infrastructure the agent cannot launch) | `requires_human: {reason, steps[], set_by, set_at}` | Human via dashboard "Mark Resolved" affordance (PATCHes field to `null`) |
+| This card waits for ONE+ specific other card(s) to terminate (semantic dep declared up-front on the YAML — phase sibling, action-item card, separately-scoped task) | `waiting_on: {reason, by: [ISS-N, ...], timestamp}` | Picker auto-dispatches the moment every id in `by[]` reaches Done/Cancelled. The `waiting_on` record itself stays as durable dep-history note. |
+| File-overlap / in-flight race with sibling card(s) discovered at dispatch time by `/danx-prep` | `conflict_on: [{id, reason}, ...]` | Prep verdict re-stamps the field next dispatch attempt; partner card termination clears it |
 
-Wrong choice consequences — `blocked` for a sibling-wait pattern parks the card behind an operator gate that nobody will ever clear; `waiting_on` for an operator-needed action silently dispatches when the named card terminates without the human action having happened.
+### Coexistence is the normal case, not the rare case
 
-If you're about to write `status: Blocked` because "this can't dispatch right now," check the table above FIRST. If the right field is `waiting_on` or `conflict_on[]`, use that instead — and do NOT also flip status to Blocked.
+The four fields each model an independent real-world cause. A card can — and frequently SHOULD — carry more than one. Example timeline:
+
+```
+T0: card written w/ all 4 gates set
+    waiting_on   = [prev-phase]      (deps not shipped)
+    conflict_on  = [sibling]         (file overlap detected by prep)
+    blocked      = "needs design call on cache key shape"
+    requires_human = "needs Stripe key rotation"
+
+T1: prep dispatch re-runs → sibling terminated → conflict_on cleared
+T2: previous phase ships → waiting_on auto-cleared by picker on next tick
+T3: operator answers design question via dashboard → next dispatch flips
+    status back to ToDo + nulls blocked
+T4: operator rotates Stripe key + clicks "Mark Resolved" → requires_human nulled
+T5: all four gates null → picker dispatches
+```
+
+At T0 the card had ALL FOUR set; the four clearance events are independent + each handled by its own flow.
+
+### Routing — pick the field, not "the dispatch gate I remember"
+
+| You catch yourself thinking … | Right field | NOT |
+|---|---|---|
+| "Operator must run `make launch-worker-host` / restart the worker / re-deploy / run command X on host" | `requires_human` (external action on a system the agent cannot reach) | `status: Blocked` — that's for *information / decision* gaps; restarting infra is *external action* |
+| "I need a design decision before I can pick between architectures A and B" | `status: Blocked` + `blocked` (information gap) | `requires_human` — operator types an answer, doesn't touch an external system |
+| "Phase 4 needs Phase 3's migration to ship first" | `waiting_on: {by: ["<phase-3>"]}` | `status: Blocked` — that parks the card behind an operator gate nobody will ever clear |
+| "Sibling card is editing the same file in-flight; prep flagged it" | `conflict_on: [{id: "<sibling>", reason}]` | `waiting_on` — `waiting_on` is durable, declared up-front; `conflict_on` is dispatch-time race detection |
+| "Another agent's uncommitted diff broke my test" | Neither — interruption, not blocker. Note in `comments[]`, proceed with what you can verify. | Any of the above |
+
+### Wrong-field consequences
+
+- `status: Blocked` for an external-action cause → parked behind a hint operator may not see in their banner; dashboard's blocked card list and requires_human list are separate operator queues. External actions belong on the latter.
+- `status: Blocked` for a sibling-wait → never auto-dispatches; nobody will clear it; rots forever.
+- `waiting_on` for an operator-needed action → silently dispatches the moment the named card terminates, without the human action having happened.
+- `requires_human` for an information gap → parks the card on the human-action queue when the unblock is a comment reply; operator scans the wrong queue.
+
+If you're about to write `status: Blocked` because "this can't dispatch right now," check the table above FIRST. If the right field is `requires_human` or `waiting_on` or `conflict_on[]`, use that — and use it INSTEAD OF Blocked (don't flip status to Blocked just because Blocked is the field name you remember). Multiple causes → set multiple fields. The picker handles the rest.
 
 ## The Checklist — every item MUST pass
 
@@ -63,8 +100,10 @@ a design decision that changes the goal of the card.
     of `danx-no-false-blockers.md`. Use component test → playwright →
     rewrite AC.
   - "Operator must restart the worker / deploy / run X command" → not
-    a Done gate. See `danx-next/SKILL.md` Step 10 forbidden-blocker
-    list.
+    `status: Blocked`. This is an *external action* on infra the agent
+    cannot reach → use `requires_human` (see Field selection table
+    above). Distinct from Blocked (= human supplies *information*).
+    See `danx-next/SKILL.md` Step 10 forbidden-blocker list.
 
 ### 2. Is there an uncommitted working-tree diff involved?
 
@@ -183,6 +222,8 @@ cannot quote 8 PASS results, you have not earned the Blocked move.
 | "Operator must decide revert vs keep silent-fallback" | Item 1 — silent-fallback violates `dev:code-quality`; the choice is obvious. Decide unilaterally. | Apply the obvious-correct option, document, ship. |
 | "I stashed the diff to verify pre-existence" | Item 3 — stashing is STRICTLY FORBIDDEN. | Pop the stash, abandon pre-existence reasoning, root-cause via reading. |
 | "Operator must run UI smoke / log in" | Item 5 — programmatic substitute exists. | Component test → playwright → rewrite AC. |
+| "Operator must launch / restart / re-deploy infra the agent cannot reach (worker, container, vendor portal)" | Wrong FIELD, not wrong card state. External action → `requires_human`, NOT `status: Blocked`. | Set `requires_human: {reason, steps[], set_by: agent, set_at}` with the exact command; call `danxbot_complete({status: "completed", summary: "Set requires_human"})`. |
+| "Card already has `waiting_on` set; I'm about to ALSO flip status to Blocked because something new came up" | Coexistence is fine, but pick the right field for the new cause. New cause = info gap → `blocked` + status Blocked. External action → `requires_human`. Sibling-wait → extend `waiting_on.by[]`. | Don't replace existing gates; add the right new one. All 4 may coexist. |
 | "Auto-flip happens after I exit, can't verify" | Item 5 — unit-test the derivation function. | Rewrite AC to point at the unit test. |
 | "Pre-existing flaky test fails the local-verify AC" | Item 1 + 5 — Action Item card + check off. | `danx_issue_create`, push id, check AC, proceed. |
 | "Another agent has uncommitted diff that breaks my test" | Item 2 — interruption, not blocker. | Note in comments[], proceed with what you can verify. |

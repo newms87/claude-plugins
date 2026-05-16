@@ -35,8 +35,13 @@ requires_human:
   set_at: 2026-05-10T16:50:00Z
 ```
 
-- Independent from `blocked` and `waiting_on`. All three are dispatch
-  gates and may co-exist (rare in practice).
+- Independent from `blocked`, `waiting_on`, and `conflict_on[]`. **All
+  four are dispatch gates and may coexist on one card simultaneously —
+  by design.** Each models a different real-world cause + is cleared by
+  a different actor. The picker AND-s them: card dispatches only when
+  every gate is null. Coexistence is the normal pattern, not the rare
+  one — see `issue-blocker/SKILL.md` "Field selection" table for the
+  routing rules + clearance order example.
 - Persists across dispatches. The next dispatched agent sees the field
   populated and skips the card via the poller filter — there is no
   "honor system" required.
