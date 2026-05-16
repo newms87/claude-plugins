@@ -129,7 +129,9 @@ If you cannot answer one, STOP and investigate. A consumer patch with unanswered
 
 **Forbidden:** Skipping this phase because the answer "feels obvious." Especially for one-line fixes.
 
-**Acceptance:** You have direct runtime evidence (log, output, query result, reproduction) that confirms the hypothesis end-to-end.
+**Pre-report causal-chain audit — MANDATORY before any "root cause" claim, fix-options list, or recommendation crosses into user-facing text.** For every link in the X → Y → Z chain, write one line of the form `LINK: <claim> | PROOF: <runtime artifact id>` where the artifact is a specific log line, file path:line, command output, DB row, or session JSONL entry you captured in THIS investigation for THIS failing instance (same UUID / dispatch id / row id). Forbidden proof shapes: (a) artifact from a different instance of the same bug class ("I saw this error message in my probe earlier"), (b) "the code shows it would do X", (c) "pattern matches the runbook", (d) "a previous session reported this". Cross-instance pattern matching is a HYPOTHESIS, not proof. If ANY link's PROOF cell is empty / cross-instance / code-read, you are NOT in Phase 5 — you are in Phase 4 with a guess; either gather the missing proof or label the report PROVISIONAL with the named next probe BEFORE the fix-options list (not after).
+
+**Acceptance:** You have direct runtime evidence (log, output, query result, reproduction) that confirms the hypothesis end-to-end — and that evidence comes from the SAME failing instance you are reporting on, not a sibling failure.
 
 ## Phase 6 — Decide: Diagnose vs. Fix
 
