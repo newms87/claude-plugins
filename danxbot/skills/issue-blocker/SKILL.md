@@ -1,13 +1,21 @@
 ---
 name: issue-blocker
-description: 'MANDATORY before writing `status: "Blocked"` on any card OR populating the `blocked: {reason, timestamp}` record OR appending a `## Blocked` comment OR calling `danxbot_complete({status: "failed", ...})` with a "operator must X" framing. Loads the 8-item gating checklist (false-blocker pattern audit, forbidden git ops audit, programmatic-substitute audit, root-cause trace audit) as a TodoWrite checklist. Refuses to ship a Blocked move that fails any item — sends you back to in-session work or Action Item creation.'
+description: 'MANDATORY before stamping `blocked: {at, reason}` on any card (the self-block dispatch gate; status derives → `Blocked` via `deriveStatus` rule 3 — agents NEVER write `status: "Blocked"` directly) OR appending a `## Blocked` comment OR calling `danxbot_complete({status: "failed", ...})` with a "operator must X" framing. Blocked is a dispatch gate that leaves the card''s column alone — the picker skips dispatch via the gate, not the status. Loads the 8-item gating checklist (false-blocker pattern audit, forbidden git ops audit, programmatic-substitute audit, root-cause trace audit) as a TodoWrite checklist. Refuses to ship a Blocked move that fails any item — sends you back to in-session work or Action Item creation.'
 audience: worker
 ---
 
 # Issue Blocker — MANDATORY Pre-Block Gate
 
-You are about to mark a card Blocked. STOP. Most "blockers" are not real
-blockers — they are rationalizations of avoidable work. Run this
+You are about to stamp the `blocked` dispatch gate on a card. STOP. Blocked
+is a dispatch gate (`blocked: {at, reason}` on the YAML, which
+`deriveStatus` rule 3 projects to status `Blocked` on every read) — NOT a
+column to drag the card into, and NOT a literal `status: "Blocked"` write
+(direct status writes are FORBIDDEN). The card stays in whatever column
+its lifecycle triggers projected it into; the picker skips dispatch via
+the gate, not the column.
+
+Most "blockers" are not real blockers — they are rationalizations of
+avoidable work. Run this
 checklist first. EVERY item must pass. If even one fails, you are NOT
 authorized to stamp `blocked: {at, reason}` — return to in-session work,
 Action Item creation, or AC rewrite per the path the failed item names.
