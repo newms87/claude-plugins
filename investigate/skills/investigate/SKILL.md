@@ -115,6 +115,33 @@ Forbidden in the report:
 - Leading with a file:line table, an internal symbol name, an issue tracker ID, or any term that requires codebase context to parse. Plain English first; symbols and paths belong in the "Evidence (footnotes)" section.
 - Fix options written as code snippets, diffs, function signatures, or "change X line N to Y". Options describe behavior change, not the patch.
 
+### 6a. Solution Quality Bar — Root Cause Over Symptom
+
+Every option in the fix list MUST clear three questions BEFORE it ships in the report. Failing any question = draft, not an option.
+
+1. **Mechanism, not symptom.** Does the option address the underlying mechanism the evidence identified? Raising a timeout, adding a retry, swallowing an exception, widening an allowlist, or restarting the process makes the symptom disappear without touching the mechanism — that is not a fix.
+2. **Textbook for the platform.** Would a senior engineer reading the diff agree this is the canonical way the language / framework / platform recommends solving this class of problem? If not, name the textbook answer explicitly in the option text and justify the deviation in writing.
+3. **Class, not instance.** Does the option eliminate the failure class, or only the one observed instance? If the same mechanism lives at N other call sites and they remain exposed, the option is partial — say so in the option body.
+
+**Tiered ordering — mandatory when listing more than one option.** Rank by root-cause depth, never by ease:
+
+| Tier | Role |
+|---|---|
+| 1 | Fixes the underlying mechanism. The textbook answer. Default recommendation. |
+| 2 | Reduces the mechanism's blast radius via architectural change (isolation, decoupling, concurrency caps, backpressure). |
+| 3 | Observability. Instrumentation so the next regression surfaces before it bites. Co-ships with Tier 1, never replaces it. |
+| 4 | Defense in depth — retries, timeouts, fallbacks, graceful degradation. Ship ONLY UNDER a Tier 1 fix and label it as a safety net. Never the primary recommendation. |
+
+**Forbidden patterns (each fails the bar):**
+
+- Symptom-only fix presented as the solution ("raise the timeout to 60s").
+- Retry / fallback / fail-soft branch presented as the primary mechanism.
+- Local patch when the same mechanism exists at N other call sites and the patch covers only one — without naming the others.
+- "Quick win first, real fix later" with no named follow-up artifact (issue / card / TODO carrying a date or condition).
+- Refusing Tier 1 because it is "a bigger change." Bigger IS what root-cause work looks like — name the cost honestly instead of disguising the deferral as a Tier 4 option.
+
+**When evidence is insufficient to commit to Tier 1:** SAY SO. List a Tier-1-shaped "investigate further to confirm <named mechanism>" option ahead of any Tier 4 patch. Never default to symptom-masking because the data is thin.
+
 ### 7. STOP
 
 After the report, do nothing. Do not start writing the fix you proposed. Do not "while we're here" anything. Wait for the user to pick an option.
