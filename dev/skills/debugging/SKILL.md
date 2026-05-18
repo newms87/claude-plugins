@@ -145,6 +145,35 @@ If you cannot answer one, STOP and investigate. A consumer patch with unanswered
 
 **Acceptance:** Either you have an explicit action verb, OR you have presented findings and stopped.
 
+## Phase 6.5 — Solution Quality Bar — Root Cause Over Symptom
+
+The fix you are about to TDD must clear three questions BEFORE you write the failing test. Failing any question = draft, not a fix.
+
+1. **Mechanism, not symptom.** Does the change address the underlying mechanism Phase 5 proved? Raising a timeout, adding a retry, swallowing an exception, widening an allowlist, or restarting the process makes the symptom disappear without touching the mechanism — that is not a fix.
+2. **Textbook for the platform.** Would a senior engineer reading the diff agree this is the canonical way the language / framework / platform recommends solving this class of problem? If not, name the textbook answer in the commit body and justify the deviation in writing.
+3. **Class, not instance.** Does the fix eliminate the failure class, or only the one observed instance? If the same mechanism lives at N other call sites and they remain exposed, the fix is partial. Either widen the scope or open a follow-up artifact (issue / card / TODO with a date or condition) before claiming the bug closed.
+
+**Tiered options — mandatory ordering when presenting more than one fix to the user.** Rank by root-cause depth, never by ease:
+
+| Tier | Role |
+|---|---|
+| 1 | Fixes the underlying mechanism. The textbook answer. Default recommendation. |
+| 2 | Reduces the mechanism's blast radius via architectural change (isolation, decoupling, concurrency caps, backpressure). |
+| 3 | Observability. Instrumentation so the next regression surfaces before it bites. Co-ships with Tier 1, never replaces it. |
+| 4 | Defense in depth — retries, timeouts, fallbacks, graceful degradation. Ship ONLY UNDER a Tier 1 fix and label as a safety net. Never the primary recommendation. |
+
+**Forbidden as a primary fix (each fails the bar):**
+
+- Symptom-only patch ("raise the timeout to 60s").
+- Retry / fallback / fail-soft branch as the primary mechanism.
+- Local patch when the same mechanism exists at N other call sites and the patch covers only one — without naming the others.
+- "Quick win now, real fix later" without a named follow-up artifact.
+- Refusing Tier 1 because it is "a bigger change." Bigger IS what root-cause work looks like — name the cost honestly instead of hiding it.
+
+**When evidence is insufficient to commit to Tier 1:** STOP, return to Phase 1–5 with a named next probe. Never default to a Tier 4 patch because the data is thin.
+
+**Acceptance:** The fix you are about to test passes all three questions OR you have explicitly named the deviation and the user has approved it.
+
 ## Phase 7 — Write the Failing Test
 
 **TDD is non-negotiable for every change — bugs and features alike.**
