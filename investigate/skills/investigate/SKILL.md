@@ -27,6 +27,8 @@ This skill exists because investigation and fix-writing are different work, and 
 - Whether a process is running / a job ran / a service is responsive
 - Comparison of runtime behavior under different conditions
 
+**Task-completion notifications are NOT evidence about the underlying work.** A `<task-notification>` / background-Bash exit code / "command completed" message tells you the WRAPPER finished — it tells you nothing about whether the spawned worker, daemon, dispatch, or detached process is still alive, healthy, or doing what you expect. Before saying anything about the underlying process's state in response to such a notification — including casual acknowledgments like "still running independent of launcher" / "worker persists" / "process is fine" — re-verify (ps / curl /health / docker ps / systemctl status / etc.). Design knowledge ("host-mode workers detach from the launcher", "the script daemonizes", "exit 0 means it backgrounded cleanly") is NOT a substitute for a live probe; it is exactly the rationalization this gate exists to block. The rule fires on YOUR OWN draft acknowledgment, not only on user questions.
+
 If your draft answer contains any of: "probably," "typically," "usually," "on the order of," "a matter of," "should be around," "in most cases," "likely" — about local behavior — STOP. Hedge = tell. Invoke this skill, gather evidence, report numbers.
 
 ## When NOT to invoke
