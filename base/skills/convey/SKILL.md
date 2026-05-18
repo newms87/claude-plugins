@@ -49,12 +49,17 @@ Default: if the output is a finished artifact someone else will read to decide s
 
 **Why non-obvious.** ≤2 lines. Skip if goal sentence already covers it.
 
-**Caveats / next actions.**
+**Caveats.** (OMIT entire section if none. Caveats = known limitations / non-obvious gotchas / behavior the reader could be surprised by. NOT operator chores.)
+- Known limitation 1
+- Edge case 1
+
+**Next actions.** (OMIT entire section if none. Next actions = operator-side chores: deploy, publish, restart, manual click, follow-up card. Each is a `- [ ]` checkbox.)
 - [ ] Operator action 1 (deploy / publish / restart)
-- [ ] Known limitation 1
 
 **Verify.** `cmd` → ✅ N/N | optional `path:line` audit pointers.
 ```
+
+**Caveats vs Next actions — two different concepts, two different sections.** Caveats describe the *world as it is* (a limitation, a sharp edge, a thing that won't work in scenario X). Next actions describe the *world that must change* (operator must run X, publish Y, click Z). Never collapse them into a single header. Never include an empty "Caveats: none" or empty "Next actions: none" line — silence is the signal.
 
 Sections in **bold** are the canonical names — keep them stable so readers can skim by section header.
 
@@ -73,7 +78,9 @@ Sections in **bold** are the canonical names — keep them stable so readers can
 | `✅ N/N` test status, one line | Per-suite tables unless something failed |
 | Headline = ≤12 words, no jargon | Multi-clause headlines |
 | Drop "Why non-obvious" when goal covers it | Pad it with restatement |
-| Caveats as `- [ ]` checkboxes (operator action) | Caveats as paragraphs |
+| Next actions as `- [ ]` checkboxes (operator chore) | Caveats and next actions merged into one section |
+| Caveats as plain bullets (state of the world) | "Caveats: none" / "Next actions: none" filler lines |
+| Omit Caveats section entirely when none exist | Forcing a caveat to fill the slot |
 
 ## Token-saving rhetoric (apply to every section)
 
@@ -213,11 +220,13 @@ File paths + symbols belong in the Verify line, not in the option body.
 
 **Why non-obvious.** Same-file overlap ≠ conflict. Git auto-merges disjoint hunks; rebase-time resolution is the expected path. Only heavy structural overlap earns a durable stamp.
 
-**Caveats / next actions.**
+**Caveats.**
+- Dashboard UI for `conflict_on` field not yet built — backend writes/reads, SPA unchanged.
+- In-flight conflict-checks finish on old prompt; new dispatches after restart use new path.
+
+**Next actions.**
 - [ ] Publish MCP package: `make publish-danx-issue-mcp` (schema v7).
 - [ ] Rebuild + restart worker: `make build && make launch-worker REPO=danxbot`.
-- [ ] Dashboard UI for conflict_on field — backend writes/reads, SPA unchanged.
-- [ ] In-flight conflict-checks finish on old prompt; new dispatches after restart use new path.
 
 **Verify.** `npx vitest run` → ✅ 4805/4805 | `npx tsc --noEmit` → clean | new tests: `effective-conflict-on.test.ts`, `apply-conflict-verdict.test.ts`, `local-issues.test.ts` (+3).
 ```
