@@ -69,6 +69,33 @@ The bar for Move B is high. If you find yourself escalating cards weekly, the ba
 
 Card specifies technical approach (endpoint to call, component to reuse, data to display) → requirement, not suggestion replaceable with simpler alternative. Specified approach has genuine technical blocker → STOP, report blocker to user with proposed alternative. Never silently substitute placeholder + mark work complete. "Too complex" + "too coupled" not blockers — engineering problems to solve.
 
+## CRITICAL: Solution Quality Bar — Root Cause Over Symptom
+
+Applies to every plan you write, every option you propose, every approach you recommend in plan mode, brainstorming, options lists, or commit bodies. Every proposed approach MUST clear three questions BEFORE it appears in the plan or options list. Failing any question = draft, not a candidate.
+
+1. **Mechanism, not symptom.** Does the approach address the underlying mechanism the evidence (or card) identifies? Raising a timeout, adding a retry, swallowing an exception, widening an allowlist, or restarting the process makes the symptom disappear without touching the mechanism — that is not a solution.
+2. **Textbook for the platform.** Would a senior engineer reading the diff agree this is the canonical way the language / framework / platform recommends solving this class of problem? If not, name the textbook answer in the plan and justify the deviation in writing.
+3. **Class, not instance.** Does the approach eliminate the failure class, or only the one observed instance? Same mechanism lives at N other call sites → say so; either widen the scope or open a follow-up artifact (card / TODO carrying a date or condition).
+
+**Tiered ordering — mandatory when listing more than one option in a plan.** Rank by root-cause depth, never by ease:
+
+| Tier | Role |
+|---|---|
+| 1 | Fixes the underlying mechanism. The textbook answer. Default recommendation. |
+| 2 | Reduces the mechanism's blast radius via architectural change (isolation, decoupling, concurrency caps, backpressure). |
+| 3 | Observability. Instrumentation so the next regression surfaces before it bites. Co-ships with Tier 1, never replaces it. |
+| 4 | Defense in depth — retries, timeouts, fallbacks, graceful degradation. Ship ONLY UNDER a Tier 1 fix and label as a safety net. Never the primary recommendation. |
+
+**Forbidden in any plan / options list (each fails the bar):**
+
+- Symptom-only patch presented as the solution ("raise the timeout to 60s").
+- Retry / fallback / fail-soft branch presented as the primary mechanism.
+- Local patch when the same mechanism exists at N other call sites and the patch covers only one — without naming the others.
+- "Quick win now, real fix later" without a named follow-up artifact.
+- Refusing Tier 1 because it is "a bigger change." Bigger IS what root-cause work looks like — name the cost honestly instead of disguising the deferral as a Tier 4 option.
+
+**When evidence is insufficient to commit to Tier 1:** SAY SO. The plan's first option is a Tier-1-shaped probe ("investigate further to confirm <named mechanism>"). Never default to a Tier 4 patch because the data is thin.
+
 ## CRITICAL: Phase Boundary Audit — Never Build Stopgap Scaffolding for a Misplaced AC
 
 Before implementing a phase card, audit whether each AC item is **clean within this phase** OR requires **stopgap scaffolding** to satisfy. Stopgap scaffolding = code existing only to bridge a missing capability shipping in a later phase. Smell list:
