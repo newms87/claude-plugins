@@ -334,6 +334,27 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 **Complete:** Agent fills `retro.{good, bad, action_item_ids, commits}` and calls `danxbot_complete({status: "completed", summary})`. The worker stamps `completed_at = <now ISO>` via `stampIssueCompleted`, clears `dispatch: null`, renders the `## Retro` comment, moves the file `open/` → `closed/`, and pushes terminal state. Derived status becomes `Done` via rule 2. Agent never writes `status: Done` directly.
 
+## Completion contract — `completed` means EVERYTHING on the card is done (DX-654)
+
+`danxbot_complete({status: "completed"})` is NOT a per-dispatch "I'm done for now" signal. It is a per-card "this card is finished, every promise it made has shipped" signal. Two hard preconditions, both required, every time:
+
+1. **Every `ac[i].checked` is `true`**, each with direct evidence per Step 1.1 of the danx-next flow (test passed, command output, quoted code line). Unchecked AC = unfinished work. There is no "the rest are minor" or "the remainder will land in a follow-up" exemption — every AC item was defined as required at triage.
+2. **Every child in `children[]`** (when non-empty) is in a terminal status (`Done` / `Cancelled`). A phase parent whose children are still ToDo / In Progress / Blocked / Waiting On is NOT complete; the rollup happens via derive-status, not via a direct write.
+
+If either condition fails, you have three options — all of them keep this dispatch's terminal signal honest:
+
+- **Finish the remaining work in-session.** Default. Apply the Step 1.5 fix-it-yourself filter from `danx-next`. If you could plausibly finish in the remaining 10–30 minutes, do it.
+- **Split into a fresh sibling card** if the residue is genuinely separate scope. The current card narrows its AC set to what landed; the new card carries the residue. Document the split in a `comments[]` entry.
+- **Move to Blocked / Waiting On** if a real human action or external dependency gates the remainder (per Step 10 / 10b of `danx-next` — read the no-false-blockers patterns first).
+
+**`danxbot_complete({status: "completed"})` on a `type: Epic` candidate is FORBIDDEN.** Epic terminal state is DERIVED from child terminal states (rollup), never written directly. A planning-style dispatch whose candidate IS the epic (split-into-phases pattern) ends with `danxbot_complete({status: "completed"})` ONLY when every phase child is already terminal — which is rare in practice, since planning dispatches typically split-and-handoff rather than split-and-rollup. In the common case the planning dispatch should:
+
+- Confirm every phase card exists with `parent_id` linked and its own AC + waiting_on chain stamped.
+- Leave the epic at its derived `In Progress` state (or whatever the rollup resolves to).
+- Call `danxbot_complete({status: "completed"})` — the worker's write-side guard (`stampTerminal` in `src/issue/stamp-terminal.ts`) refuses to stamp `completed_at` on a `type: Epic` YAML and surfaces a `stamp-terminal-epic-refused` system error if you bypass this rule. The dispatch row still finalizes normally; only the YAML mutation is suppressed.
+
+The guard is defense-in-depth — the rule above is the contract you uphold. If you reach the guard, you tripped over the rule.
+
 ## Phases vs Epics
 
 **One concept: `children[]`** (ISS-81). On `type: Epic` cards, `children[]` is the ordered list of phase cards (UI label "Phases"). On non-epic cards, `children[]` is sub-cards (UI label "Children"). Phases MUST be cards — there is no in-card phase checklist.

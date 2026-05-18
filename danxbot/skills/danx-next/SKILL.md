@@ -689,6 +689,40 @@ budget that way.
 Any prereq missing → loop back to that step. Do not call
 `danxbot_complete` until all six hold.
 
+### Completion contract — `completed` means EVERYTHING on the card is done (DX-654)
+
+`danxbot_complete({status: "completed"})` is a per-CARD signal, not a
+per-dispatch one. Two hard preconditions, both required, every time:
+
+1. **Every `ac[i].checked` is `true`** with direct evidence (Step 6 +
+   Step 8). Unchecked AC = unfinished work; no "the rest are minor"
+   or "remainder lands in a follow-up" exemption.
+2. **Every child in `children[]`** (when non-empty) is in a terminal
+   status (`Done` / `Cancelled`). A phase parent whose children are
+   still ToDo / In Progress / Blocked / Waiting On is NOT complete —
+   rollup happens via `deriveStatus`, never via direct write.
+
+If either fails, three options:
+
+- Finish the residue in-session (apply Step 1.5 fix-it-yourself filter
+  — default).
+- Split into a fresh sibling card for genuinely separate scope; narrow
+  this card's AC set; document the split in `comments[]`.
+- Route to Blocked (Step 10) / Waiting On (Step 10b) when a real human
+  action or external dependency gates the remainder.
+
+**`danxbot_complete({status: "completed"})` on a `type: Epic` candidate
+is FORBIDDEN.** Epic terminal state derives from child rollup, never a
+direct write. A planning dispatch whose candidate IS the epic (split-
+into-phases pattern) calls `danxbot_complete({status: "completed"})`
+ONLY when every phase child is already terminal — rare; planning
+dispatches typically split-and-handoff. The worker's write-side guard
+in `src/issue/stamp-terminal.ts` refuses to stamp `completed_at` /
+`cancelled_at` on an Epic YAML and surfaces a
+`stamp-terminal-epic-refused` system error. The dispatch row still
+finalizes; only the YAML mutation is suppressed. The contract above is
+the rule you uphold — the guard is defense in depth.
+
 ### Sha-less completion rejected
 
 `danxbot_complete({status: "completed", summary: "<no commit sha>"})`
