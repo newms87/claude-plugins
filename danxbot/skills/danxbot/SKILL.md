@@ -145,6 +145,32 @@ Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json`
 
 The `agents.<name>.broken` field is a persistent dispatch gate, distinct from per-tick quarantine (DX-221) and `<repo>/.danxbot/CRITICAL_FAILURE` (whole-repo halt). Broken means "this specific agent's worktree is wedged" — the operator clears it after manually unwedging the worktree (e.g. resolving a `git rebase` conflict, force-pushing the agent's branch).
 
+## Self-healing worktree sync (DX-645 — Phase 3 of DX-576)
+
+The autosave-rebase-conflict class — prior dispatch left
+`wip(autosave)` commits on the agent branch AND `origin/main` moved
+since — used to land an `agents.<name>.broken` stamp and wait for
+operator intervention. As of DX-645 the worker auto-dispatches a
+`worktree-repair` workspace inside the broken worktree on every
+`syncWorktree.kind === "abort"`. Repair agent rebases + resolves +
+pushes; on terminal `completed` the dispatcher clears
+`agent.broken` programmatically and the original agent is
+dispatchable again on the next tick.
+
+| Event | Path |
+|---|---|
+| `dispatchWithRecovery` observes `syncWorktree.kind === "abort"` | Stamps `agent.broken` (picker-gate during repair) → emits `sync-repair-needed` event → throws so the multi-agent caller releases its lock |
+| `sync-repair-dispatcher` subscribes → dispatches `worktree-repair` workspace (worker-initiated, `agent_name = null` so strikes are bypassed) | Repair agent `cd`s into broken worktree → runs Pre-task sync contract → resolves rebase in place (inject-pipeline files take `origin/main`; other files reconcile on merit) → `git push --force-with-lease` agent branch → `danxbot_complete({status: "completed"})` |
+| Repair dispatch terminal `completed` | Dispatcher's `onComplete` callback atomically clears `agent.broken = null` + zeros `strikes.count` (preserves history). Original agent rejoins the picker rotation on next tick. |
+| Repair dispatch terminal `failed` | Dispatcher leaves `agent.broken` populated. Existing operator-gate behavior preserved as the fallback for genuine application-code conflicts that the repair could not resolve. |
+
+The repair flow is for `syncWorktree` abort ONLY — `snapshotIfDirty`
+abort (HEAD not on agent branch, commit failure) retains the
+operator-gate behavior because that class signifies worktree
+corruption the repair contract cannot heal.
+
+Code surface — `src/dispatch/recovery-mode.ts` (emit), `src/agent/sync-repair-dispatcher.ts` (subscribe + dispatch + clear), `src/inject/workspaces/worktree-repair/` (workspace dir + CLAUDE.md contract body).
+
 ## External Dispatch API
 
 ```
