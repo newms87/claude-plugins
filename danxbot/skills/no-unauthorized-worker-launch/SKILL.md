@@ -78,6 +78,14 @@ Anything that would *create* a polling process is the prohibited class.
 
 **A card is Done when committed code passes local tests.** Deployment is operations and is never a completion gate — see `danx-next/SKILL.md` Step 6 + Step 10.
 
+## Launch mechanism — canonical path only
+
+When authorization to launch IS granted, the launch shape is ALSO constrained — the only allowed mechanism for a foreground-style worker target (`make launch-worker-host`, `make launch-worker`, `make launch-dashboard-host`, `npx tsx src/index.ts`) is a single Bash tool call with `run_in_background: true`. That gives operator the documented kill primitive (`make stop-worker REPO=<name>`), the documented log path (`make logs REPO=<name>`), and a single tracked PID the agent can re-probe via `pgrep`.
+
+**FORBIDDEN exotic wrappers, even with launch authorization:** `systemd-run --user …`, `nohup … &`, `setsid …`, `disown`, `screen -dm …`, `tmux new-session -d …`, any wrapper that detaches the worker from the documented lifecycle. These reduce operator visibility (logs land in `journalctl --user` / `nohup.out` / a tmux pane the operator does not know exists), break `make stop-worker`, and split the kill primitive. If the bg-task notification appears to terminate the worker early, the response is INVESTIGATE (`investigate` skill → check `journalctl`, `pgrep`, the worker's own shutdown log for signal source) — NOT bypass the lifecycle. The bash bg task is intended to host long-lived workers; exotic-wrap is a workaround, not a fix.
+
+If investigation confirms the bash bg task genuinely cannot host the worker, ASK the operator before reaching for an exotic wrapper — the right answer is usually "operator launches in their own terminal; agent watchdogs only".
+
 ## What "explicit per-invocation user authorization" means
 
 The CURRENT user message in THIS session must directly request the specific worker launch / restart / deploy. Examples that DO authorize:
