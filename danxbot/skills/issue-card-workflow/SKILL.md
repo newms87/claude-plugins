@@ -334,6 +334,16 @@ Before setting `ac[i].checked: true`, must have direct evidence: passing test, c
 
 **Complete:** Agent fills `retro.{good, bad, action_item_ids, commits}` and calls `danxbot_complete({status: "completed", summary})`. The worker stamps `completed_at = <now ISO>` via `stampIssueCompleted`, clears `dispatch: null`, renders the `## Retro` comment, moves the file `open/` → `closed/`, and pushes terminal state. Derived status becomes `Done` via rule 2. Agent never writes `status: Done` directly.
 
+**Reopen (terminal → dispatchable):** Reverse the terminal trigger, do NOT touch the `status:` field. Reopening a Done card = clear `completed_at: null` AND stamp `ready_at: <now ISO>`; reopening a Cancelled card = clear `cancelled_at: null` AND stamp `ready_at: <now ISO>`. Derivation rule 5 then produces `ToDo` and the worker moves the file `closed/` → `open/` automatically on the next chokidar event. The `status:` field is round-trip persistence only — the worker rewrites it from the derived value on every save. Writing `status: ToDo` directly is the violation; the trigger fields ARE the API.
+
+| Reopen scenario | Trigger writes (atomic, same edit) |
+|---|---|
+| Reopen Done card | `completed_at: null` + `ready_at: <now ISO>` + `list_name: ToDo` (display only) |
+| Reopen Cancelled card | `cancelled_at: null` + `ready_at: <now ISO>` + `list_name: ToDo` |
+| Reopen back to Review (not dispatchable yet) | clear terminal trigger + leave `ready_at: null` (rule 7 falls through to raw `status: Review`) |
+
+NEVER write the `status:` field as part of a reopen. NEVER `mv` the YAML file by hand — the worker owns file location and re-derives it from the triggers on the next event.
+
 ## Completion contract — `completed` means EVERYTHING on the card is done (DX-654)
 
 `danxbot_complete({status: "completed"})` is NOT a per-dispatch "I'm done for now" signal. It is a per-card "this card is finished, every promise it made has shipped" signal. Two hard preconditions, both required, every time:
