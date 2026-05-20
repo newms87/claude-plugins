@@ -45,6 +45,8 @@ Long-running process (worker, dev server, build watch, deploy, test suite that t
 
 **FORBIDDEN:** shell backgrounding (`cmd &`, `nohup cmd &`, `disown`, `setsid`). The shell wrapper exits immediately → `$!` references the wrapper, NOT the real worker → PID lost → cannot satisfy `process-kill` Iron Rule on restart → cannot signal-by-captured-PID. Even when output is redirected (`cmd > log 2>&1 &`), the PID is still untraceable.
 
+**ALSO FORBIDDEN — double-backgrounding (`cmd &` PLUS `run_in_background: true`).** Setting the harness flag does NOT neutralize a trailing `&`. The `&` still detaches the real worker from the Bash session → the harness tracks ONLY the wrapper (which exits 0 immediately, often within seconds of "launch") → the long-lived child orphans to init → TaskStop has nothing to signal → kill discipline re-broken. Mechanical pre-write check: BEFORE pressing send on a Bash call where `run_in_background: true` is set, scan the command string for a trailing `&`, `nohup`, `setsid`, `disown` — if ANY present, strip them. The two mechanisms are mutually exclusive, never additive. Symptom of violation: background task completes with exit 0 in seconds while the long-running process keeps listening on its port — that is the orphan signature.
+
 **Pre-spawn check** before any process expected to live >30s:
 1. Am I about to write `&` at the end of a Bash command? → STOP. Use `run_in_background: true` instead.
 2. Did I capture the PID at spawn? → must be `child.pid` / `$!` returned by the tool that owns the process, NOT a later `ps` grep.
