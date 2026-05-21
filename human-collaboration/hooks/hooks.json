@@ -1,0 +1,15 @@
+{
+  "description": "Human-loop diagnostic mode gate: detects question marks and injects mandatory Skill(human-loop) before tool calls.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/human-loop-mandate.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
