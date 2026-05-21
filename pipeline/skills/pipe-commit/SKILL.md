@@ -9,24 +9,9 @@ description: 'Stage and commit changes with a summary table.'
 
 ---
 
-## Order of Operations (LOAD-BEARING)
+## Order of Operations
 
-When the user says "commit" — or invokes `/pipe-commit` — **save the code immediately**. Commit + push first. Code review happens AFTER, as a separate commit.
-
-```
-[user says "commit"] → /pipe-commit (commit A: implementation)
-                     → /pipe-review (3 reviewer agents)
-                     → fix findings
-                     → /pipe-quality (audit skips)
-                     → /pipe-commit again (commit B: review fixes)
-```
-
-**Why this order:**
-- A commit is durable storage. Delaying it to "first run review" risks losing work to a crash / session timeout / user interruption.
-- Reviewers operate against pushed code — every other consumer (CI, the user's editor, sibling agents) reads from `origin/main`, not from the unstaged tree. Push first → review sees the same bytes everyone else does.
-- Two commits cleanly separate "what the agent implemented" from "what the reviewers caught" — the diff history shows the cost of each round.
-
-**Forbidden gate:** there is NO Step 0 preflight that checks whether pipe-review or pipe-quality already ran. The previous version of this skill aborted with "Phase pipeline incomplete" when those skills hadn't fired — that was wrong. Commit-on-instruction is unconditional. Review-then-commit-fixes is the second loop, not a prerequisite.
+Commit + push FIRST. Code review AFTER as a separate commit. Why: durability, reviewers see pushed code, diff history shows cost per round. Commit-on-instruction is unconditional.
 
 ---
 

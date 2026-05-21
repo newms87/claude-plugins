@@ -46,14 +46,7 @@ When any of those hold:
 
 ### What Move B is NOT for
 
-Blocked is a LAST RESORT. It is NOT for:
-
-- "Too complex, want a human to confirm" — implement the card.
-- "I'm not sure if my approach is right" — implement, then defend in `/pipe-review`.
-- "Card description is short" — short ≠ unclear. Initial investigation usually fills the gap.
-- "There's a better way than what the card says" — Rule 13 in `pipe-start` (Never Substitute) prohibits this. Implement what's asked.
-
-The bar for Move B is high. If you find yourself escalating cards weekly, the bar is too low.
+Blocked is LAST RESORT — NOT for "too complex," "I'm unsure," "card is short," or "I have a better way." The bar is high.
 
 ## Plan Files
 
@@ -132,9 +125,7 @@ Before checking off any item, verify literal claim true (via grep/test/code read
 
 ## Phases
 
-Use multiple phases only when scope exceeds single pipeline run. Each phase = complete pipeline run. Phases never justify backwards compat — broken code signals next phase to fix.
-
-**CRITICAL: One Phase = One Commit = One Card Lifecycle.** Each phase card gets own commit. After each phase commit: check off all AC items on phase card, move phase card to Done. Epic's `children[]` already references the phase card; the worker resolves child status when rendering the epic. Do NOT batch multiple phases into single commit — makes structurally impossible maintain accurate card state. Commit boundary IS phase boundary. (ISS-81 retired the in-card "Implementation Phases" checklist — phases are full cards in `children[]`, not checklist items.)
+One phase = one complete pipeline run + one commit + one card lifecycle. Commit boundary IS phase boundary.
 
 ## Refactoring Tools
 

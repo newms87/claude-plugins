@@ -85,7 +85,7 @@ If YES to any: spawn a fresh issue card by calling `mcp__danx-issue__danx_issue_
 - **Code refactor** — misleading code sent agent down wrong path
 - **Better error messages** — script failed silently or unhelpfully
 
-**Rules, Not Memory.** Behavioral corrections go in rules files (`~/.claude/rules/` or project `.claude/rules/`), NEVER in memory. Memory = contextual, soft, disposable. Rules = universal, durable, authoritative. User corrects behavior → that's a rule. Ask: "Would this help agent in ANY codebase?" Yes → global `~/.claude/rules/`. No → project `.claude/rules/` or CLAUDE.md.
+**Rules, Not Memory.** Corrections → rules files (`~/.claude/rules/` or project `.claude/rules/`), never memory. Would help ANY codebase? → global. No → project-local.
 
 **Spawn procedure:**
 
@@ -116,25 +116,7 @@ The tool allocates `ISS-N`, builds the canonical YAML, pushes via `tracker.creat
 
 ## Part 2: Session Knowledge Dump
 
-Before the session ends, review everything you know and surface anything that hasn't been captured.
-
-### What to check
-
-Walk through each category and ask: "Is there anything I learned or observed that isn't written down anywhere?"
-
-1. **Issue cards** — Are all assigned `ISS-N` YAMLs up to date? Any status changes, blockers, or discoveries that should be appended to the card's `comments[]` via direct YAML edit? The chokidar watcher mirrors the change to the DB; the post-completion auto-sync pushes to the tracker.
-
-2. **Code comments / docblocks** — Did I encounter confusing code during investigation that I now understand but didn't document? Any "gotchas" I discovered that the next agent will hit?
-
-3. **Rules / CLAUDE.md** — Did I learn a project convention or pattern that isn't in the rules? Did a rule confuse me or need clarification?
-
-4. **Outstanding work** — Is there anything I said I'd do but didn't? Any loose ends from the conversation? Anything the user mentioned wanting that we didn't get to?
-
-5. **Observations for the user** — Anything I noticed during investigation that the user should know about but wasn't part of the task? Stale data, broken tests, degraded infrastructure, security concerns?
-
-### What to output
-
-Present findings as a concise list grouped by category. Only include categories that have something to say. Skip empty categories.
+Walk through: Issue cards (status/blockers/discoveries), Code comments (gotchas), Rules (patterns learned), Outstanding work (loose ends), Observations (stale data, broken tests, infrastructure). Output concise lists grouped by category. Skip empty categories.
 
 ```
 ## Session Notes
