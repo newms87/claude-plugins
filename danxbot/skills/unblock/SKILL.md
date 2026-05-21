@@ -44,6 +44,8 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
    Human-only = ONLY: credential / secret rotation, deploy access, write-only repo, design decision, physical/OOB action (per `issue-card-workflow` "Blocked — Hard Gate" table).
 
+   **Not human-only (DX-758 worker zero-trust):** git env failures on the agent's worktree (`git fetch` errored, rebase conflict, dirty tree, push race). The agent owns env state — there is no worker-side recovery to wait for. A Blocked card with `blocked.reason` like "operator must reset worktree" / "operator must rebase" / "worker must sync" is misclassified; the next dispatched agent handles env in its prep skill. Such cards should be demoted: clear `blocked: null`, leave a recovery comment, and let the next dispatch run prep again.
+
    Mixed (some local, some human-only) → write the playbook only for the human-only steps; execute the local steps yourself first, then surface only what remains.
 
    **Demote procedure:**

@@ -537,6 +537,8 @@ Use Step 10 ONLY when the blocker is genuinely one of:
 - **Card-specific tool / environment failure** (use `critical_failure` for
   environment-wide failure — see `.claude/rules/danx-halt-flag.md`).
 
+**`agents.<name>.broken` is strikes-only (DX-758).** The worker no longer stamps `broken` from git env detection (the retired `snapshotIfDirty` / `syncWorktree` / `worktree-ff` paths). The ONLY path to `broken` is N consecutive `danxbot_complete({status: "failed"})` strikes accumulated by `src/agent/strikes.ts`. Calling `failed` here once for a real human-only blocker is fine — strikes accumulate over CONSECUTIVE blocks, not single ones. A genuine block does not "burn an agent"; only a pattern of false blocks does. The dashboard's "Clear broken" affordance still clears the field regardless.
+
 **NOT Step 10 cases — these are Step 10b (Waiting On) or in-session work:**
 
 - Waiting on another card / phase / Action Item to ship first → **Waiting

@@ -27,6 +27,13 @@ ANY dispatch in this environment, regardless of the card:
   inside the dispatched session when your card needs them.
 - **Any other "the agent on this machine cannot function" class of failure.**
 
+**Worker-environment broken vs. agent-worktree-git broken (DX-758).** These two failure modes look similar but route to different signals:
+
+- **Worker environment broken** (MCP not loading, Bash unavailable, Claude auth missing, node/git CLI unreachable) — affects EVERY dispatch on this host. → `critical_failure` (halts the poller).
+- **Agent-worktree git env broken** (your `git fetch` errored, rebase conflict you cannot resolve, worktree wedged) — affects THIS dispatch's worktree, not the host. → `failed` with a `≥30-char` summary naming the specific file/region. The worker stamps `blocked` on the candidate; the next dispatched agent runs its own prep skill on a freshly-synced worktree. Worker-side env detection NEVER stamps `agents.<name>.broken`; only N consecutive agent-emitted `failed` strikes do (`src/agent/strikes.ts`).
+
+Getting this wrong is expensive in both directions — `critical_failure` for a worktree-only problem halts every other agent's dispatch on the same host for no reason; `failed` for an env-wide problem (MCP gone) lets the poller burn the queue trying the same broken box.
+
 Rule of thumb: if you tried to do a reasonable thing and the **tool itself**
 (not the result) errored, it is likely a critical failure.
 
