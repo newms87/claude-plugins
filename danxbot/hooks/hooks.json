@@ -1,0 +1,25 @@
+{
+  "description": "Plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/danxbot-skill-mandate.sh SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/danxbot-skill-mandate.sh UserPromptSubmit"
+          }
+        ]
+      }
+    ]
+  }
+}

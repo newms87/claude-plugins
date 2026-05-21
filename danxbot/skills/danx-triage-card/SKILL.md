@@ -1,413 +1,84 @@
 ---
 name: danx-triage-card
-description: 'Per-card triage agent. Single Claude session Reads ONE card YAML, decides per status (Review / Blocked / Waiting On), writes the TTL-stamped triage{} block back with the Edit tool. Dispatched 1-card-per-tick by the poller (Phase 4 / ISS-94). Replaces the bulk-triage orchestrator.'
+description: 'Per-card triage agent. Single Claude session reads ONE card YAML, decides per status (Review / Blocked / Waiting On), writes TTL-stamped triage{} block back with Edit tool. Dispatched 1-card-per-tick by poller (Phase 4 / ISS-94). Replaces bulk-triage orchestrator.'
 argument-hint: <PREFIX>-N card id
 ---
 
 # Danx Triage Card
 
-You triage **ONE** card per dispatch. No orchestrator, no sub-agents. You:
+You triage **ONE** card per dispatch: read → decide (per status) → edit `triage{}` → re-read to confirm → `danxbot_complete({status})`.
 
-1. `Read .danxbot/issues/open/<PREFIX>-N.yml` (fall back to `closed/<PREFIX>-N.yml`) — load the YAML.
-2. Decide per `status` (Review / Blocked / Waiting On) — apply the per-status decision tree below.
-3. Edit the YAML's `triage{}` block (always) + `status` / `blocked` fields when the decision is terminal, using the `Edit` tool directly on `<repo>/.danxbot/issues/{open,closed}/<PREFIX>-N.yml`.
-4. Re-read the file with `Read` to confirm the edit landed and the YAML parses (look for the new `triage.expires_at` value).
-5. `danxbot_complete({status, summary})` — signal done. The status arg is decision-dependent: see the "Per-decision terminal-status table" section below. Default `complete` for no-op decisions (Confirm-Block / Unblock); `ready` for Keep / Approve / Demote; `cancelled` for Cancel; `archive` for Park.
+## Quick Reference
 
-You read the YAML directly with `Read` and write it through `Edit` / `Write`. The `danx-issue` MCP server provides `danx_issue_list` for any multi-card scans you need (e.g. checking blocker cards). You do NOT make tracker calls — the chokidar watcher in the worker (`src/db/issues-mirror.ts`) catches every YAML edit and mirrors it to Postgres; the poller's per-tick mirror pushes it to the tracker.
+See references/triage-paths.md for complete decision trees, ICE rubric, reassess-hint contract, out-of-scope gate, failure handling, conflict-check mode.
 
-## /loop and ScheduleWakeup — narrow contract
-
-Triage is a single-shot dispatch (read → decide → save → complete). You
-have NO legitimate reason to arm `/loop` or `ScheduleWakeup` in this skill.
-The contract below applies anyway because every dispatched-agent skill
-shares it (ISS-135 / ISS-136).
-
-**ALLOWED:**
-
-- Polling an async pipeline whose result IS part of this card's AC (e.g.
-  dispatch a build, `/loop` every 5 min until it finishes, then verify the
-  artifact and proceed).
-- Monitoring a long-running test whose pass/fail is the AC under test.
-- Watching for the next state of an external system you triggered AS PART
-  OF THIS CARD's WORK.
-
-**FORBIDDEN:**
-
-- Waiting for a human to reply (use `status: Blocked` instead — the
-  operator opens the card, answers, moves it back).
-- Waiting for the next card to land (the poller dispatches; you exit when
-  this card is done).
-- "Let me check on this in N minutes" for anything outside this card's
-  scope.
-- Arming `/loop` and then calling `danxbot_complete` in the same dispatch.
-  Loop owns completion timing — if you call complete, disarm the loop
-  first; if a loop is active, do not call complete.
-
-**RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
-during this dispatch must be disarmed (or have already fired and exited).
-Active loop + complete signal = workflow violation; the next resume will
-re-fire the loop after the dispatch is logically over.
-
-## Per-decision terminal-status table (DX-737 / DX-738 — 6-status lifecycle surface)
-
-Triage emits exactly one terminal call per dispatch. The decision the skill body lands on (per the per-status decision trees below) maps to a worker-stamped lifecycle trigger; `deriveStatus` projects that trigger to the card's user-visible status.
-
-| Triage decision | `danxbot_complete({status, …})` | YAML side-effect | Derived status |
-|---|---|---|---|
-| **Keep** (Review path — promote to ToDo) | `ready` | worker stamps `ready_at = now` + clears `blocked` | `ToDo` (rule 4) |
-| **Approve** (Review path — promote behind `requires_human` gate) | `ready` (agent first edits `requires_human: {…}`) | worker stamps `ready_at`; picker stays parked until operator clears `requires_human` | gated `ToDo` |
-| **Cancel** (Review path) | `cancelled` | worker stamps `cancelled_at` + clears `dispatch` + auto-renders `## Retro` | `Cancelled` (rule 1) |
-| **Park** (Review path — NEW, DX-739) | `archive` | worker stamps `archived_at` + clears `ready_at` | `Backlog` (rule 5) |
-| **Demote** (Blocked → ToDo) | `ready` | worker stamps `ready_at` + clears `blocked` (same primitive as Keep) | `ToDo` (rule 4) |
-| **Confirm-Block** (Blocked — Hard Gate passes / Waiting On — blocker pending) | `complete` | none (terminal row finalises only; the agent's `Edit` on `triage{}` mirrored via chokidar) | unchanged |
-| **Unblock** (Waiting On — every blocker terminal) | `complete` | none (same as Confirm-Block) | unchanged |
-
-**Why `complete` is the no-op call.** Decisions that do NOT move the card's lifecycle (Confirm-Block / Unblock) still need a terminal call so the dispatch row finalises. `complete` signals "this triage dispatch shipped successfully" without writing any lifecycle trigger to the candidate YAML — only the `triage{}` block change mirrors via chokidar.
-
-**Park is new in DX-739.** Use Park (terminal status `archive`) when a Review card is genuinely on hold (revisit later, not now, not cancelled — e.g. depends on long-running external work). Stamping `archived_at` derives the card to `Backlog`. Phase 3 (this card) adds it to the Review decision tree; Phase 4+ updates the dashboard's TriageTab to render the Park decision color.
-
-**Deprecated alias:** `completed` → `complete` (DX-738 rename); MCP dispatcher canonicalises so cached sessions keep working. New skill bodies call `complete` directly.
-
-**The decision-name vocabulary is unchanged from prior phases** — Keep / Approve / Cancel / Demote / Confirm-Block / Unblock all carry the same semantics they always did. What changed is HOW the lifecycle write lands: the agent no longer writes `ready_at` / `cancelled_at` / `blocked: null` directly — it calls `danxbot_complete({status: …})` and the worker stamps the trigger atomically.
-
-## Read via MCP, write via Edit
-
-The dispatched workspace exposes the `danx-issue` MCP server (the
-`@thehammer/danx-issue-mcp` package) which advertises read tools (`get`,
-`list`) plus a `create` tool that allocates the next `<PREFIX>-N` id
-atomically. Use those for reading the card and resolving its
-filesystem path. The danxbot infrastructure server also advertises
-`danx_issue_create` (POSTs to a worker HTTP route) — both work; pick
-either based on what's already in your tool list.
-
-DX-157 retired the agent-facing save tool entirely. **Write through
-`Edit` / `Write` directly on the YAML at
-`<repo>/.danxbot/issues/{open,closed}/<PREFIX>-N.yml`.** The chokidar
-watcher catches every file change and mirrors it to Postgres; the
-poller's per-tick mirror pushes to the tracker. There is no save verb
-to call.
-
-## In-scope cards
-
-The triage agent has THREE paths. The right path is decided by the YAML's
-`waiting_on` and `blocked` fields FIRST, then by `status`:
+**Three in-scope paths:**
 
 | YAML state | Path |
 |---|---|
-| `waiting_on != null` (regardless of `status`) | **Waiting On** — re-check `waiting_on.by[]` |
-| `waiting_on == null` AND `status === "Review"` | **Review** — ICE-score |
-| `waiting_on == null` AND `status === "Blocked"` | **Blocked** — Hard Gate audit |
+| `waiting_on != null` (any status) | **Waiting On** — re-check `waiting_on.by[]` TTL 1h |
+| `waiting_on == null` AND `status === "Review"` | **Review** — ICE-score + Keep / Cancel / Approve / Park TTL 24h |
+| `waiting_on == null` AND `status === "Blocked"` | **Blocked** — Hard Gate audit + Demote / Confirm TTL 3h |
 
-The schema's allowed statuses are `Review`, `ToDo`, `In Progress`,
-`Blocked`, `Done`, `Cancelled`. A "blocked" card has `status: "Blocked"`
-AND `blocked: {reason, timestamp}` populated; the worker enforces the
-invariant `status === "Blocked" ⟺ blocked !== null`. The orthogonal
-`requires_human` field is a separate dispatch gate — it can co-exist
-with any open status and is set / cleared via the field directly, not
-via `status`. See `.claude/rules/danx-requires-human.md` for the
-whitelist + blacklist on when an agent may set it.
+Out-of-scope refuse: `waiting_on == null` AND `blocked == null` AND `status ∈ {ToDo, In Progress, Done, Cancelled}` — dispatchable / active / terminal cards don't triage.
 
-A card with `status: ToDo` AND `waiting_on != null` is a Waiting On card
-and routes to the Waiting On path; a card with `status: ToDo` AND
-`waiting_on == null` is dispatchable work and OUT OF SCOPE for triage (the
-poller dispatches it through the worker path, not the triage path).
+## Workflow
 
-The poller only dispatches you when the card is in one of the three
-in-scope shapes above AND `triage.expires_at <= now` (or empty). For any
-other shape (`status` ∈ `{ToDo, In Progress, Done, Cancelled}` AND
-`waiting_on == null` AND `blocked == null`) the poller refuses to
-dispatch — if you somehow receive one, fail loud with
-`danxbot_complete({status: "failed", summary: "..."})` and do NOT mutate
-the YAML.
+1. **Read** — `Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`).
+2. **Decide** per status path (see references/triage-paths.md):
+   - **Review** → Keep / Cancel / Approve / Park (validate `effort_level` on Keep/Approve)
+   - **Blocked** → Hard Gate audit → Demote / Confirm-Block
+   - **Waiting On** → re-check `waiting_on.by[]` → Unblock / Confirm-Block
+3. **Edit** — update `triage{}` block (ALL edits):
+   - `expires_at` = `(now + TTL).toISOString()`
+   - `last_status` = one of Keep / Cancel / Approve / Park / Demote / Confirm-Block / Unblock
+   - `last_explain` = 1–2 sentences (include ICE breakdown for Review / Keep / Approve)
+   - `reassess_hint` = required for Blocked/Confirm + Waiting On/Confirm-Block; cleared for Demote/Unblock; empty for Review
+   - `ice` = populated for Review/Keep/Approve (i × c × e, 1–5 each); zeros for all others
+   - `history` = APPEND new entry `{timestamp, status, explain, expires_at, ice}`; cap 10; oldest drops overflow
+4. **Re-read** — confirm YAML parses (no indentation breaks). Chokidar mirrors; malformed → `{_malformed: true}` in dashboard.
+5. **Append comment** — ONE `## Triage — <date>` entry (author: "danxbot-triage", markdown: `**Status:** <from> → <to>`, `**Decision:** <Keep|Cancel|Approve|Park|Demote|Confirm-Block|Unblock>`, `**ICE:** <total> (<I>×<C>×<E>)` (Review/Keep/Approve only), `**Reassess hint:** <value>` (Blocked/Confirm + Waiting On/Confirm-Block only; DO NOT include for Review/Demote/Unblock), `**Explain:** <last_explain>`).
+6. **Complete** — per decision:
+   - Keep / Approve / Demote → `danxbot_complete({status: "ready"})`
+   - Cancel → `danxbot_complete({status: "cancelled"})`
+   - Park → `danxbot_complete({status: "archive"})`
+   - Confirm-Block / Unblock → `danxbot_complete({status: "complete"})`
 
-## Operator notes (`## Operator notes` task-body block)
+## ICE Rubric (Review only)
 
-The `/api/triage` route (DX-515) accepts an optional `instructions` field. When present, the route appends a marked block to the dispatch task body:
+Each axis 1–5; `total = i × c × e` (1–125). MUST justify all three components in `last_explain`.
 
-```
-Triage card <PREFIX>-N using the danx-triage-card skill.
-
-## Operator notes
-
-<operator's free-form text>
-```
-
-When you see a `## Operator notes` section in your initial prompt, you MUST:
-
-1. **Read the notes before deciding.** Treat them as additional context — same priority as the card's `description` and recent comments.
-2. **Reflect them in `triage.last_explain`.** Acknowledge the note in 1 sentence so the next triage agent (and the human reviewing the dashboard) sees the operator's input was considered. Example: `"Re-scored on operator note 'may be obsolete after DX-269' — confirmed obsolete; recommending Cancel."`
-3. **Reflect them in the appended `## Triage` comment.** Add a `**Operator note:** <verbatim quote, trimmed to fit>` line above the `**Explain:**` line so the audit trail survives.
-
-**Notes do NOT override the per-status decision tree.** They augment context — the ICE rubric, the Hard Gate audit, the Waiting On re-check logic, the rationalisation detector all still apply unchanged. If the note says "approve this anyway" but the Blocked Hard Gate audit says every step is locally executable, you Demote — never let an operator note short-circuit the audit.
-
-When the dispatch task body does NOT contain a `## Operator notes` block, proceed normally — the field is purely additive.
-
-## TTLs (per-status re-triage cadence)
-
-| Status | TTL on triage success | Why |
-|---|---|---|
-| `Review` | 24h | Review cards are static input from humans; daily re-evaluation is enough. |
-| `Blocked` | 3h | A human is supposed to act; checking back every 3h surfaces stalled blockers fast. |
-| `Waiting On` | 1h | Blocking cards may flip to terminal at any moment — re-check on the same hour. |
-
-Compute `expires_at` as `(now + TTL).toISOString()` in UTC. **Always** stamp `triage.expires_at` on every save, even when the decision was no-op (e.g. blocker still pending) — the poller uses `expires_at` as the gate for re-dispatch.
-
-## ICE rubric (Review only)
-
-Per the schema, `triage.ice = {total, i, c, e}` with each component on a **1–5** scale. `total = i × c × e` (1–125). Score every card in Review.
-
-| Score | Impact (I) | Confidence (C) | Ease (E) |
+| Score | Impact | Confidence | Ease |
 |---|---|---|---|
-| 5 | Unblocks production / blocks an epic | All AC anchors verified in code | < 1 hour, isolated edit |
-| 4 | Major UX or perf improvement | Most anchors verified, minor stale text | 1–3 hours, contained scope |
-| 3 | Cleanup or moderate feature | Some anchors stale; needs re-investigation | Half-day, some discovery |
-| 2 | Nice-to-have | Anchors uncertain; verifier must hunt | Multi-session, cross-cutting |
-| 1 | Speculative / vague | Card needs rewrite first | Heavy refactor / rebuild |
+| 5 | Unblocks prod / blocks epic | All AC anchors verified | <1h, isolated |
+| 4 | Major UX or perf | Most anchors verified, minor stale | 1–3h, contained |
+| 3 | Cleanup or moderate feature | Some anchors stale | Half-day, some discovery |
+| 2 | Nice-to-have | Anchors uncertain | Multi-session, cross-cutting |
+| 1 | Speculative / vague | Card needs rewrite | Heavy refactor / rebuild |
 
-Each component MUST have a one-sentence justification in `triage.last_explain`. No bare numbers.
+## TTLs
 
-ICE is only persisted on **Review** decisions (`Keep` / `Cancel` / `Approve`). For Blocked and Waiting On, leave `triage.ice` at zeros (the cards already have a status; ICE is for prioritising the dispatch queue, which only applies to ToDo).
-
-## reassess_hint contract (Blocked / Waiting On only)
-
-`triage.reassess_hint` is a **≤120 character, action-shaped sentence** that tells the next triage agent the one fast check that decides whether to re-confirm the parked status. The hint is mechanical: it must be answerable in ≤30 seconds by reading code, git log, an env var, or a list of issue ids — never "ask the user."
-
-| Good (action-shaped) | Bad (vague / unactionable) |
-|---|---|
-| "Check if AGD-148..158 dispatches all completed cleanly (canonical path observer log)" | "See if the verification has been done" |
-| "Check if `package.json` upstream merge has shipped" | "Wait for upstream" |
-| "Check if `make publish-danx-issue-mcp` ran (npm v1.0.0+ visible)" | "Needs npm publish" |
-| "Re-check `waiting_on.by[]` — ISS-42 still in progress?" | "Still waiting" |
-
-Hint is REQUIRED on every Blocked and Waiting On save (whether confirming, demoting, or unblocking). Empty `triage.reassess_hint` is a save error.
-
-For Review decisions, leave `triage.reassess_hint` empty — Review re-triage simply re-runs the full ICE pass.
-
-## Per-status decision trees
-
-### Status = `Review`
-
-Decide one of three outcomes:
-
-| Outcome | Action | YAML changes |
+| Status | TTL | Reason |
 |---|---|---|
-| **Keep** | Card is sound; promote into the dispatch queue. | Edit `triage.last_status: Keep` + `triage.ice` populated. Then `danxbot_complete({status: "ready", summary})` — worker stamps `ready_at` + clears `blocked` (rule 4 → `ToDo`). **Do NOT write `ready_at` / `status` directly** — worker owns the lifecycle stamp. |
-| **Cancel** | Obsolete / superseded / no-longer-desired. | Edit `triage.last_status: Cancel`, `triage.ice` zeros, `retro.{good, bad}` filled honestly. Then `danxbot_complete({status: "cancelled", summary})` — worker stamps `cancelled_at` + clears `dispatch` + renders the `## Retro` comment (rule 1 → `Cancelled`). **Do NOT write `cancelled_at` / `status` directly** — worker owns the lifecycle stamp. |
-| **Park** | Card is on hold (revisit later, not now, not cancelled — e.g. depends on long-running external work). | Edit `triage.last_status: Park`, `triage.ice` zeros. Then `danxbot_complete({status: "archive", summary})` — worker stamps `archived_at` + clears `ready_at` (rule 5 → `Backlog`). **Do NOT write `archived_at` / `status` directly** — worker owns the lifecycle stamp. |
-| **Approve** | Implementable but the **direction needs human sign-off** before work starts (architectural risk, cross-cutting scope, ambiguous tradeoff). | Edit `requires_human: {reason, steps[], set_by: "agent", set_at: <ISO>}` + `triage.last_status: Approve` + `triage.ice` populated. Then `danxbot_complete({status: "ready", summary})` — worker stamps `ready_at` (the `requires_human` gate keeps the picker from dispatching until the operator clears it). **Do NOT write `ready_at` / `status` directly** — worker owns the lifecycle stamp. |
+| Review | 24h | Static human input; daily re-eval |
+| Blocked | 3h | Operator action expected; check fast |
+| Waiting On | 1h | Blockers flip terminal any minute |
 
-**Before emitting `Approve`:** read `.claude/rules/danx-requires-human.md` first — the whitelist + blacklist there is authoritative on whether `Approve` is the right call. Then populate `requires_human` with a clear `reason` (one sentence — what direction needs human sign-off) and `steps[]` (concrete actions the operator must take to clear the field — e.g. "Confirm direction in design doc", "Decide between options A and B"). Set `set_by: "agent"` and `set_at` to the current ISO timestamp. The poller's dispatch filter (`src/poller/local-issues.ts`) skips any card with `requires_human != null`, so the card stays parked until the human clears the field via the dashboard "Mark Resolved" affordance.
+## Terminal Calls
 
-Distinguishing `Keep` vs `Approve` vs `Park` vs `Cancel`:
+Only `ready`, `cancelled`, `archive`, `complete` valid.
 
-- Could a competent agent finish the card without ever asking the human a question? → **Keep** (promote to ToDo, no human gate).
-- Card is implementable but the chosen direction needs sanity-check? → **Approve** (promote behind `requires_human`).
-- Card is genuinely on hold (revisit later, not now, not cancelled — depends on long-running external work)? → **Park** (move to Backlog via `archive`).
-- Card is no longer desired / superseded by a different approach / duplicate? → **Cancel**.
-
-**Validate `effort_level` on every Review save (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy file carries the operator-tunable assignment prompt and the operator-configured 7-row level ladder. For the card under triage, compute the level that matches the work the description implies (default `medium`; bump UP only for deep reasoning / multi-file refactor / subtle concurrency; bump DOWN for mechanical edits / single-file fixes / doc tweaks). Compare against the YAML's existing `effort_level`:
-
-- Unset (`null`) → set it to the computed level.
-- Set but mismatched (the description has visibly grown or shrunk in scope since the previous triage) → overwrite with the computed level.
-- Set and matches → leave alone.
-
-`effort_level` validation runs on `Keep` and `Approve` outcomes (the card will be dispatched eventually). Skip on `Cancel` — a cancelled card never dispatches so the level is moot.
-
-`triage.expires_at = now + 24h` on every Review save (even when promoting to ToDo — if the card bounces back to Review later, it'll be re-triaged on schedule).
-
-### Status = `Blocked` — Hard Gate audit
-
-A card sits in Blocked because some prior agent claimed a human-only blocker. **Audit that claim** before re-confirming. Reuse the misclassification logic from `claude-plugins/issues/skills/unblock/SKILL.md`:
-
-1. Read the most recent `author: danxbot` comment containing a `## Blocked` / "Operator must do" section. That's the contract.
-2. Inspect every "operator must do" step. For each, classify:
-   - **Locally executable** = any of: edit `.env` / config files; `./vendor/bin/sail artisan ...`; `make ...`, `yarn ...`, `npm ...`, `composer ...`; `tail` / `grep` / `cat` on `storage/logs/`; re-running test suites (`vitest`, `phpunit`, `artisan test:*`); restarting Octane / queue / Horizon; reading session JSONL logs; running a git command; reading code.
-   - **Human-only** = ONLY: credential / secret rotation, deploy / SSM access, write-only repo, design / product decision, physical / OOB action (per `issue-card-workflow` "Hard Gate" table).
-3. Decide:
-
-| Audit outcome | Action | YAML changes |
+| Decision | Terminal status | Derived status |
 |---|---|---|
-| **Every step is locally executable** — wrongly punted | **Demote** to ToDo. Append a comment naming the misclassification (which steps were local-runnable). | Edit `triage.last_status: Demote`, `triage.last_explain: "<one sentence — what was misclassified>"`, `triage.reassess_hint: ""`. Then `danxbot_complete({status: "ready", summary})` — worker stamps `ready_at` + clears `blocked` (rule 4 → `ToDo`). **Do NOT write `blocked` / `ready_at` / `status` directly** — worker owns the lifecycle stamp. The next worker dispatch will pick up the demoted card and DO the local work; this triage agent does NOT execute the steps itself. |
-| **At least one step is genuinely human-only** | **Confirm** Blocked. Write `triage.reassess_hint` — the one fast check that decides whether to re-confirm next time. | `blocked` (unchanged — `blocked.at` stays so derived status stays `Blocked` via rule 3), `triage.last_status: Confirm-Block`, `triage.last_explain: "<one sentence — which human-only step gates the card>"`, `triage.reassess_hint: "<≤120 chars, action-shaped>"`. **No `status` write** — the field is derived from the unchanged `blocked.at`. |
-| **Mixed** (some local, some human-only) | Same as Confirm — but mention in `last_explain` that the next worker dispatch should execute the local steps before re-confirming. The `reassess_hint` tells the next triage agent how to verify the human-only step landed. | Same as Confirm above. |
-
-`triage.expires_at = now + 3h` on every Blocked save (Confirm, Demote, or Mixed). Stamp `now + 3h` even on Demote — if the demoted card bounces back to Blocked later, the cadence is the right floor.
-
-**Rationalisation detector (refuse to confirm if the prior comment contains any of):**
-
-- "operator-driven verification"
-- "production-shaped infra"
-- "honest way to verify"
-- "intermittent — needs more samples"
-- "needs to be tested in production / staging"
-
-These phrases mean the prior agent punted. Demote.
-
-### Status = `Waiting On` — re-check `waiting_on.by[]`
-
-A card with `waiting_on != null` is parked waiting on other in-flight cards. Your job is to re-check whether every blocker has reached a terminal status (Done or Cancelled).
-
-Procedure:
-
-1. Read `waiting_on.by[]` from the YAML. For each `<PREFIX>-N`:
-   - `Read .danxbot/issues/open/<PREFIX>-N.yml` (fall back to `closed/<PREFIX>-N.yml`) to load the blocker.
-   - Note its `status`. Terminal = `Done` or `Cancelled`. Non-terminal = anything else.
-2. Decide:
-
-| Audit outcome | Action | YAML changes |
-|---|---|---|
-| **Every blocker is terminal** | **Cleared — no-op on `waiting_on`**. The picker dispatches the card automatically the next tick (it gates on effective dep resolution, not raw `waiting_on`). Leave the durable record in place as dep history. | `waiting_on` unchanged, `status` unchanged, `triage.last_status: Unblock`, `triage.last_explain: "<one sentence — every blocker reached terminal status; picker will dispatch>"`, `triage.reassess_hint: ""` (cleared — card is dispatchable). |
-| **At least one blocker is non-terminal** | **Confirm-Block**. Update `triage.reassess_hint` to name which blockers are still pending. | `waiting_on` unchanged, `status` unchanged, `triage.last_status: Confirm-Block`, `triage.last_explain: "<one sentence — naming the still-pending blockers>"`, `triage.reassess_hint: "<≤120 chars — e.g. 'Re-check ISS-91, ISS-92 — still in progress as of <iso>'>"`. |
-
-`triage.expires_at = now + 1h` on every Waiting On save. The 1h cadence is intentionally short — a phase sibling can move from In Progress to Done at any minute, and we want the dependent card dispatched as soon as possible.
-
-**Edge case — blocker not found.** If both `Read` calls (`open/<PREFIX>-N.yml` and `closed/<PREFIX>-N.yml`) fail for a blocker id, treat that blocker as **Cancelled** (a non-existent card cannot block) and proceed with the rest. Note in `last_explain`: `"Blocker <PREFIX>-N not found — treated as Cancelled."`
-
-### Out-of-scope cards
-
-A card is **out of scope** ONLY when ALL conditions hold:
-
-1. `waiting_on == null` (no dep-chain record), AND
-2. `blocked == null` (no self-block record), AND
-3. `status` is one of: `ToDo`, `In Progress`, `Done`, `Cancelled`.
-
-| `status` (with `waiting_on == null` AND `blocked == null`) | Action |
-|---|---|
-| `ToDo` / `In Progress` | Refuse — these are dispatchable / actively-dispatched cards; never re-triaged. `danxbot_complete({status: "failed", summary: "..."})`. |
-| `Done` / `Cancelled` | Refuse — terminal cards stay frozen. `danxbot_complete({status: "failed", summary: "..."})`. |
-
-A card with `requires_human != null` is parked by the poller's
-dispatch filter regardless of its open status — it is also out of
-scope for the per-status triage agent. `requires_human` is cleared by
-the human (via the dashboard "Mark Resolved" affordance), not by
-triage.
-
-**A card with `waiting_on != null` is NEVER out of scope** — regardless of its `status` (`waiting_on` is an independent dispatch gate). **A card with `blocked != null` is NEVER out of scope** — even if its `status` is `Blocked` (the worker enforces the invariant). Always route waiting-on cards to the Waiting On path and blocked cards to the Blocked path. Re-read the in-scope table at the top of "Per-status decision trees" if you find yourself considering refusal — the FIRST checks are `waiting_on != null` and `blocked != null`, not `status`.
-
-The poller is the gatekeeper; if you receive a genuinely out-of-scope card (`blocked == null` AND non-Review/non-Blocked status) the poller has a bug — fail loud so it surfaces.
-
-## YAML changes — checklist (every triage save)
-
-Before calling `Edit`, every triage decision MUST update the `triage{}` block:
-
-1. `triage.expires_at` — set to `(now + status_ttl).toISOString()` where `status_ttl ∈ {24h, 3h, 1h}` per the table above.
-2. `triage.last_status` — one of `Keep | Cancel | Approve | Demote | Confirm-Block | Unblock`.
-3. `triage.last_explain` — 1–2 sentence English description of the decision (include ICE breakdown for Review / Keep|Approve).
-4. `triage.reassess_hint` — required for Blocked (Confirm) and Waiting On (Confirm-Block). Cleared (`""`) on Demote and Unblock. Empty on Review.
-5. `triage.ice` — populated on Review / Keep|Approve. Zeros on every other path.
-6. `triage.history` — APPEND a new entry with the same fields (`{timestamp, status, explain, expires_at, ice}`). Cap history at 10; oldest dropped on overflow.
-
-After `Edit`, re-read the file with `Read`. Confirm the file parses (no YAML errors visible in the lines you cared about) and `triage.expires_at` matches the value you wrote. If the file is malformed (e.g. wrong indentation broke a sibling key), fix it via another `Edit` and re-read. The chokidar watcher mirrors every YAML write to the DB; a malformed file is mirrored as `{_malformed: true, raw: <text>}` and surfaces in the dashboard banner — recover before calling `danxbot_complete` so you don't ship malformed state.
-
-## Comment policy
-
-Triage decisions DO append a comment to `comments[]` for human-readable history (in addition to the structured `triage{}` block). Logical shape:
-
-- `author: "danxbot-triage"`
-- `timestamp: <current ISO>`
-- `text:` markdown body — uses the `comment-style` skill (`claude-plugins/issue-worker/skills/comment-style/SKILL.md`):
-  - `## Triage — <YYYY-MM-DD>`
-  - `**Status:** <prior status> → <new status>`
-  - `**Decision:** <last_status — one of Keep | Cancel | Approve | Demote | Confirm-Block | Unblock>`
-  - `**ICE:** <total> (<I>×<C>×<E>)` — Review with **Keep** or **Approve** ONLY. **DO NOT include this line for Cancel / Demote / Confirm-Block / Unblock** (`triage.ice` is zeros for those — printing `**ICE:** 0 (0×0×0)` is noise).
-  - `**Reassess hint:** <reassess_hint>` — Blocked **Confirm** and Waiting On **Confirm-Block** ONLY. **DO NOT include this line for Review (any decision), Blocked / Demote, or Waiting On / Unblock** (`triage.reassess_hint` is `""` for those — printing `**Reassess hint:**` with no value is a half-line of garbage in the dashboard).
-  - `**Explain:** <last_explain>`
-- No `id` field — worker stamps it on tracker push.
-
-One comment per triage. Don't append more than one comment per dispatch.
-
-## Smoke-test checklist (manual operator verification)
-
-When verifying the agent against the live wiring:
-
-1. Pick one card per in-scope status and dispatch the agent (`/api/launch` with `workspace: "issue-worker"`, `task: "Triage card <PREFIX>-N using the danx-triage-card skill."`).
-2. After dispatch finishes (`status: completed`), re-read the YAML:
-   - `triage.expires_at` is a future ISO 8601 timestamp (within ±30s of `now + status_ttl`).
-   - `triage.history[]` gained exactly one new entry with matching `expires_at`, `status`, `explain`.
-   - `triage.last_status` matches one of the allowed values for that input status.
-   - For Blocked / Confirm and Waiting On / Confirm-Block: `triage.reassess_hint` is non-empty AND ≤120 characters.
-   - For Blocked / Demote and Waiting On / Unblock: `triage.reassess_hint` is `""` (cleared — card is no longer parked).
-   - For Review with Keep / Approve: `triage.ice.total = i × c × e` with each component in [1,5].
-   - For Review with Cancel: `triage.ice = {total: 0, i: 0, c: 0, e: 0}` (Cancel doesn't score).
-3. `comments[]` gained exactly one new `## Triage — <date>` comment.
-
-Any mismatch on the above is a skill-body bug; file as a follow-up issue and surface in retro.
-
-## Failure handling
-
-- YAML parse error / `Read` of `.danxbot/issues/open/<PREFIX>-N.yml` (and `closed/`) both fail → `danxbot_complete({status: "failed", summary: "Failed to load <PREFIX>-N: <error>"})`. Do NOT edit the file.
-- Re-read after `Edit` shows the YAML is malformed → fix it via another `Edit`, re-read again. If you can't recover after one retry, `danxbot_complete({status: "failed", summary: "..."})` describing what went wrong.
-- MCP tool itself errors (server unreachable, tool not registered) → `danxbot_complete({status: "critical_failure", summary: "mcp__danx-issue__* tools not available — workspace .mcp.json wiring broken"})` per `claude-plugins/issue-worker/skills/halt-flag/SKILL.md`.
+| Keep / Approve / Demote | `ready` | `ToDo` |
+| Cancel | `cancelled` | `Cancelled` |
+| Park | `archive` | `Backlog` |
+| Confirm-Block / Unblock | `complete` | unchanged |
 
 ## Boundaries
 
-- You read + write **exactly one** card. Never edit `comments[]`, `ac[]`, `description`, or any field of a card you weren't dispatched for.
-- You do NOT investigate the underlying bug / feature — that's the worker dispatch (Phase 4 / ISS-94). Triage decides "is this card ready to be worked on" not "what is the work."
-- For Review cards, the `ice` score is your judgement based on the card's CURRENT description, ACs, and recent commits. You may `git log --oneline -200` for context but DO NOT edit the description, append diagnostic notes, or restate ACs.
-- For Blocked cards, the audit is read-only — if the misclassification is "every step locally executable," you Demote and let the next worker dispatch DO the steps. You never run the steps yourself.
-
-## Conflict-check mode (`--conflict-check`)
-
-A SECOND mode invoked by the multi-worker pick algorithm (DX-200 / multi-worker dispatch epic DX-158). When the dispatch task body contains `--conflict-check`, route here INSTEAD of the per-status decision tree above.
-
-**Invocation:** the poller spawns this dispatch when it has picked a candidate card AND at least one OTHER agent already has an in-progress dispatch on this repo. The task prompt looks like:
-
-```
-Triage with --conflict-check using the danx-triage-card skill.
-
-Candidate: <PREFIX>-100 (<title>)
-In-progress: [<PREFIX>-141, <PREFIX>-142]
-
-Read every staged YAML at /tmp/conflict-check/<dispatch-id>/.
-Decide whether the candidate's likely file scope overlaps with any in-progress card.
-Reply with a single JSON object via danxbot_complete.summary:
-  {ok: true, reason: "..."} — no overlap detected
-  {ok: false, reason: "...", blocked_by: ["DX-N", ...]} — overlap; candidate should wait
-```
-
-**Inputs:** the worker stages a candidate YAML + every in-progress sibling YAML at the keyed tmpdir. Your dispatch's tmpdir is the staging path the worker substituted from `${DANXBOT_DISPATCH_ID}` — find it via `ls /tmp/conflict-check/`. Files:
-
-- `candidate.yml` — the card the picker is about to dispatch
-- `in-progress-0.yml`, `in-progress-1.yml`, ... — every currently-running sibling
-
-Read each via the `Read` tool (no MCP call needed; they're plain files in your dispatch's tmpdir).
-
-**Decision criteria:** infer file scope from each card's:
-
-- `description` — look for explicit Files / Modify / Create blocks
-- `ac[]` titles — they often name files / modules / functions
-- `title` — a card titled "Refactor launcher.ts" obviously touches `launcher.ts`
-
-Flag a conflict when:
-
-- Two cards explicitly name the same file (`launcher.ts`, `dispatch/core.ts`)
-- Two cards target the same module / domain (`src/poller/`, `src/dashboard/agents-*`)
-- Two cards are phases of the same epic that haven't declared independent file scopes
-
-Do NOT flag a conflict when:
-
-- Cards target disjoint domains (`src/agent/launcher.ts` vs `dashboard/src/components/AgentTable.vue`)
-- One card is documentation-only (README / `.md` edits) and the other is code
-- The overlap is a trivial shared file (e.g. `package.json`) that both cards merely bump dependencies in — not a blocker
-
-**Output (REQUIRED):** call `danxbot_complete({status: "complete", summary: <JSON>})` exactly once. The summary MUST be a single valid JSON object on its own line:
-
-```
-{"ok": true, "reason": "Candidate touches dashboard/; in-progress sibling touches src/poller/. Disjoint domains."}
-```
-
-OR
-
-```
-{"ok": false, "reason": "Both candidate and DX-141 modify src/agent/launcher.ts (declared in their Files sections).", "blocked_by": ["DX-141"]}
-```
-
-**Conservative bias:** when uncertain, return `ok: false`. The cost of a false positive is one tick's delay; the cost of a false negative is two agents racing on the same file. The poller treats every malformed / timeout / partial response as `ok: false` automatically — there is no "I don't know" exit; you decide.
-
-**Boundaries (conflict-check mode only):**
-
-- DO NOT edit any YAML. The conflict-check is read-only — your only output is the JSON in `danxbot_complete.summary`.
-- DO NOT call any `mcp__danx-issue__*` tool. Every input you need is in `/tmp/conflict-check/<dispatch-id>/` — Read those staged files only.
-- DO NOT investigate the underlying bugs / features. The decision is "do these cards likely touch the same files?" not "are these cards good cards?"
-- DO NOT include preamble / explanation prose in `summary`. The poller's parser tolerates fenced ```json blocks but a bare JSON object is preferred.
+- One card only.
+- Never edit other cards' `comments[]`, `ac[]`, `description`.
+- Do NOT investigate underlying bugs — triage is "is this card ready to dispatch?" not "what is the work?"
+- For Review: ICE is your judgment on CURRENT description; may `git log` for context; do NOT edit description or append notes.
+- For Blocked: audit is read-only — if misclassification found, Demote + let next worker dispatch DO the steps.
