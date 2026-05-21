@@ -1,0 +1,25 @@
+{
+  "description": "Ideal-solution-mindset mandate (SessionStart + UserPromptSubmit). Surfaces the four core dev principles every session so feature planning, investigations, and bug fixes default to the ideal correct solution — no legacy, no fallbacks, no dead code, lowest-complexity-that-is-still-correct, reuse-before-you-build.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ideal-solution-mandate.sh SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ideal-solution-mandate.sh UserPromptSubmit"
+          }
+        ]
+      }
+    ]
+  }
+}

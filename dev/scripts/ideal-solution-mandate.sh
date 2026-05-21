@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# ideal-solution-mindset mandate — ships with the `dev` plugin.
+#
+# Fires on SessionStart and UserPromptSubmit. Injects a brief reminder
+# of the four core dev principles into every session so feature planning,
+# bug fixes, investigations, and refactor proposals default to the
+# correct shape — not the fastest patch.
+#
+# Full skill body lives at dev/skills/ideal-solution-mindset/SKILL.md.
+# This hook does NOT duplicate the full body — it surfaces the principles
+# + decision discipline so the agent loads the full skill when the
+# response will be more than a one-liner code edit.
+#
+# Argv: $1 = "SessionStart" or "UserPromptSubmit".
+
+set -euo pipefail
+
+EVENT="${1:-SessionStart}"
+
+if [ "$EVENT" = "UserPromptSubmit" ]; then
+    cat >/dev/null
+fi
+
+read -r -d '' MANDATE <<'EOF' || true
+IDEAL-SOLUTION MINDSET — the four core dev principles default for every plan, investigation, bug fix, refactor, and architectural decision. Full skill: dev:ideal-solution-mindset.
+
+  #1  IDEAL CORRECT SOLUTION. Cost / effort / token usage NEVER trade against correctness. "Approach A is faster to write" / "B touches another repo" / "C means extending shared infra" — disqualified reasons. Pick the architecturally correct shape and execute. Surface a real trade-off only when the running system behaves differently (latency / freshness / security / capability gap).
+
+  #2  NO LEGACY, NO FALLBACKS, NO DEAD CODE. Hard cuts, never migrations. Anything made obsolete by the change is deleted in the same commit. Out-of-scope callers that don't conform → fail loudly (typed error, hard assertion, removed entry-point). Forbidden: `if (legacyShape) {…} else {…}`, fallback values, shims, deprecated wrappers, dead exports, `// TODO remove`, commented-out blocks. Deprecated code is as bad as a bug.
+
+  #3  REDUCE COMPLEXITY. Correct and simple usually coincide; complex usually means a worse model is hiding underneath. "What is the simplest shape that solves this? Is that shape also correct?" — climb the complexity ladder only as far as correctness requires. New file / class / abstraction must justify itself by naming the specific invariant it enforces.
+
+  #4  DRY + SOLID — REUSE BEFORE YOU BUILD. Before adding any new helper / class / service / pattern, prove (by searching the codebase, not guessing) there isn't already something doing this job. Same capability, different name → use it. Same capability, partial coverage → extend cleanly. Same capability, wrong location → move it. Record what you searched for in the plan.
+
+DECISION DISCIPLINE — decide unilaterally + document; ask the user ONLY when the answer changes runtime behavior visible to the system (UX, latency, retention, security, capability gap). Forbidden question shapes: "X or Y?" when X is ideal and Y is just faster; "Should I also clean up Z?" when Z is obsolete code in the touched area; "Add a flag / fallback / shim?" — never, principle #2 forbids it.
+
+PRE-PLAN REFLECTION LOOP (run before declaring any plan ready): state goal · name ideal shape · reuse audit · legacy audit · complexity check · cost-only-objections audit · question audit. If any step changes the plan, restart. Plan is ready when one full pass produces no edits.
+
+Red flags that mean STOP: "I'll just add a flag for now" · "It's faster to keep both shapes" · "Let me ask the user which one they want" (when the only diff is effort) · "This is getting complex but I think it's fine" · "I'll write a new helper for this" (before reuse audit in writing) · "I'll leave the old function — something might still call it" · "I'll come back and clean this up later".
+
+Self-trigger gate: before sending any plan, proposal, investigation finding, or fix design — confirm the four principles applied and the question-audit ran. If the draft contains a clarifying question whose answer would not change runtime behavior, drop the question and decide.
+EOF
+
+jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
+   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
