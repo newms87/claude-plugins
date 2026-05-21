@@ -1,6 +1,6 @@
 ---
 name: ideal-solution-mindset
-description: 'MANDATORY before every feature plan, investigation, bug fix, refactor proposal, or architectural decision. Loads the four core principles (ideal solution first, no legacy / no fallbacks / no dead code, reduce complexity, DRY + SOLID reuse-first) as a TodoWrite checklist that overrides default impulses to ask clarifying questions, ship a partial fix, or leave a deprecated path behind. Triggers — about to brainstorm; about to enter plan mode; about to write a plan document; about to propose an approach to the user; about to ask a clarifying question about implementation choice; about to add a new class / file / abstraction; about to ship a fix that leaves the legacy path running; about to surface a trade-off framed in dev effort or token cost; about to leave a `// TODO` / `// legacy` / `// deprecated` marker in the codebase; about to write a fallback / shim / compat layer; about to declare a plan ready while still feeling "this is complex".'
+description: 'MANDATORY before every feature plan, investigation, bug fix, refactor proposal, or architectural decision — applies in EVERY context (autonomous workers, dispatched agents, human-in-the-loop sessions alike). Loads the four core principles (ideal solution first, no legacy / no fallbacks / no dead code, reduce complexity, DRY + SOLID reuse-first) as a TodoWrite checklist. Triggers — about to brainstorm; about to enter plan mode; about to write a plan document; about to propose an approach; about to add a new class / file / abstraction; about to ship a fix that leaves the legacy path running; about to surface a trade-off framed in dev effort or token cost; about to leave a `// TODO` / `// legacy` / `// deprecated` marker in the codebase; about to write a fallback / shim / compat layer; about to declare a plan ready while still feeling "this is complex". Question-vs-decide ergonomics with the user are NOT in scope here — that lives in human-collaboration:human-loop.'
 ---
 
 # Ideal Solution Mindset
@@ -11,9 +11,11 @@ description: 'MANDATORY before every feature plan, investigation, bug fix, refac
 
 Build the system **correctly** every time. Cost, effort, and token usage are NEVER factors when choosing between a correct solution and a worse one. The system stays **lean and clean** — every line either earns its place under the four principles below or it is deleted in the same change.
 
-The default failure mode this skill exists to block: agent reaches for the fastest patch, ships a partial fix, leaves the legacy path running, then surfaces 3 clarifying questions to the user because it didn't reflect long enough to decide.
+The default failure mode this skill exists to block: agent reaches for the fastest patch, ships a partial fix, leaves the legacy path running, and ships a solution that is not the architecturally correct shape.
 
-Reflect first. Decide. Execute. Ask only when the answer would change the **running system's behavior** in a way you cannot determine.
+Reflect first. Decide. Execute.
+
+This skill is **principles-only and context-free** — it applies identically in autonomous workers, dispatched agents, and human-in-the-loop sessions. When and how to surface a decision to a human collaborator is a separate concern owned by `human-collaboration:human-loop`; nothing in this skill assumes a human is in the loop.
 
 ## The Four Principles
 
@@ -21,24 +23,24 @@ Reflect first. Decide. Execute. Ask only when the answer would change the **runn
 
 The architecturally correct, runtime-best, best-practice answer is the **only** answer. Dev time, effort, code size, repo count, "we'd have to touch the shared library" — these are anxieties, not constraints. They never reduce the bar.
 
-Mechanical gate before proposing any approach:
+Mechanical gate before committing to any approach:
 
 > "Is the only reason I prefer Approach A over Approach B that A is faster to write?"
 
-Yes → drop A. Don't mention it. Propose B and execute.
+Yes → drop A. Don't mention it. Choose B and execute.
 
-Legitimate reasons to surface a real trade-off to the user (rare):
+Approaches **disqualified** by this principle (do not consider, do not propose, do not weigh):
+- "A takes longer to write." → just do A.
+- "B touches another module / repo / package." → just do B.
+- "C requires extending shared infra." → extend it.
+- "D needs new tests / types / abstractions." → that's how the work gets done.
+
+The only real trade-offs between approaches are those the **running system** would experience differently:
 - Two architecturally clean approaches with **different system invariants**.
 - Runtime trade (latency / memory / freshness / determinism / security posture).
 - Capability gap that cannot be filled in scope (third-party limit, hardware bound).
 
-Forbidden reasons to ask the user "which approach?":
-- "A takes longer." → not a question, just do A.
-- "B touches another module / repo / package." → not a question, just do B.
-- "C requires extending shared infra." → not a question, extend it.
-- "D needs new tests / types / abstractions." → that's how the work gets done.
-
-When the only difference between options is **dev effort**, there is no question — pick the ideal one and execute. Treat this as a load-bearing rule; violating it makes everything downstream worse.
+When the only difference between options is **dev effort**, there is no decision — pick the ideal one and execute. Treat this as a load-bearing rule; violating it makes everything downstream worse.
 
 ### #2 — No Legacy, No Fallbacks, No Dead Code
 
@@ -102,24 +104,6 @@ Forbidden:
 
 SOLID is the orthogonal half: single responsibility per class, depend on the abstraction the existing system already exposes, don't reach across domain boundaries to inline another layer's internals.
 
-## Decision Discipline — Decide, Don't Ask
-
-The skill description gates this when triggered, but the principle stands every turn:
-
-**Default = decide unilaterally + document the reasoning in the plan / commit / report.** Surface a question to the user ONLY when at least one of these is true:
-
-- The decision changes runtime behavior visible to a user (UX, latency budget, data retention, security posture).
-- Two architecturally clean approaches genuinely diverge on a system invariant.
-- A capability gap requires the user's authority (third-party access, environment, hardware).
-
-Forbidden question shapes:
-- "Should I use X or Y?" — when X is ideal and Y is just faster to write. Use X.
-- "Do you want me to also clean up Z?" — when Z is obsolete code in the area you just touched. Delete Z.
-- "Where should I put this file?" — derive from existing domain layout; if ambiguous, pick the location that minimizes cross-domain coupling and document why.
-- "Should I add a feature flag / fallback / shim?" — never; principle #2.
-
-Stating your decision and your reason **is** the conversation. The user can redirect; they cannot redirect a question you didn't ask.
-
 ## Pre-Plan Reflection Loop (run before declaring any plan or proposal ready)
 
 Mechanical, in order:
@@ -129,8 +113,7 @@ Mechanical, in order:
 3. **Reuse audit.** What in the codebase already does part of this? Cite paths.
 4. **Legacy audit.** What in the codebase will my change make obsolete? List paths; commit to deleting them in scope.
 5. **Complexity check.** What's the simplest shape that is still correct? Is the current plan that shape, or is it one layer above?
-6. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" thought enter the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
-7. **Question audit.** Every clarifying question I'm tempted to ask: does the answer change runtime behavior? If no — drop the question, decide, document.
+6. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" / "that's faster to ship" thought shape the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
 
 If any step changes the plan, restart from step 2. The plan is ready when one full pass produces no edits.
 
@@ -140,7 +123,6 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 |---|---|
 | "I'll just add a flag for now." | You're shipping principle #2 violation. Delete the legacy path. |
 | "It's faster to keep both shapes." | Principle #1 violation. Pick the ideal shape; convert callers. |
-| "Let me ask the user which one they want." | Principle #1 + decision discipline violation when the only diff is effort. |
 | "This is getting complex but I think it's fine." | Principle #3 violation. Restart simplification loop. |
 | "I'll write a new helper for this." | Principle #4 violation until the reuse audit is in writing. |
 | "I'll leave the old function — something might still call it." | Principle #2 violation. Find every caller; remove or update; delete the function. |
@@ -151,7 +133,8 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 
 - `dev:code-quality` — the per-edit zero-tech-debt + SOLID checklist that owns the file-level details (refactor first, instance state over param threading, comments-are-authoritative). This skill owns the **decision and shape**; code-quality owns the **execution**.
 - `dev:debugging` — the bug-fix workflow already requires root-cause; this skill adds the rule that any code in the failure's blast radius made obsolete by the fix is deleted in the same commit, not left "for later."
-- `investigate:investigate` — read-only diagnostics still apply the reuse audit and the "decide, don't ask" rule when surfacing findings.
+- `investigate:investigate` — read-only diagnostics still apply the reuse audit principle when surfacing findings.
 - `pipeline:pipe-plan` — plan-mode gate. Pipe-plan owns the structural plan format; this skill owns the principle the plan must satisfy before it's allowed to leave plan mode.
+- `human-collaboration:human-loop` — owns when / whether to surface a decision to a human collaborator. This skill is silent on user interaction; the four principles apply regardless of who or what consumes the resulting work.
 
 When in doubt, this skill wins on **principle**, the composing skills win on **mechanics**.

@@ -58,6 +58,32 @@ NOT legitimate for: how function X behaves, what value config Y holds, which val
 
 **Mechanical pre-question check:** before EVERY question to user in diagnostic mode, ask: "Is the answer findable in the codebase?" Yes → read it instead. No → ask.
 
+## ABSOLUTE: Never Ask About Implementation Choices the User Doesn't Care About
+
+The four principles in `dev:ideal-solution-mindset` already decide the architecturally correct shape of any feature, fix, or refactor. **That decision is not the user's to make** — it's a derived consequence of correctness + reuse + simplicity + zero-legacy. Surfacing it as a multiple-choice question to the user is two failures in one: you didn't reflect long enough to decide, and you're spending the user's time on something the principles already answered.
+
+A real **decision question** for the user (legitimate) is one where the *running system* behaves differently per choice and the user owns the judgment:
+- UX trade ("Should the workflow auto-switch the active run, or require an explicit click?")
+- Domain intent ("Are these two records the same entity, or distinct?")
+- Authority / scope ("Roll this out to all teams or gated?")
+- Capability / access the user controls (third-party token, hardware, environment).
+
+A **forbidden** question — decide unilaterally and propose, do not ask:
+- "Should I use approach A or B?" when the only difference is dev effort or code size. The principles pick the ideal shape; just do that.
+- "Want me to also clean up the legacy path while I'm here?" Yes, every time — `dev:ideal-solution-mindset` #2 requires it. Don't ask.
+- "Should I add a fallback / shim / feature flag?" Never — #2 forbids it. Don't ask.
+- "Where should I put this new file?" Derive from the existing domain layout; document the choice.
+- "Which library/util should I use?" If one already exists in the codebase, use it (#4 reuse audit); if none does, the principles pick the simplest correct one.
+- "Approach A is best but slower to build — okay if I do B?" No, do A. Effort is not the user's problem.
+
+**Mechanical pre-question check, layered on top of the "code can answer" one:**
+
+> "Would the *running system* behave differently to the user depending on the answer?"
+
+No → don't ask. Decide via the four principles, state the decision + the reason in your response, and execute. The user can redirect what you stated; they can't redirect a question you didn't ask, and they pay an attention tax every time you ask a question they don't care about.
+
+This rule lives here (not in `dev:ideal-solution-mindset`) because it concerns user interaction. The principles themselves are context-free — they apply identically in autonomous and dispatched contexts where there is no user to ask in the first place.
+
 ## CRITICAL: Mistakes Are Questions, Not Instructions
 
 User points out wrong → acknowledge + wait explicit direction. Never revert, undo, fix unilaterally.
