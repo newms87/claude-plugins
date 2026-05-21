@@ -5,78 +5,55 @@ description: 'MANDATORY before any file operation OR before backgrounding any lo
 
 # Tool Usage Rules
 
-## File Operations
+## File Ops — NEVER bash equivalents
 
-**ALWAYS use Write and Edit tools. NEVER use bash commands for file ops.**
+| Op | Tool | Never |
+|---|---|---|
+| Create | Write | `echo >`, `cat <<EOF` |
+| Edit | Edit | `sed`, `awk` |
+| Read | Read | `cat`, `head`, `tail` |
+| Search | Glob/Grep | `find`, `grep` |
 
-| Operation | Tool | Never Use |
-|-----------|------|-----------|
-| Create file | Write | `echo >`, `cat <<EOF`, `printf` |
-| Edit file | Edit | `sed`, `awk`, `perl -i` |
-| Read file | Read | `cat`, `head`, `tail` |
-| Search files | Glob | `find`, `ls` |
-| Search content | Grep | `grep`, `rg` |
+Read first (prereq) → Edit → auto-lint.
 
-**Workflow:** Read first (required before Edit) → Edit → hooks lint automatically.
+**Edit fails?** Reduce `old_string` to 2–5 lines. Repeated failure = stop; file not editable or shouldn't edit.
 
-## Edit Failures
+## Import order
 
-Edit match fails → reduce `old_string` to 2-5 lines (smaller strings = fewer whitespace mismatches).
-
-**Edit/Write fails repeatedly: STOP.** Do NOT rewrite entire file with Write, use Bash as fallback, invent workarounds. Either file cannot be edited (system issue) or not supposed to edit. Report failure + proceed without that edit if possible.
-
-## Import Order
-
-Linters delete unused imports after EVERY Edit/Write. Strict ordering: **Usage first, imports second.** Add code REFERENCING new class, then add import statement. Never add imports before usage exists — linter deletes + subsequent code resolves to wrong namespace.
-
-## Lint
-
-Hooks run automatically after Write/Edit. Never run lint manually — redundant.
+Linters run post-Edit/Write. Strict: usage first, imports second. Add code using class → add import. Never add imports before usage (linter deletes).
 
 ## MCP Tools
 
-Never guess parameters. Always read schema from ToolSearch before calling. MCP tools have inconsistent interfaces — one tool identifies by name, another by ID. Trello example: `update_checklist_item` requires `checkItemId` (not name) → save creation IDs.
+Never guess params. Always ToolSearch for schema. MCP interfaces vary (name vs ID). Trello: `update_checklist_item` needs `checkItemId`.
 
-**CRITICAL: MCP string parameters are LITERAL — no escape sequences.** `\n` in parameter value = TWO CHARACTERS (`\` + `n`), not newline. Harness JSON-encodes value → `\n` becomes `\\n` in API payload. Use actual multi-line strings with real line breaks in every MCP string parameter. Applies to ALL MCP tools — Trello descriptions, comments, card names, etc. **Pre-call check:** Before every MCP call with multi-line string, visually confirm parameter contains real newlines, not `\n`.
+**Literal strings in MCP params.** `\n` = two chars (`\` + `n`), NOT newline. Real line breaks only. All tools: Trello names/descriptions/comments.
 
-## Background Processes — ALWAYS use Bash `run_in_background: true`
+## Background processes — `run_in_background: true` ONLY
 
-Long-running process (worker, dev server, build watch, deploy, test suite that takes minutes) → **MUST** spawn via `Bash` tool with `run_in_background: true`. Harness captures task ID + tracks child PID + tails stdout/stderr to a file the agent can read.
+Long-running (deploys, test suites, workers, dev servers) → Bash with `run_in_background: true`. Harness captures PID.
 
-**FORBIDDEN:** shell backgrounding (`cmd &`, `nohup cmd &`, `disown`, `setsid`). The shell wrapper exits immediately → `$!` references the wrapper, NOT the real worker → PID lost → cannot satisfy `process-kill` Iron Rule on restart → cannot signal-by-captured-PID. Even when output is redirected (`cmd > log 2>&1 &`), the PID is still untraceable.
+**FORBIDDEN:** `&`, `nohup`, `setsid`, `disown`. Shell exit → PID lost → can't kill later.
 
-**ALSO FORBIDDEN — double-backgrounding (`cmd &` PLUS `run_in_background: true`).** Setting the harness flag does NOT neutralize a trailing `&`. The `&` still detaches the real worker from the Bash session → the harness tracks ONLY the wrapper (which exits 0 immediately, often within seconds of "launch") → the long-lived child orphans to init → TaskStop has nothing to signal → kill discipline re-broken. Mechanical pre-write check: BEFORE pressing send on a Bash call where `run_in_background: true` is set, scan the command string for a trailing `&`, `nohup`, `setsid`, `disown` — if ANY present, strip them. The two mechanisms are mutually exclusive, never additive. Symptom of violation: background task completes with exit 0 in seconds while the long-running process keeps listening on its port — that is the orphan signature.
+**FORBIDDEN:** double-background (`&` + flag). The `&` detaches from Bash → harness tracks wrapper only → real process orphans → kill fails.
 
-**Pre-spawn check** before any process expected to live >30s:
-1. Am I about to write `&` at the end of a Bash command? → STOP. Use `run_in_background: true` instead.
-2. Did I capture the PID at spawn? → must be `child.pid` / `$!` returned by the tool that owns the process, NOT a later `ps` grep.
-3. If the only way I can find this process later is `ps -ef | grep`, I have already failed the kill discipline.
+**Per-command gate.** Every long-running Bash: scan for trailing `&` / `nohup` / `setsid` — if ANY, strip. Check BEFORE send.
 
-The Bash tool's background mode is the single canonical mechanism. Shell `&` is never the right choice in Claude Code.
+## Browser automation
 
-**Per-command gate, NOT per-session.** Every individual Bash command containing `nohup`, trailing `&`, `disown`, or `setsid` is a fresh trigger — re-confirm `run_in_background: true` is set on THIS Bash call before issuing it. Prior correct use of `run_in_background` earlier in the session does NOT amortize the check; copying a pattern from an earlier turn that used shell `&` is a known failure mode (observed 2026-05-16: agent relaunched a worker via `nohup … &` because the previous turn that started it also used `nohup … &` and the agent copied the shape without re-evaluating). Treat every long-running spawn as if it is the first one this session. The "I already did this once correctly" / "same kind of relaunch as last time" reflex is exactly when this rule rots.
+Use `mcp__claude-in-chrome__*` only. Start: `tabs_context_mcp` → `tabs_create_mcp` → `navigate` → `computer` → `read_page`.
 
-## Browser Automation
+## dist/ + node_modules/
 
-Use `mcp__claude-in-chrome__*` tools only, never Playwright. Start with `tabs_context_mcp`, then `tabs_create_mcp`, `navigate`, `computer` (screenshot/click/type), `read_page` (accessibility tree), `read_console_messages` (with pattern filter).
+Never read/edit `dist/` (stale). `src/` = truth. node_modules: read OK, edit NEVER.
 
-## dist/ and node_modules/
+## Refactoring tools
 
-Never read, search, edit `dist/` — stale build artifact. HMR → `src/` = source of truth.
+Use language tools for cross-file renames (auto-update refs). Manual find-replace = error-prone.
+- PHP: `phpactor class:move`
+- TS/JS: `ts-morph`, IDE refactoring
+- Go: `gorename`, `gopls rename`
+- Python: `rope`, `jedi`
 
-Reading `node_modules/` OK for understanding dependencies. Editing NEVER OK.
+## CLI tables
 
-## Refactoring Tools
-
-Use language-specific refactoring tools for cross-file renames/moves — update all references automatically. Manual find-and-replace error-prone.
-
-- **PHP:** `phpactor class:move src/Old/Path/Class.php src/New/Path/Class.php`
-- **TypeScript/JavaScript:** `ts-morph` or IDE refactoring
-- **Go:** `gorename`, `gopls rename`
-- **Python:** `rope`, `jedi`
-
-Use for: renaming classes/functions across files, moving to different namespaces, any cross-file reference updates.
-
-## Markdown Tables in Output
-
-Keep total row width under ~140 characters in CLI output. Use abbreviations + icons (e.g., `✏️ M` not "Modified"). Prefer more rows over wider rows.
+Keep row width <140 chars. Abbreviate + icons. More rows > wide rows.

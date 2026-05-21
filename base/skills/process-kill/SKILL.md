@@ -7,78 +7,52 @@ description: 'MANDATORY before delivering any signal (SIGTERM / SIGKILL / SIGINT
 
 Workspace shared. Every running process may belong to user, another agent, unrelated program. Destroying any irreversibly → can delete hours of unsaved work. Treat `kill`, `pkill`, `kill -9`, `taskkill`, `SIGTERM`, `SIGKILL`, every other signal delivery same way: **production action, no undo**.
 
-## When to Invoke
+## Iron Rule — Kill ONLY when ALL true
 
-ANY of:
-- About to call `kill`, `pkill`, `kill -9`, `taskkill`, send any signal
-- About to "clean up orphans," "kill stale process," restart by-killing
-- See process you didn't spawn that you think is no longer needed
-- Tempted to use `pkill -f`, `killall`, `kill $(pgrep ...)` — FORBIDDEN
+1. **Spawned it THIS session** (visible in conversation)
+2. **Captured PID at spawn** into a variable
+3. **Same PID still active** (no `ps` lookup, no pattern match)
 
-## The Iron Rule
+One fails → ask user instead.
 
-May only kill process when **100% of the following are true**:
+Correlation ≠ proof. Start time, TTY, CPU, "claude" in cmdline = not evidence. Only proof = PID you captured.
 
-1. **Spawned it THIS session** (not prior session, not another agent, not user)
-2. **Captured PID at spawn time** into a variable in your own code or notes — spawn command visible in conversation
-3. **Captured PID is still the exact PID about to signal** (no `ps` lookup, no pattern match, no inference from time/TTY/CPU/cwd)
+## Capture at spawn — >30s processes
 
-Even one not satisfied → don't kill. Ask user. Describe what you want to kill + why, wait for explicit action verb ("kill it," "stop it," "cancel it," "SIGTERM <pid>").
+- Node: `child.pid` immediately
+- Shell: `$!` immediately  
+- Python: `proc.pid` immediately
+- Scripts: `$$` to PID file before `exec`
 
-Correlation ≠ proof. Matching start time, TTY, CPU, "claude" string in command line — NONE evidence of ownership. Only evidence = PID personally captured at moment spawned.
+Lose PID = lose kill right.
 
-## Capture PID at Spawn — Always, Anything That Might Run >30s
+## Forbidden tools
 
-Even remote chance process lives >~30s → capture PID exact moment of spawning:
+- `pkill -f <pattern>` (unbounded)
+- `killall <name>` (unbounded)
+- `kill $(pgrep ...)` (unbounded)
+- Shell constructs killing by name/pattern/inferred ownership
 
-- Node `child_process.spawn()` → save `child.pid` immediately
-- Shell `background_cmd &` → save `$!` immediately
-- Python `subprocess.Popen()` → save `proc.pid` immediately
-- `wt.exe` / `wsl.exe` wrapper scripts → script writes `$$` to PID file before `exec`
+Only single captured PID, ever.
 
-Lose PID → lost right to kill. Ask user. Do NOT reconstruct ownership from `ps`.
-
-## Forbidden Tools
-
-- **`pkill -f <pattern>`** — pattern-matching across all processes = unbounded blast radius. Never.
-- **`killall <name>`** — same.
-- **`kill $(pgrep ...)`** — same.
-- Any shell construct killing by name, pattern, inferred ownership from `ps` — FORBIDDEN.
-
-Only ever signal single PID captured yourself at spawn.
-
-## Proof Block — Required Before Any Signal
-
-Before calling `kill`/`pkill`/etc., conversation must contain Proof Block user can audit:
+## Proof block — before ANY signal
 
 ```
 Target: PID <N>
-Spawned by me at: <tool-call reference or line of code>
-Captured as: <variable/note where I stored the PID>
-Command I expect it to run: <exact args>
+Spawned: <tool ref or code line>
+Captured as: <variable>
+Expect to run: <exact args>
 ```
 
-Cannot fill all four lines from memory of current session → don't kill. Ask.
+Can't fill all four from this session → ask.
 
-## "It's Just Cleanup"
+## "Orphan" labeling — prove absence first
 
-No such thing as "administrative" kill, "quick cleanup" kill, "obviously-mine" kill, "no one else could have that" kill, "just tidying up orphans" kill. Every signal to process not fully verified = potential destruction of someone else's work. Housekeeping not lower category — exactly as dangerous as production work.
+1. Read source-of-truth yourself (quote it)
+2. Verify response shape before parsing
+3. Exhaust all query params/filters
+4. Enumerate every plausible owner
 
-When in doubt, process stays alive. Stale orphan ∞ cheaper than destroyed session.
+Only then defensible. Label still doesn't authorize kill.
 
-## "Orphan" / "Unowned" / "Dead" — Prove Absence Before Claiming It
-
-A process is not orphan-because-you-think-so. Before labelling any process unowned, stale, or unmonitored:
-
-1. **Read the source-of-truth record yourself.** Fetch + quote it. Do not infer "no record" from a parser returning None, an empty grep, a 404 on a guessed endpoint, or any other negative result derived from a single attempt.
-2. **Verify the response shape before parsing it.** Envelope wrappers around the payload silently return None to a flat accessor. Inspect raw output once before trusting any extractor.
-3. **Exhaust the legitimate query parameters.** "Not found here" ≠ "does not exist." Try the obvious filters / scopes / namespaces before concluding absence.
-4. **Enumerate every plausible owner, not just the one you remember.** Other sessions, other users, other tools may have spawned it.
-
-Only after all four → "orphan" is a defensible label. The label still does not authorize kill — Iron Rule above stands. Re-labelling is not a side door around it.
-
-Miscalled orphan = second-most-expensive mistake in this skill. Wrong label → wrong story to operator → wrong reap → real work destroyed.
-
-## Why Skill Exists
-
-An agent killed user's unrelated Claude Code session by guessing ownership from `ps` columns. Cost = hours of lost context. Future agent reaching for `kill` without Proof Block → about to repeat that incident. Stop. Ask.
+**Forbidden:** housekeeping justifications ("just cleanup," "obviously mine," "no one else could have"). All signals = production action, no undo.

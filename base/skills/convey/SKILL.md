@@ -1,248 +1,102 @@
 ---
 name: convey
-description: Use when transferring information to another entity (human or agent) — reports, commit messages, PR descriptions, issue YAML descriptions / comments / retros, Slack replies, code-review feedback, hand-offs to subagents, end-of-turn summaries, plan write-ups, investigation findings, unblock notes. Loads the `convey` format — concept-first headline, behavior-diff tables, ASCII flow diagrams, caveats list, verify line. Goal — high signal-to-token ratio, scan-readable in <30s, zero filler. Auto-loaded via SessionStart hook so this skill applies to every information-transfer action in every session, not only when explicitly invoked. Auto-triggers also on YOUR OWN draft — before sending any response that contains a "Summary", "What shipped", "What I did", "Here's what changed", "Report", "Findings" section header OR a wall of file paths with prose around them, STOP and apply convey.
+description: Use when transferring information to another entity (human or agent) — reports, commits, PRs, issue YAMLs, Slack, code-review, hand-offs, summaries, plans, investigations, unblock notes. Concept-first headline, behavior-diff tables, ASCII flows, caveats, verify line. Signal/token ratio high, scan <30s. Auto-triggers on draft with "Summary", "What shipped", "Report", "Findings" OR wall of paths.
 ---
 
-# convey — Condensed High-Yield Information Transfer
+# convey — Concept-First Information Transfer
 
-## The problem this skill solves
+Default agent output is code-first: file paths, symbols, prose. Reader reverse-engineers concept. Fast to dump, slow to read.
 
-Default agent output is **code-first**: file paths, symbols, type signatures, prose narration. Reader reverse-engineers the concept from the code. Fast to dump; slow to consume. Reports balloon to multi-screen walls when the actionable signal is 4 lines.
-
-`convey` flips it. **Concept-first**, scaffolded into a fixed shape, tables and arrow diagrams over prose, paths only at the audit line. Reader can decide in <30s whether to dig further.
+`convey` flips it. Concept-first, fixed shape, tables + diagrams over prose, paths in Verify line only. Reader decides in <30s whether to dig further.
 
 ## When to apply
 
 | Situation | Apply? |
 |---|---|
-| End-of-turn report ("here's what I did") | YES |
-| Commit message body | YES |
-| PR description | YES |
-| Issue YAML `description` / `comments[].text` / `retro.good` / `retro.bad` | YES |
-| Slack reply | YES |
-| Code-review feedback (your output, not the PR you're reviewing) | YES |
-| Investigation findings, debug breakdowns | YES |
-| Unblock note for next agent | YES |
-| Hand-off prompt to a subagent | YES — subagent IS another entity |
-| Inline narration during a single tool sequence ("running test now") | NO — convey is for completed-action reports, not progress pings |
-| Code itself | NO — different rules (docstrings, identifiers) |
+| End-of-turn report, commit body, PR, issue YAML, Slack, code-review, findings, unblock, hand-off | YES |
+| Inline narration ("running test now"), code itself | NO |
 
-Default: if the output is a finished artifact someone else will read to decide something → convey applies.
+Finished artifact someone reads to decide → convey applies.
 
 ## The scaffold
 
 ```
-## <Headline — what now works / fails / changed — ≤12 words>
+## <Headline ≤12 words>
 
-**Goal.** 1 sentence. User-visible thing. Plain English. No file paths.
+**Goal.** 1 sentence, plain English, no paths.
 
 **Behavior diff.**
-| <axis> | Before | After |
+| concept | Before | After |
 |---|---|---|
-| <concept A> | <state> | <state> |
-| <concept B> | <state> | <state> |
+| A | state | state |
 
-**Flow** (only when multi-actor / non-linear):
-    actorA → actorB: trigger
-    actorB → store: writes record
-    store → actorC: next tick reads
+**Flow** (multi-actor only):
+    actor1 → actor2: trigger
+    actor2 → store: writes
 
-**Why non-obvious.** ≤2 lines. Skip if goal sentence already covers it.
+**Why non-obvious.** ≤2 lines. Skip if goal covers it.
 
-**Caveats.** (OMIT entire section if none. Caveats = known limitations / non-obvious gotchas / behavior the reader could be surprised by. NOT operator chores.)
-- Known limitation 1
-- Edge case 1
+**Caveats.** (omit if none — limitations, gotchas, surprises)
+- Item 1
 
-**Next actions.** (OMIT entire section if none. Next actions = operator-side chores: deploy, publish, restart, manual click, follow-up card. Each is a `- [ ]` checkbox.)
-- [ ] Operator action 1 (deploy / publish / restart)
+**Next actions.** (omit if none — checkboxes for operator chores)
+- [ ] Action 1
 
-**Verify.** `cmd` → ✅ N/N | optional `path:line` audit pointers.
+**Verify.** `cmd` → ✅ N/N | optional `path:line` pointers.
 ```
 
-**Caveats vs Next actions — two different concepts, two different sections.** Caveats describe the *world as it is* (a limitation, a sharp edge, a thing that won't work in scenario X). Next actions describe the *world that must change* (operator must run X, publish Y, click Z). Never collapse them into a single header. Never include an empty "Caveats: none" or empty "Next actions: none" line — silence is the signal.
-
-Sections in **bold** are the canonical names — keep them stable so readers can skim by section header.
+Canonical section names (bold) stay stable for skimming. Caveats = world as-is. Next actions = world that must change. Never collapse. Omit empty sections.
 
 ## Rules — do / don't
 
 | ✅ Do | ❌ Don't |
 |---|---|
-| Concepts in body; paths in Verify line only | File paths above Verify |
-| Tables for any "A vs B" / matrix / option list | Prose comparing two states |
-| Problem statements + options + diagnoses framed in plain English (what's happening, what changes, what trade) — reader needs zero codebase knowledge to follow | Problem / option / diagnosis framed by code path, file name, internal symbol, field name, or invariant ID (`DX-212`, `waiting_on`, `validateBlocked`) without first naming the real-world thing it controls |
-| ASCII arrow diagrams (`A → B → C`) | Numbered prose paragraphs describing flow |
-| Bullets for parallel items | Run-on sentences listing items |
-| Present-tense, system-actor verbs ("skips", "stamps", "rebuilds") | Past-tense personal-actor ("I added", "We refactored") |
-| One short verb per bullet | Bullet that contains its own sub-clauses |
-| Inline `backticks` only for identifiers / commands | Backticks around plain English |
-| `✅ N/N` test status, one line | Per-suite tables unless something failed |
-| Headline = ≤12 words, no jargon | Multi-clause headlines |
-| Drop "Why non-obvious" when goal covers it | Pad it with restatement |
-| Next actions as `- [ ]` checkboxes (operator chore) | Caveats and next actions merged into one section |
-| Caveats as plain bullets (state of the world) | "Caveats: none" / "Next actions: none" filler lines |
-| Omit Caveats section entirely when none exist | Forcing a caveat to fill the slot |
+| Concepts in body; paths in Verify only | Paths above Verify |
+| Tables for "A vs B", matrix, options | Prose comparing states |
+| Plain English (zero codebase knowledge needed) | Framed by code path / symbol / `DX-212` / `validateBlocked` |
+| ASCII diagrams (`A → B → C`) | Numbered prose paragraphs |
+| Bullets for parallel items | Run-on sentences |
+| System-actor verbs (skips, stamps, rebuilds) | Personal actor (I added, We refactored) |
+| One verb per bullet | Sub-claused bullets |
+| Backticks for identifiers/commands only | Backticks on plain English |
+| `✅ N/N` one line | Per-suite tables |
+| Headline ≤12 words, no jargon | Multi-clause |
+| Drop Why-non-obvious if goal covers | Pad with restatement |
+| Next actions as `- [ ]` checkboxes | Merge with Caveats |
+| Caveats as bullets (state of world) | "Caveats: none" filler |
+| Omit section if empty | Forced entries |
 
-## Token-saving rhetoric (apply to every section)
+## Word compression
 
-| Replace | With |
-|---|---|
-| "in order to" | "to" |
-| "make sure that" | "ensure" / drop |
-| "the following is" | give the thing |
-| "essentially / basically / actually / just / simply" | (drop) |
-| "is dependent upon" | "needs" / "consumes" |
-| "We will / I will / Let me" | (drop — describe end-state) |
-| "It should be noted that" | (drop) |
-| "In terms of X" | "X:" |
-| "due to the fact that" | "because" |
+Replace: "in order to" → "to" | "make sure that" → "ensure"/drop | "the following" → give it | "essentially/basically/just/simply" → drop | "is dependent upon" → "needs" | "We/I/Let me" → (drop) | "It should be noted" → (drop) | "In terms of" → ":" | "due to the fact" → "because"
 
-## How convey composes with caveman
+## Self-trigger gate
 
-|Layer|Owns|
-|---|---|
-| `convey` | **Content + structure** — what sections, what tables, what order |
-| `caveman` (if loaded) | **Word-level form** — articles, fillers, abbreviations |
+Before sending ANY response with: "Summary", "What shipped", "Report", "Findings", wall of paths, 3+ paragraphs on one change → confirm loaded + apply scaffold.
 
-Order: pick convey shape first, then caveman compresses words inside each section. Both active = maximum density.
+Draft >40 lines for single action = convey not applied. Re-shape.
 
-## Self-trigger gate (load-discipline)
-
-Before sending ANY response that contains ANY of these tokens / shapes, confirm this skill has been loaded this session and apply the scaffold:
-
-- "Summary", "What shipped", "What I did", "Here's what changed"
-- "Report", "Results", "Findings"
-- A bulleted list of files / paths with prose around them
-- Multiple `##` headers describing the same body of work
-- 3+ paragraphs explaining one change
-
-If your draft is going to be longer than 40 lines for a single completed action, convey is not loaded or not applied — re-shape.
-
-### Hard carve-out — terminal MCP calls
-
-When the previous tool call was a **terminal signal** (`mcp__danxbot__danxbot_complete`, `mcp__danxbot__danxbot_slack_reply` followed immediately by `danxbot_complete`, or any equivalent "this dispatch is over" tool), **emit NO further text in this turn.** The process is being SIGTERM'd; any tokens streamed during the grace window are discarded and wasted. The terminal tool's `summary` arg + the `retro` field on the issue YAML ARE the report — the conversation text is not.
-
-Self-trigger gate does NOT fire after a terminal MCP call. Stop output, full stop.
+**Terminal MCP calls:** when previous tool = terminal signal (`danxbot_complete`, etc.), emit NO text. Process being SIGTERM'd; tokens wasted. Tool's `summary` arg + issue YAML `retro` ARE the report.
 
 ## Anti-patterns
 
-**Anti-pattern: Wall of file paths.**
-```
-### What shipped
-- `src/agent/launcher.ts` — added foo
-- `src/agent/spawn.ts` — added bar
-- `src/agent/types.ts` — added baz
-- ... (30 more lines)
-```
-→ Reader can't tell what now WORKS differently. Replace with **Goal** + **Behavior diff** table.
+- **Wall of paths:** `What shipped: src/A.ts — foo | src/B.ts — bar | ...` → Can't tell what WORKS. Use Goal + Behavior diff.
+- **Code-shape leakage:** `ConflictVerdict is tagged union with kind: "ok"|"conflict"|...` → Move type signature to Verify; in body say "three decisions".
+- **Prose flow:** `Picker calls runConflictCheck, awaits verdict, invokes applyConflictVerdict, mutates YAML...` → Use arrow: `picker → check → verdict → apply → YAML`.
+- **Jargon-first:** `SG-135 waiting_on + In Progress → DX-212 invariant (waiting_on != null ⟹ status=ToDo) fires...` → Lead with real-world, then internals. "Card waiting on SG-134 finished. Agent picked up + flipped to In Progress. Validator sees note-pinned + status-not-waiting → screams." Then field (`waiting_on`), ID (`DX-212`), path (`yaml.ts:941`) in Verify.
+- **Code-path options:** `1. Thread byId into validateBlocked. 2. Move forceWaitingOnToDo. 3. Drop invariant.` → Frame as behavior + trade, no symbols. "1. Validator smarter (keeps history, medium effort). 2. Picker clears note (cheap, loses history). 3. Drop rule (one-line, loses guardrail)."
+- **Section padding:** Three commas, one idea. `Same-file overlap ≠ conflict — git auto-merges. Only heavy structural overlap earns stamp.`
 
-**Anti-pattern: Code-shape leakage.**
-```
-The new `ConflictVerdict` is a tagged union with `kind: "ok" | "conflict" | "wait_for"` ...
-```
-→ Type signature in body. Move to Verify pointer; in body say "verdict carries one of three decisions".
+## Length budgets
 
-**Anti-pattern: Prose flow narration.**
-```
-First the picker calls runConflictCheck, which then awaits a verdict via onComplete, after which applyConflictVerdict is invoked, and then the YAML is mutated on disk...
-```
-→ Replace with arrow diagram:
-```
-picker → conflict-check → verdict → apply → YAML on disk
-```
-
-**Anti-pattern: Jargon-first problem statement.**
-```
-SG-135 has waiting_on populated + status In Progress → DX-212 invariant
-(`waiting_on != null ⟹ status === "ToDo"`) fires every reconcile tick.
-```
-→ Reader has to know what `waiting_on`, `DX-212`, `reconcile`, and "the invariant" are before the first sentence parses. Lead with the real-world thing FIRST, name the internals after:
-```
-A card has a "waiting on SG-134" note pinned to it. SG-134 finished,
-so the agent picked the card up + flipped it to In Progress. The
-validator sees note-still-pinned + status-not-waiting → screams every
-minute in the log.
-```
-Then, only if the reader needs to act on code: name the field (`waiting_on`), invariant (`DX-212`), file (`yaml.ts:941`) in the Verify line. Field names + IDs + paths are NEVER the lead.
-
-Applies to: problem statements, investigation findings, options, retros, commit bodies, PR descriptions, unblock notes, Slack replies. Any artifact a human reads to make a decision.
-
-**Anti-pattern: Code-path options.**
-```
-**Options.**
-1. Thread `byId` into `validateBlocked` and check `effectiveWaitingOn`.
-2. Move `forceWaitingOnToToDo` out of `syncTrackedIssueOnComplete`.
-3. Drop the DX-212 invariant at yaml.ts:941.
-```
-→ Reader needs codebase context to pick. Frame each option as **what behaviour changes** + **the trade**, no internal symbols. Example:
-```
-1. Validator gets smarter — only fail when deps are still unresolved. Keeps history, medium effort.
-2. Picker rips off the wait note on dispatch. Cheap, loses history.
-3. Drop the rule. One-line fix, loses a guardrail.
-```
-File paths + symbols belong in the Verify line, not in the option body.
-
-**Anti-pattern: Section padding.**
-```
-**Why non-obvious.** Even though same-file overlap might seem like a conflict, git auto-merges disjoint hunks, and the rebase-time resolution is now the expected path, so only heavy structural overlap (same function + >15 min human merge) earns a durable stamp.
-```
-→ Three commas, one idea. Compress: `Same-file overlap ≠ conflict — git auto-merges disjoint hunks. Only heavy structural overlap earns a stamp.`
-
-## Example — the conflict-mutex shipment, conveyed
-
-```
-## Cards can declare durable conflicts; poller honors them in both directions
-
-**Goal.** Two cards whose work would collide can no longer dispatch concurrently — and the gate is sticky, not re-evaluated every tick.
-
-**Behavior diff.**
-| Concept | Before | After |
-|---|---|---|
-| Conflict gate lifetime | Transient — re-asked every ~60s | Persistent — stamped on card |
-| Cost per repeat | 1 Sonnet call (~$0.20, ~30s) | 1 DB read (<1ms, free) |
-| Enforcement direction | One-way | Two-way (A↔B symmetric) |
-| Self-resolve | Manual operator | Auto when partner reaches Done/Cancelled |
-| Decision shape | ok / not-ok | ok / conflict (mutex) / wait_for (precedence) |
-
-**Three dispatch gates, distinct meanings.**
-| Gate | Means | Cleared by |
-|---|---|---|
-| `blocked` | THIS card self-stuck | Human |
-| `waiting_on` | THIS card needs OTHER's output (1-way) | Partner reaches terminal |
-| `conflict_on` | THIS card collides with OTHER's work area (2-way) | Either partner reaches terminal |
-
-**Flow.**
-    picker → conflict-check (Sonnet, 5min budget, only when in-progress siblings exist)
-    conflict-check → verdict {ok | conflict | wait_for}
-    verdict=conflict  → stamp candidate.conflict_on[] (durable)
-    verdict=wait_for  → cycle-audit walk → stamp waiting_on OR demote→conflict
-    next tick: poller reads stamped fields from DB → skips without calling Sonnet
-    partner terminal → effective-gate auto-opens → poller dispatches
-
-**Why non-obvious.** Same-file overlap ≠ conflict. Git auto-merges disjoint hunks; rebase-time resolution is the expected path. Only heavy structural overlap earns a durable stamp.
-
-**Caveats.**
-- Dashboard UI for `conflict_on` field not yet built — backend writes/reads, SPA unchanged.
-- In-flight conflict-checks finish on old prompt; new dispatches after restart use new path.
-
-**Next actions.**
-- [ ] Publish MCP package: `make publish-danx-issue-mcp` (schema v7).
-- [ ] Rebuild + restart worker: `make build && make launch-worker REPO=danxbot`.
-
-**Verify.** `npx vitest run` → ✅ 4805/4805 | `npx tsc --noEmit` → clean | new tests: `effective-conflict-on.test.ts`, `apply-conflict-verdict.test.ts`, `local-issues.test.ts` (+3).
-```
-
-Compare line count: prior version with 6 tables of file paths and prose ≈ 70 lines. This version ≈ 30 lines, faster to scan, same actionable info.
-
-## Length budgets (soft caps)
-
-| Output type | Convey budget |
+| Output | Budget |
 |---|---|
-| End-of-turn report | 30 lines |
-| Commit message body | 8 lines |
-| PR description | 40 lines |
-| Issue YAML comment | 20 lines |
-| Slack reply | 12 lines |
-| Investigation finding | 20 lines |
-| Subagent dispatch prompt | 30 lines (briefer is fine; longer means you're carrying state the subagent can derive itself) |
+| End-of-turn | 30 |
+| Commit body | 8 |
+| PR | 40 |
+| YAML comment | 20 |
+| Slack | 12 |
+| Investigation | 20 |
+| Subagent prompt | 30 |
 
-Exceeding a budget = re-read for fluff before sending.
+Over budget = re-read for fluff.
