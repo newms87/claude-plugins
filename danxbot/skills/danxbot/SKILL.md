@@ -160,7 +160,7 @@ dispatchable again on the next tick.
 | Event | Path |
 |---|---|
 | `dispatchWithRecovery` observes `syncWorktree.kind === "abort"` | Stamps `agent.broken` (picker-gate during repair) → emits `sync-repair-needed` event → throws so the multi-agent caller releases its lock |
-| `sync-repair-dispatcher` subscribes → dispatches `worktree-repair` workspace (worker-initiated, `agent_name = null` so strikes are bypassed) | Repair agent `cd`s into broken worktree → runs Pre-task sync contract → resolves rebase in place (inject-pipeline files take `origin/main`; other files reconcile on merit) → `git push --force-with-lease` agent branch → `danxbot_complete({status: "completed"})` |
+| `sync-repair-dispatcher` subscribes → dispatches `worktree-repair` workspace (worker-initiated, `agent_name = null` so strikes are bypassed) | Repair agent `cd`s into broken worktree → runs Pre-task sync contract → resolves rebase in place (inject-pipeline files take `origin/main`; other files reconcile on merit) → `git push --force-with-lease` agent branch → `danxbot_complete({status: "complete"})` |
 | Repair dispatch terminal `completed` | Dispatcher's `onComplete` callback atomically clears `agent.broken = null` + zeros `strikes.count` (preserves history). Original agent rejoins the picker rotation on next tick. |
 | Repair dispatch terminal `failed` | Dispatcher leaves `agent.broken` populated. Existing operator-gate behavior preserved as the fallback for genuine application-code conflicts that the repair could not resolve. |
 

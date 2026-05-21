@@ -30,7 +30,7 @@ For every turn (first message OR resumed):
    then confirm what changed in the reply.
 4. **If the user is asking a question or wants info**: reply with the answer.
    Do NOT make speculative edits "while you're at it."
-5. Call `danxbot_complete({status: "completed", summary: "..."})`. The chat
+5. Call `danxbot_complete({status: "complete", summary: "..."})`. The chat
    shell waits for this signal to flush the streaming response and mark
    the turn complete; without it the agent sits idle until the inactivity
    timer kills the dispatch.

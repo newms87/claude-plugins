@@ -9,7 +9,7 @@ Process every YAML at `<repo>/.danxbot/issues/open/` whose `status: ToDo` using 
 
 ## Resume self-check (read first, every dispatch — ISS-135)
 
-Before processing ANY card, read the YAML. If status is terminal (`Done` / `Cancelled`) AND every AC item is checked AND retro is filled — the prior session already finished that card. Call `danxbot_complete({status: "completed", summary: "Prior session already completed; verified terminal state on resume."})` and stop. **Do not redo work.** Do not flip status. Do not re-save the YAML. The full per-card contract lives in the `danx-next` skill's Step 1.1 — load it via the Skill tool when in doubt.
+Before processing ANY card, read the YAML. If status is terminal (`Done` / `Cancelled`) AND every AC item is checked AND retro is filled — the prior session already finished that card. Call `danxbot_complete({status: "complete", summary: "Prior session already completed; verified terminal state on resume."})` and stop. **Do not redo work.** Do not flip status. Do not re-save the YAML. The full per-card contract lives in the `danx-next` skill's Step 1.1 — load it via the Skill tool when in doubt.
 
 This guards against the May-7 incident: an orphan-resumed agent that re-runs `/danx-start` from scratch against a card whose prior session already shipped the work creates duplicate retro comments and duplicate `danxbot_complete` calls. The self-check is a 30-second read that costs zero tokens of redo.
 
@@ -65,4 +65,4 @@ When all cards processed:
 
 ## Signal Completion
 
-`danxbot_complete({status: "completed", summary: "Processed N cards — X done, Y blocked, Z failed"})` at the end.
+`danxbot_complete({status: "complete", summary: "Processed N cards — X done, Y blocked, Z failed"})` at the end.

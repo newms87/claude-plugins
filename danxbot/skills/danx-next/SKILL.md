@@ -744,25 +744,18 @@ explicitly in `summary`) or terminal-status `Blocked` / `failed` /
 
 **Other statuses are NOT for work-agent dispatches.** `ready` / `archive` / `review` exist on the MCP enum for the flesh-out + triage agents — calling them from a `/danx-next` work dispatch is a workflow violation (they reset lifecycle triggers and the card returns to a pre-work state).
 
-**Deprecated aliases (one release cycle, then removed):**
-
-- `completed` → `complete` (renamed for consistency with the rest of the 6-status vocabulary).
-- `agent_blocked` → `failed` (DX-722 self-block redesign).
-
-The MCP dispatcher canonicalises both before the worker stamp routes — old skill bodies / cached sessions still complete cleanly, but every NEW caller MUST use the canonical name. The worker logs a stderr deprecation warning on every alias call so the migration signal surfaces.
+DX-770 hard-cut the pre-existing `completed` / `agent_blocked` aliases. The MCP tool now rejects either with a typed error naming the canonical replacement (`complete` / `failed`). Every caller MUST use the canonical name.
 
 ### Allowed final states
 
 - `status: "complete"` — card finished; worker stamps `completed_at`,
   renders `## Retro`, moves file `open/` → `closed/`. `summary` MUST
   contain the commit sha (or `"docs-only — no commit"` if explicitly
-  documentation-only). The deprecated `completed` alias still routes
-  here.
+  documentation-only).
 - `status: "failed"` — card cannot proceed without a human acting;
   worker stamps `blocked: {at, reason: summary}`. `summary` MUST be
   ≥ 30 chars (shorter → silent downgrade to a `cancelled` stamp +
-  agent strike). The deprecated `agent_blocked` alias still routes
-  here.
+  agent strike).
 - `status: "cancelled"` — card abandoned; worker stamps
   `cancelled_at`. `summary` describes the abandonment reason.
 - `status: "critical_failure"` — environment-level blocker (see

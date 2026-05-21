@@ -82,7 +82,7 @@ re-fire the loop after the dispatch is logically over.
    - Cards created (with titles + assigned `id`s).
    - Knowledge docs updated (if any).
 
-4. **Signal completion (MANDATORY):** `danxbot_complete({status: "completed", summary: "..."})`. Worker finalizes the dispatch row + SIGTERMs the Claude process. Never exit without it.
+4. **Signal completion (MANDATORY):** `danxbot_complete({status: "complete", summary: "..."})`. Worker finalizes the dispatch row + SIGTERMs the Claude process. Never exit without it.
 
 ## Filename convention
 

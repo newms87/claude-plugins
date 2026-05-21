@@ -17,7 +17,7 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
 
 1. **List candidates.** `mcp__danx-issue__danx_issue_list({status: "Review"})` — or the operator-directed scope. Capture the array of ids.
    - Operator notes may say "only Blocked", "Review + Waiting On", "only DX-3xx", "skip epics", etc. Adjust the list call (or filter the result) accordingly. No card picker — you decide.
-   - Empty list → `danxbot_complete({status: "completed", summary: "No triage candidates in scope."})` and exit.
+   - Empty list → `danxbot_complete({status: "complete", summary: "No triage candidates in scope."})` and exit.
 
 2. **Fan out in batches of 3.** Use the `Agent` (Task) tool. For each batch of up to 3 ids, send ONE message containing ONE `Agent` tool call per id (parallel — Claude runs them concurrently). Each subagent uses `subagent_type: "general-purpose"` and gets a self-contained prompt:
 
@@ -36,7 +36,7 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
 
 4. **Repeat** step 2 until the candidate list is drained.
 
-5. **Complete.** `danxbot_complete({status: "completed", summary: "Triaged N cards. <semicolon-joined roster>"})`. If any subagent failed, surface that count in the summary; do NOT call `status: "failed"` — partial success is success.
+5. **Complete.** `danxbot_complete({status: "complete", summary: "Triaged N cards. <semicolon-joined roster>"})`. If any subagent failed, surface that count in the summary; do NOT call `status: "failed"` — partial success is success.
 
 ## Hard rules
 

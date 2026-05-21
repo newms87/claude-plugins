@@ -1,6 +1,6 @@
 ---
 name: slack-agent
-description: 'MANDATORY when dispatched in response to a Slack message — the entire user-facing surface is the Slack thread, not stdout, and the only way to reach it is the `danxbot_slack_reply` / `danxbot_slack_post_update` MCP tools. Triggers — running inside the `slack-worker` workspace; dispatch prompt references a Slack thread / channel / user message; the `danxbot_slack_reply` MCP tool is present in the available tool list. Loads the required-tool-call sequence (`danxbot_slack_reply` exactly once with the final answer → IMMEDIATELY `danxbot_complete` with completed/failed status + one-sentence summary), the intermediate-update discipline (zero to two `danxbot_slack_post_update` per dispatch — no progress-bar spam, no every-file-read updates), and the thread-scope invariant (worker routes by dispatch row; you cannot pick a thread; no `chat.postMessage` escape hatch) as TodoWrite checklist.'
+description: 'MANDATORY when dispatched in response to a Slack message — the entire user-facing surface is the Slack thread, not stdout, and the only way to reach it is the `danxbot_slack_reply` / `danxbot_slack_post_update` MCP tools. Triggers — running inside the `slack-worker` workspace; dispatch prompt references a Slack thread / channel / user message; the `danxbot_slack_reply` MCP tool is present in the available tool list. Loads the required-tool-call sequence (`danxbot_slack_reply` exactly once with the final answer → IMMEDIATELY `danxbot_complete` with complete/failed status + one-sentence summary), the intermediate-update discipline (zero to two `danxbot_slack_post_update` per dispatch — no progress-bar spam, no every-file-read updates), and the thread-scope invariant (worker routes by dispatch row; you cannot pick a thread; no `chat.postMessage` escape hatch) as TodoWrite checklist.'
 audience: worker
 ---
 
@@ -30,7 +30,7 @@ call); `convey` owns the *structure of the message text*. Both apply.
    `danxbot_slack_post_update`, not the final reply.
 
 2. **`danxbot_complete`** — call this IMMEDIATELY after
-   `danxbot_slack_reply`, with `status: "completed"` and a short
+   `danxbot_slack_reply`, with `status: "complete"` and a short
    `summary` (one sentence, for the dispatches dashboard — NOT for the
    Slack user). Never exit without calling this.
 

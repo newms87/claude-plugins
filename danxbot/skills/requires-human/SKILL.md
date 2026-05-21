@@ -136,7 +136,7 @@ that was not knowable at pickup time:
    are already terminal). On the terminating `danxbot_complete` call,
    the worker auto-stamps the right lifecycle trigger based on the
    `status` arg you pass — for the requires_human path, use
-   `status: "completed"` (see termination contract below); the worker
+   `status: "complete"` (see termination contract below); the worker
    does NOT add a competing terminal stamp because the dispatch ended
    with `requires_human != null`.
 
@@ -175,7 +175,7 @@ When an agent **sets** `requires_human` mid-dispatch (the field flips
 from `null` to populated during this session), the dispatch ends:
 
 1. Save the YAML with the populated `requires_human` block.
-2. Call `danxbot_complete({status: "completed", summary: "Set requires_human — see field"})` and stop.
+2. Call `danxbot_complete({status: "complete", summary: "Set requires_human — see field"})` and stop.
 3. Do NOT stamp any terminal lifecycle trigger (`completed_at`,
    `cancelled_at`, `blocked.at`), do NOT write `status` directly, do NOT
    fill `retro`, do NOT continue working on the card. The worker's
