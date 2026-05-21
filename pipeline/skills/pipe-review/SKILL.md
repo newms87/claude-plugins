@@ -73,9 +73,11 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 - Mark each phase complete in the revisions plan as you finish it (append ` ✅` to the phase heading)
 - Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/pipe-quality` for the 3 valid skip reasons)
 
-### Highest Priority: Legacy, Backwards-Compatible, Obsolete, and Dead Code
+### Highest Priority: Fallbacks, Legacy, Backwards-Compatible, Obsolete, and Dead Code
 
-**The primary mission of code review is discovering and eliminating these categories.** When writing the revisions plan, any finding involving old formats, legacy fallbacks, backwards-compatibility branches, dead code, or obsolete patterns goes at the TOP of Phase 1. These findings are the most important thing reviewers produce — they are why we run code reviews. They can NEVER be skipped, deferred, or rationalized away. Fix them first, fix them completely.
+**The primary mission of code review is discovering and eliminating these categories.** When writing the revisions plan, any finding involving fallbacks, old formats, legacy paths, backwards-compatibility branches, dual-shape readers, dead code, or obsolete patterns goes at the TOP of Phase 1. These findings are the most important thing reviewers produce — they are why we run code reviews. They can NEVER be skipped, deferred, or rationalized away. Fix them first, fix them completely.
+
+**Fallback findings are PRIORITY 0 — instant-block.** A fallback merged to `main` is an emergency: one merge of `try A; on failure write half of A's effect to B` produces silent state divergence that surfaces days later as doom loops, false-positive strikes, half-applied terminal transitions, ghost re-dispatches. The DX-242 stop-fallback class burned ~$1K of operator + token budget before root-cause was traced. Reviewers (every reviewer agent, every time) MUST run the `base:fail-loudly` grep recipes against the diff and surface every match. Authors MUST delete every fallback before the review-fixes commit ships. The pipe-quality "3 valid skip reasons" allowlist does NOT apply to fallback findings — there is no valid skip. Either delete the fallback, or quote explicit per-merge user authorization in the PR body that overrides this rule for one specific finding.
 
 ## Step 5: Create Action Items for Pattern-Worthy Findings
 

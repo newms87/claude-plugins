@@ -25,18 +25,21 @@ Go through each reviewer agent's output (test-reviewer, code-reviewer, architect
 
 For each finding marked SKIPPED, DEFERRED, or NOT FIXED, run it through this checklist:
 
-### Hard Block: Legacy/Dead/Obsolete Code Can NEVER Be Skipped
+### Hard Block: Fallback / Legacy / Dead / Obsolete Code Can NEVER Be Skipped
 
 **Before evaluating skip reasons, check this first.** If a finding involves ANY of the following, it is **UNFIXABLE by skip logic** — fix it immediately, no exceptions:
 
+- **Fallback patterns** — catch-and-default, try-A-then-B chains across different write surfaces (HTTP→DB→filesystem), best-effort wrappers (`try*` / `maybe*` / `safe*` / `bestX*` / `graceful*`), graceful-degradation branches, throw-downgraded-to-warn diffs, schema-version reader branching, `if (legacyShape) {…} else {…}`, swallowed-error catch blocks, `?? DEFAULT` on internal-contract input.
 - **Backwards-compatible code** — supporting old AND new formats simultaneously
 - **Legacy code** — old patterns, old field names, old APIs that should have been removed
 - **Obsolete code** — methods, branches, or formats that nothing should use anymore
 - **Dead code** — unreachable code, unused methods, no-op assertions
 
-**These are the PRIMARY MISSION of code review.** Discovering and eliminating legacy/backwards-compatible/obsolete/dead code is the most important thing reviewers do. A finding in this category is the highest-priority finding possible. Skipping it — for ANY reason, including all 3 valid skip reasons below — is a critical violation. None of the 3 skip reasons apply to this category. Not "zero value" (removing dead weight is always valuable). Not "would be wrong" (removing obsolete code is always correct). Not "another agent" (you own it).
+**Fallbacks are the single most defective bug class merged to `main`.** One merged fallback wastes days of operator + token budget — doom loops, false-positive strikes, ghost re-dispatches, half-applied terminal transitions all trace to a fallback that wrote half of a logical transition. The "DX-242 stop-fallback" class burned ~$1K of budget before root cause was traced. Treat every fallback finding as instant-block. There is no "tier-4 retry exception," no "transient infra blip excuse," no "we'll come back to it" — delete the fallback, fix the upstream cause, ship the review-fixes commit clean.
 
-**If a reviewer flags old formats, legacy patterns, backwards compatibility, or dead code: stop what you're doing and fix it NOW.**
+**These are the PRIMARY MISSION of code review.** Discovering and eliminating fallbacks / legacy / backwards-compatible / obsolete / dead code is the most important thing reviewers do. A finding in this category is the highest-priority finding possible. Skipping it — for ANY reason, including all 3 valid skip reasons below — is a critical violation. None of the 3 skip reasons apply to this category. Not "zero value" (removing dead weight is always valuable). Not "would be wrong" (removing obsolete code is always correct). Not "another agent" (you own it). Not "needs its own card" (the review-fixes commit IS the card).
+
+**If a reviewer flags a fallback, old format, legacy pattern, backwards compatibility, or dead code: stop what you're doing and fix it NOW.** The only override is explicit per-merge user authorization quoted verbatim in the PR body for that specific finding — and even that is a smell that warrants a follow-up conversation about why the codebase is being permitted to keep a fallback alive.
 
 ### The Allowlist Gate
 

@@ -1,7 +1,7 @@
 {
   "name": "pipeline",
   "description": "Autonomous dev pipeline: pipe-start, pipe-review, pipe-quality, pipe-commit, pipe-finish, pipe-plan. Phase-by-phase code-writing flow. Post-commit reports + session wrap-up both live in pipe-finish. All output follows the base:convey high-yield-communication format. Runs identically in human-loop and dispatched-worker contexts.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": {
     "name": "Dan Newman",
     "email": "newms87@gmail.com"
