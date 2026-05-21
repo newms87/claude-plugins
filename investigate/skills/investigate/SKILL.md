@@ -11,33 +11,14 @@ This skill exists because investigation and fix-writing are different work, and 
 
 ## When to invoke
 
-**Always, the moment ANY of these is true:**
+- User says "investigate," "find out," "look into," "why," "how does," "what's happening"
+- You are about to make a factual claim about runtime behavior (timing, causality, process state, config meaning) without direct evidence
+- Task-completion messages (exit codes, "command completed") tell you the wrapper finished, NOT whether the underlying process is alive. Verify with live probe (ps, curl, docker ps, systemctl status) before asserting anything about process state.
+- Draft answer contains hedging ("probably," "typically," "should be," "likely") about local behavior → STOP, gather evidence instead.
 
-**User-initiated investigation:**
-- "Investigate X" / "look into X" / "find out about X" / "dig into X" / "trace X" / "audit X" / "figure out X" / "check on X" / "look at X"
-- "Why is X happening?" / "Why does Y work this way?" / "How does Z work?" / "What's going on with W?"
-- "Is the agent running?" / "Did the job dispatch?" / "Did the deploy land?" / "Is the cache warm?"
+**Not for:** Direct file quotes ("function X takes args a,b,c"), documentation lookups, or when the assignment is to apply a fix.
 
-**About to make a factual assertion about a running system:**
-- Timing / latency / performance ("takes Xms," "is slow," "fine on a healthy system," "cold start," "warm system")
-- What code does in paraphrase (not direct quotation)
-- Causality ("failed because X," "root cause is Y," "this happens when Z")
-- Why a local design choice exists, when the answer requires more than quoting a docstring
-- What a config value, timeout, env var, or threshold means in practice
-- Whether a process is running / a job ran / a service is responsive
-- Comparison of runtime behavior under different conditions
-
-**Task-completion notifications are NOT evidence about the underlying work.** A `<task-notification>` / background-Bash exit code / "command completed" message tells you the WRAPPER finished — it tells you nothing about whether the spawned worker, daemon, dispatch, or detached process is still alive, healthy, or doing what you expect. Before saying anything about the underlying process's state in response to such a notification — including casual acknowledgments like "still running independent of launcher" / "worker persists" / "process is fine" — re-verify (ps / curl /health / docker ps / systemctl status / etc.). Design knowledge ("host-mode workers detach from the launcher", "the script daemonizes", "exit 0 means it backgrounded cleanly") is NOT a substitute for a live probe; it is exactly the rationalization this gate exists to block. The rule fires on YOUR OWN draft acknowledgment, not only on user questions.
-
-If your draft answer contains any of: "probably," "typically," "usually," "on the order of," "a matter of," "should be around," "in most cases," "likely" — about local behavior — STOP. Hedge = tell. Invoke this skill, gather evidence, report numbers.
-
-## When NOT to invoke
-
-- Direct file reads where the answer IS a literal quotation ("function X takes args (a, b, c)", "the const is 2000ms"). Plain Read use covered by general "verify, never guess" discipline.
-- The assignment is to apply a fix → use the `debugging` skill instead. That one assumes you'll write a failing test and ship a change.
-- Pure documentation lookups → general WebFetch / context7 covers it.
-
-The line: **answer contains any claim not directly quotable from code, docs, or tool output captured in this conversation → investigation, skill required.**
+**The line:** answer contains any claim not directly quotable from code, docs, or tool output captured in this conversation → skill required.
 
 ## The Discipline
 
@@ -150,14 +131,12 @@ After the report, do nothing. Do not start writing the fix you proposed. Do not 
 
 If the user picks an option that requires code changes → switch to the `debugging` skill (or whatever skill matches the work) and follow ITS discipline.
 
-## Anti-patterns this skill prevents
+## Anti-patterns
 
-- **The detective who's also the carpenter.** Investigation says "the timeout is too short," carpenter immediately bumps the timeout. Now you'll never know if the real cause was a deeper bug masked by the short timeout.
-- **The hedging novelist.** "Probably it's slow because the cache might be cold and the agent typically takes a while to warm up." Zero numbers. Useless.
-- **The accidental mutation.** "Let me just restart the container to see fresh logs" — now you destroyed the evidence state of the original failure.
-- **The retcon hypothesis.** Original guess: "auth token expired." Evidence: token is fine, MCP server crashed at boot. Report: "I diagnosed an MCP boot crash." Wrong — say "my hypothesis was wrong, real cause is X."
-- **The infinite scope drift.** Question was "why did this one dispatch fail." Investigation expands to auditing every dispatch from the last week. STOP. Answer the original question. Note the broader patterns as observations the user can decide to act on.
-- **The suspect-list-as-finding.** Discrepancy observed (stored value ≠ recomputed value, stale-looking state, unexpected timestamp). Output: "Suspect: X, OR Y, OR Z" with mechanisms drawn from recent commit messages or vibes. This is a guess wearing a finding's clothes. Forbidden: the words "Suspect:", "Likely:", "Probably:" introducing an unverified mechanism; "OR"-separated cause lists presented as the answer; pattern-matching a recent commit subject into a causation claim without reading the diff. Required: pick ONE candidate, read the actual code path that would have produced the observation, report verified or "still unknown — next probe is N." A list of guesses is not an investigation result.
+- **The detective-carpenter.** Finding "timeout too short" → immediately bump it. Now you never know if a deeper bug was masked.
+- **Hedging.** "Probably it's slow because the cache might be cold and agents typically..." Zero numbers, useless.
+- **Scope drift.** Question: "why one dispatch fail." Answer expands to auditing the week. STOP. Answer the original. Note patterns separately.
+- **Suspect lists.** Discrepancy → "Suspect X, OR Y, OR Z" with vibes. Forbidden: words like "Suspect:" or "Likely:" on unverified guesses. Required: one candidate, verified with code, or "still unknown — next probe is N."
 
 ## Investigation vs Debugging — pick the right skill
 
