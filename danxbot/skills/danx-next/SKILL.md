@@ -70,9 +70,9 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 | `parent_id` | string \| null | Set on child cards (epic's `id` for phase children, or any other parent's `id` for sub-cards). Reverse linkage to `children[]`. |
 | `children` | `string[]` (ids) | Ordered list of child issue ids (`<PREFIX>-N`). On `type: Epic` cards, `children[]` IS the list of phase cards (label "Phases"). On non-epic cards, it's the list of sub-cards (label "Children"). Same field, two labels. Maintained by `danx_issue_create` (when a child card is created from a draft) and by the `danx-epic-link` skill (for human-created phase cards). Phases MUST be cards — there is no separate in-card phase checklist. |
 | `dispatch` | `{id, pid, host, kind, started_at, ttl_seconds} \| null` | Poller-managed dispatch record. `null` when no agent is running. Don't touch. |
-| `status` | `Review` \| `Backlog` \| `ToDo` \| `In Progress` \| `Blocked` \| `Done` \| `Cancelled` | **Derived — agents NEVER write this field.** Computed every read by `deriveStatus()` (`src/issue/derive-status.ts`) from lifecycle timestamps + gate fields. To move a card, write the trigger: pickup is auto-flipped by the worker (`dispatch != null` → rule 4 → `In Progress`); approve → `ready_at`; complete → worker stamps `completed_at` on `danxbot_complete({status: "completed"})`; cancel → `cancelled_at`; block → `blocked.at`. Direct `status:` literal writes are FORBIDDEN — see CLAUDE.md "Forbidden Patterns". |
+| `status` | `Review` \| `Backlog` \| `ToDo` \| `In Progress` \| `Blocked` \| `Done` \| `Cancelled` | **Derived — agents NEVER write this field.** Computed every read by `deriveStatus()` (`src/issue/derive-status.ts`) from lifecycle timestamps + gate fields. To move a card, write the trigger: pickup is auto-flipped by the worker (`dispatch != null` → rule 4 → `In Progress`); approve → `ready_at`; complete → worker stamps `completed_at` on `danxbot_complete({status: "complete"})`; cancel → `cancelled_at`; block → `blocked.at`. Direct `status:` literal writes are FORBIDDEN — see CLAUDE.md "Forbidden Patterns". |
 | `ready_at` | `string \| null` (ISO) | Triage Approve / agent-marks-ready / move into a `ready`-type list → worker stamps. Derived rule 5 → `ToDo`. |
-| `completed_at` | `string \| null` (ISO) | Worker stamps on `danxbot_complete({status: "completed"})`. Derived rule 2 → `Done`. |
+| `completed_at` | `string \| null` (ISO) | Worker stamps on `danxbot_complete({status: "complete"})`. Derived rule 2 → `Done`. |
 | `cancelled_at` | `string \| null` (ISO) | Triage Cancel / move into a `cancelled`-type list → worker stamps. Derived rule 1 → `Cancelled`. |
 | `archived_at` | `string \| null` (ISO) | Move into an `archived`-type list → worker stamps. Derived rule 6 → `Backlog`. |
 | `list_name` | `string \| null` | **Display-only — workers never read this field for state-machine decisions.** Auto-resolved by the worker to the default list of the derived semantic type. |
@@ -89,7 +89,7 @@ That YAML is the source of truth for the card. The poller pre-hydrated it from t
 
 **Save semantics:** there is no save verb. Use `Edit` / `Write` to modify the YAML on disk. The chokidar watcher detects the file change and upserts the new content into the `issues` Postgres table; an `issue_history` row records the RFC 6902 patch from the prior content. Schema validation does NOT block writes — a malformed YAML is mirrored as `{_malformed: true, raw: <text>}`. Verify your edits by re-reading the file after the write.
 
-**Open → closed move:** when the worker stamps `completed_at` or `cancelled_at` (triggered by `danxbot_complete({status: "completed"})` / `danxbot_complete({status: "cancelled"})`), its post-completion auto-sync moves the file from `open/` → `closed/` as part of pushing terminal state to the tracker. You do NOT need to move the file yourself, and you do NOT write `status:` literals.
+**Open → closed move:** when the worker stamps `completed_at` or `cancelled_at` (triggered by `danxbot_complete({status: "complete"})` / `danxbot_complete({status: "cancelled"})`), its post-completion auto-sync moves the file from `open/` → `closed/` as part of pushing terminal state to the tracker. You do NOT need to move the file yourself, and you do NOT write `status:` literals.
 
 **Auto-sync:** `danxbot_complete` triggers an immediate tracker push (the watcher mirror to Postgres has already happened on the file write). Without `danxbot_complete`, the YAML still reaches the tracker on the poller's next tick (~30-60s); calling `danxbot_complete` is faster and signals the dispatch is over.
 
@@ -189,12 +189,12 @@ Mechanical procedure (every dispatch, no exceptions):
    this self-heal is exactly what unblocks it: walk each missing sha,
    route to stale-drop or cross-repo-comment, save, then clear
    `blocked: null` + stamp `ready_at: <now>` and call
-   `danxbot_complete({status: "completed", summary: "Reconciled
+   `danxbot_complete({status: "complete", summary: "Reconciled
    retro.commits[] after DX-559 block — <one-line summary>"})`.
 4. **If `status: "Done"` or `"Cancelled"`** AND every AC verifies in
    step 2 AND every commit verifies in step 3 AND `retro.good` +
    `retro.bad` non-empty: the prior session truly finished. Call
-   `danxbot_complete({status: "completed", summary: "Verified prior
+   `danxbot_complete({status: "complete", summary: "Verified prior
    dispatch's terminal state on resume — no work to redo."})` and
    stop. **Do not redo work.** Do not flip status. Do not re-save the
    YAML.
@@ -399,7 +399,7 @@ Commits (claude-plugins repo):
 - `1e0a570` — version bump + publish
 ```
 
-Putting cross-repo shas in `retro.commits[]` makes the DX-559 gate Block your `danxbot_complete({status: "completed"})` call — the gate verifies every sha against this repo's `origin/main` and treats unresolvable shas as missing.
+Putting cross-repo shas in `retro.commits[]` makes the DX-559 gate Block your `danxbot_complete({status: "complete"})` call — the gate verifies every sha against this repo's `origin/main` and treats unresolvable shas as missing.
 
 ### Step 7a — Multi-worker agent dispatch (persona block present)
 
@@ -482,7 +482,7 @@ A card in Done means: every AC item is `checked: true` with direct evidence. No 
 
 ## Step 9 — Move to Done
 
-The agent does NOT write `status: Done`. The worker stamps `completed_at = <now ISO>` (and clears `dispatch: null`) on `danxbot_complete({status: "completed"})` via `stampIssueCompleted`; `deriveStatus` rule 2 then projects the card to `Done`. Direct `status:` literal writes are FORBIDDEN — see CLAUDE.md "Forbidden Patterns".
+The agent does NOT write `status: Done`. The worker stamps `completed_at = <now ISO>` (and clears `dispatch: null`) on `danxbot_complete({status: "complete"})` via `stampIssueCompleted`; `deriveStatus` rule 2 then projects the card to `Done`. Direct `status:` literal writes are FORBIDDEN — see CLAUDE.md "Forbidden Patterns".
 
 Edit YAML:
 
@@ -675,7 +675,7 @@ completed, the file moves `open/` → `closed/`, and the work appears
 shipped without ever landing on main. DX-203 + DX-210 burned the
 budget that way.
 
-### Pre-call gate (mechanical, every status: completed)
+### Pre-call gate (mechanical, every status: complete)
 
 | # | Prereq | How to verify |
 |---|---|---|
@@ -691,7 +691,7 @@ Any prereq missing → loop back to that step. Do not call
 
 ### Completion contract — `completed` means EVERYTHING on the card is done (DX-654)
 
-`danxbot_complete({status: "completed"})` is a per-CARD signal, not a
+`danxbot_complete({status: "complete"})` is a per-CARD signal, not a
 per-dispatch one. Two hard preconditions, both required, every time:
 
 1. **Every `ac[i].checked` is `true`** with direct evidence (Step 6 +
@@ -711,10 +711,10 @@ If either fails, three options:
 - Route to Blocked (Step 10) / Waiting On (Step 10b) when a real human
   action or external dependency gates the remainder.
 
-**`danxbot_complete({status: "completed"})` on a `type: Epic` candidate
+**`danxbot_complete({status: "complete"})` on a `type: Epic` candidate
 is FORBIDDEN.** Epic terminal state derives from child rollup, never a
 direct write. A planning dispatch whose candidate IS the epic (split-
-into-phases pattern) calls `danxbot_complete({status: "completed"})`
+into-phases pattern) calls `danxbot_complete({status: "complete"})`
 ONLY when every phase child is already terminal — rare; planning
 dispatches typically split-and-handoff. The worker's write-side guard
 in `src/issue/stamp-terminal.ts` refuses to stamp `completed_at` /
@@ -725,23 +725,48 @@ the rule you uphold — the guard is defense in depth.
 
 ### Sha-less completion rejected
 
-`danxbot_complete({status: "completed", summary: "<no commit sha>"})`
+`danxbot_complete({status: "complete", summary: "<no commit sha>"})`
 is rejected as a workflow violation: there is no path to "completed
 without a commit" except for documentation-only changes (note this
 explicitly in `summary`) or terminal-status `Blocked` / `failed` /
 `critical_failure`. Sha format: `feat(<CARD-ID>): <title> @ <sha>`.
 
+### Per-status work-agent table (DX-737 / DX-738 — 6-status lifecycle surface)
+
+| `danxbot_complete({status, …})` | YAML side-effect | Derived status | When to use |
+|---|---|---|---|
+| `complete` | worker stamps `completed_at` + clears `dispatch` | `Done` | Work shipped on `origin/main`; every AC checked; retro filled. |
+| `failed` | worker stamps `blocked: {at, reason: summary}` (summary ≥ 30 chars; shorter → silent cancel + strike) | gated `Blocked` dispatch (raw status unchanged) | Card cannot proceed without a human acting (ambiguous spec, missing credentials, external blocker). Load `danxbot:issue-blocker` skill first — its 8-item gate has authority. |
+| `cancelled` | worker stamps `cancelled_at` + clears `dispatch` | `Cancelled` | Card abandoned — work won't ship. Use sparingly; prefer `failed` when the card might still be picked up by a human. |
+| `critical_failure` | writes per-repo `CRITICAL_FAILURE` flag (halts poller) | unchanged | Environment is broken (MCP not loading, Bash unavailable, Claude auth missing). See `.claude/rules/danx-halt-flag.md`. |
+
+**Other statuses are NOT for work-agent dispatches.** `ready` / `archive` / `review` exist on the MCP enum for the flesh-out + triage agents — calling them from a `/danx-next` work dispatch is a workflow violation (they reset lifecycle triggers and the card returns to a pre-work state).
+
+**Deprecated aliases (one release cycle, then removed):**
+
+- `completed` → `complete` (renamed for consistency with the rest of the 6-status vocabulary).
+- `agent_blocked` → `failed` (DX-722 self-block redesign).
+
+The MCP dispatcher canonicalises both before the worker stamp routes — old skill bodies / cached sessions still complete cleanly, but every NEW caller MUST use the canonical name. The worker logs a stderr deprecation warning on every alias call so the migration signal surfaces.
+
 ### Allowed final states
 
-- `status: "completed"` — card finished (worker stamps `completed_at`),
-  or stamped `cancelled_at` / `blocked.at` mid-session. `summary` MUST
+- `status: "complete"` — card finished; worker stamps `completed_at`,
+  renders `## Retro`, moves file `open/` → `closed/`. `summary` MUST
   contain the commit sha (or `"docs-only — no commit"` if explicitly
-  documentation-only).
-- `status: "failed"` — fatal error stopped the work. `summary`
-  describes the failure mode + what the next dispatch needs to know.
+  documentation-only). The deprecated `completed` alias still routes
+  here.
+- `status: "failed"` — card cannot proceed without a human acting;
+  worker stamps `blocked: {at, reason: summary}`. `summary` MUST be
+  ≥ 30 chars (shorter → silent downgrade to a `cancelled` stamp +
+  agent strike). The deprecated `agent_blocked` alias still routes
+  here.
+- `status: "cancelled"` — card abandoned; worker stamps
+  `cancelled_at`. `summary` describes the abandonment reason.
 - `status: "critical_failure"` — environment-level blocker (see
   `.claude/rules/danx-halt-flag.md`). `summary` describes the env
-  issue for the operator.
+  issue for the operator. No YAML stamp; the poller halts via the
+  per-repo `CRITICAL_FAILURE` flag.
 
 ### What the worker does on signal
 

@@ -17,7 +17,7 @@ You flesh out **ONE** card per dispatch. No orchestrator, no sub-agents. You:
 6. If the card's `status` is `Review`, stamp the `triage{}` block (ICE
    score + history entry + expires_at).
 7. Save every edit via `Edit` / `Write` directly on the YAML.
-8. `danxbot_complete({status: "completed", summary: "..."})` — signal done.
+8. `danxbot_complete({status: "ready", summary})` — signal done. Worker stamps `ready_at` on the candidate, clears `blocked`, and the card derives `ToDo` (rule 4) → dispatchable by the next work agent. **Sentinel branch:** when the embedded create-flow target was `Review` (parsed from the `blocked.reason` sentinel — see row 1 of the In-scope cards table), call `danxbot_complete({status: "review", summary})` instead — worker `stampIssueReviewReset` clears every lifecycle trigger AND `blocked`, falling through `deriveStatus` rule 6 to the raw `status: Review` literal on disk.
 
 You read the YAML through the `danx-issue` MCP server (which exposes the
 `get` / `list` / `create` tools) and write it through `Edit` / `Write`
@@ -41,6 +41,21 @@ complete). You have NO legitimate reason to arm `/loop` or
 **RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
 during this dispatch must be disarmed (or have already fired and
 exited).
+
+## Terminal-status table (DX-737 / DX-738 — 6-status lifecycle surface)
+
+Flesh-out emits exactly one terminal call per dispatch. The status chosen by the skill body maps to a worker-stamped lifecycle trigger; `deriveStatus` projects that trigger to the card's user-visible status.
+
+| `danxbot_complete({status, …})` | YAML side-effect | Derived status | When to use |
+|---|---|---|---|
+| `ready` | worker stamps `ready_at = now ISO` + clears `blocked` | `ToDo` | Default flesh-out outcome — half-baked card filled out, ready for the next work agent. |
+| `review` | worker `stampIssueReviewReset` clears every lifecycle trigger + `blocked` | `Review` (rule 6 fallthrough to raw `status: Review`) | Sentinel branch — the DX-544 create-flow embedded target was `Review` (operator wants triage / human sign-off before dispatch). |
+| `failed` | worker stamps `blocked: {at, reason: summary}` (summary ≥ 30 chars) | gated `Blocked` dispatch (raw status unchanged) | Refuse path — card is not eligible for flesh-out (see the In-scope cards table) and a human must decide what to do with it. |
+| `critical_failure` | writes per-repo `CRITICAL_FAILURE` halt flag | unchanged (halts poller) | MCP tool unreachable; worker / agent environment is broken. See `claude-plugins/issue-worker/skills/halt-flag/SKILL.md`. |
+
+**Never call `complete` from flesh-out.** `complete` stamps `completed_at` → derives `Done` → file moves to `closed/`. That is the DX-734 / DX-735 bug class — half-baked cards landed in Done immediately, hiding work behind a closed card. Phase 3 (DX-739) replaced every `completed` terminal call with `ready` (default) or `review` (sentinel branch).
+
+**Deprecated alias:** `completed` → `complete` (DX-738 rename). The MCP dispatcher canonicalises it before the stamp route, so cached sessions still complete cleanly, but **flesh-out has no legitimate use for `complete` regardless of the alias** — always call `ready` or `review`.
 
 ## Read via MCP, write via Edit
 
@@ -353,27 +368,10 @@ Before the final save:
    ice, history}` stamped.
 5. `comments[]` — append ONE `## Flesh-out` entry summarizing what
    you did (rewrite, AC count, split count if applicable).
-6. **DX-544 sentinel-block clear (REQUIRED on the create-flow entry
-   path).** When the dispatch entered with `blocked.reason` starting
-   with `"Awaiting flesh-out"`, your FINAL YAML edit MUST clear the
-   block AND restore the embedded starting status via lifecycle
-   triggers in the same save. Parse the ` start as <Review|ToDo>`
-   token from the sentinel reason (default `ToDo` if parsing fails),
-   then:
-   - **Embedded target `ToDo`** — set `blocked: null` AND stamp
-     `ready_at: "<current ISO>"`. `deriveStatus` rule 3 stops firing
-     once `blocked.at` clears; rule 5 then projects the card to
-     `ToDo` off `ready_at`.
-   - **Embedded target `Review`** — set `blocked: null` AND leave
-     `ready_at: null`. With no lifecycle trigger populated,
-     `deriveStatus` rule 7 falls through to the raw `status: Review`
-     literal already on disk.
-   Both edits MUST land in the same file write. **Do NOT write
-   `status:` directly** — the field is derived; the raw literal on
-   disk is round-trip stability only. On every OTHER entry path
-   (existing `Review` / `ToDo` card, refine-only, epic), do NOT
-   touch `status` / `blocked` / `ready_at` — they are owned by
-   other lifecycle steps.
+6. **DX-544 sentinel-block clear (worker-driven via terminal status, Phase 3 / DX-739).** When the dispatch entered with `blocked.reason` starting with `"Awaiting flesh-out"`, parse the ` start as <Review|ToDo>` token from the sentinel reason (default `ToDo` if parsing fails) to decide the terminal call:
+   - **Embedded target `ToDo`** — emit `danxbot_complete({status: "ready", summary})`. The worker's `stampIssueReady` clears `blocked` AND stamps `ready_at = <now ISO>` in one atomic write; `deriveStatus` rule 4 then projects the card to `ToDo`.
+   - **Embedded target `Review`** — emit `danxbot_complete({status: "review", summary})`. The worker's `stampIssueReviewReset` clears every lifecycle trigger AND `blocked`; `deriveStatus` rule 6 falls through to the raw `status: Review` literal already on disk.
+   **Do NOT edit `blocked` / `ready_at` / `status` directly in the flesh-out save** — the worker stamp owns the lifecycle write. The skill's YAML save in this step covers ONLY `description`, `ac[]`, `triage{}` (Review only), `comments[]`, and (when splitting) `type: Epic` + `children[]`. On every OTHER entry path (existing `Review` / `ToDo` card, refine-only, epic), the terminal call is `danxbot_complete({status: "ready", summary})` regardless of the parsed token (no sentinel block to clear).
 7. NO other field touched (dispatch, waiting_on on THIS card,
    retro, parent_id).
 

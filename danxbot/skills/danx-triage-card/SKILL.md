@@ -12,7 +12,7 @@ You triage **ONE** card per dispatch. No orchestrator, no sub-agents. You:
 2. Decide per `status` (Review / Blocked / Waiting On) — apply the per-status decision tree below.
 3. Edit the YAML's `triage{}` block (always) + `status` / `blocked` fields when the decision is terminal, using the `Edit` tool directly on `<repo>/.danxbot/issues/{open,closed}/<PREFIX>-N.yml`.
 4. Re-read the file with `Read` to confirm the edit landed and the YAML parses (look for the new `triage.expires_at` value).
-5. `danxbot_complete({status: "completed", summary: "..."})` — signal done.
+5. `danxbot_complete({status, summary})` — signal done. The status arg is decision-dependent: see the "Per-decision terminal-status table" section below. Default `complete` for no-op decisions (Confirm-Block / Unblock); `ready` for Keep / Approve / Demote; `cancelled` for Cancel; `archive` for Park.
 
 You read the YAML directly with `Read` and write it through `Edit` / `Write`. The `danx-issue` MCP server provides `danx_issue_list` for any multi-card scans you need (e.g. checking blocker cards). You do NOT make tracker calls — the chokidar watcher in the worker (`src/db/issues-mirror.ts`) catches every YAML edit and mirrors it to Postgres; the poller's per-tick mirror pushes it to the tracker.
 
@@ -48,6 +48,28 @@ shares it (ISS-135 / ISS-136).
 during this dispatch must be disarmed (or have already fired and exited).
 Active loop + complete signal = workflow violation; the next resume will
 re-fire the loop after the dispatch is logically over.
+
+## Per-decision terminal-status table (DX-737 / DX-738 — 6-status lifecycle surface)
+
+Triage emits exactly one terminal call per dispatch. The decision the skill body lands on (per the per-status decision trees below) maps to a worker-stamped lifecycle trigger; `deriveStatus` projects that trigger to the card's user-visible status.
+
+| Triage decision | `danxbot_complete({status, …})` | YAML side-effect | Derived status |
+|---|---|---|---|
+| **Keep** (Review path — promote to ToDo) | `ready` | worker stamps `ready_at = now` + clears `blocked` | `ToDo` (rule 4) |
+| **Approve** (Review path — promote behind `requires_human` gate) | `ready` (agent first edits `requires_human: {…}`) | worker stamps `ready_at`; picker stays parked until operator clears `requires_human` | gated `ToDo` |
+| **Cancel** (Review path) | `cancelled` | worker stamps `cancelled_at` + clears `dispatch` + auto-renders `## Retro` | `Cancelled` (rule 1) |
+| **Park** (Review path — NEW, DX-739) | `archive` | worker stamps `archived_at` + clears `ready_at` | `Backlog` (rule 5) |
+| **Demote** (Blocked → ToDo) | `ready` | worker stamps `ready_at` + clears `blocked` (same primitive as Keep) | `ToDo` (rule 4) |
+| **Confirm-Block** (Blocked — Hard Gate passes / Waiting On — blocker pending) | `complete` | none (terminal row finalises only; the agent's `Edit` on `triage{}` mirrored via chokidar) | unchanged |
+| **Unblock** (Waiting On — every blocker terminal) | `complete` | none (same as Confirm-Block) | unchanged |
+
+**Why `complete` is the no-op call.** Decisions that do NOT move the card's lifecycle (Confirm-Block / Unblock) still need a terminal call so the dispatch row finalises. `complete` signals "this triage dispatch shipped successfully" without writing any lifecycle trigger to the candidate YAML — only the `triage{}` block change mirrors via chokidar.
+
+**Park is new in DX-739.** Use Park (terminal status `archive`) when a Review card is genuinely on hold (revisit later, not now, not cancelled — e.g. depends on long-running external work). Stamping `archived_at` derives the card to `Backlog`. Phase 3 (this card) adds it to the Review decision tree; Phase 4+ updates the dashboard's TriageTab to render the Park decision color.
+
+**Deprecated alias:** `completed` → `complete` (DX-738 rename); MCP dispatcher canonicalises so cached sessions keep working. New skill bodies call `complete` directly.
+
+**The decision-name vocabulary is unchanged from prior phases** — Keep / Approve / Cancel / Demote / Confirm-Block / Unblock all carry the same semantics they always did. What changed is HOW the lifecycle write lands: the agent no longer writes `ready_at` / `cancelled_at` / `blocked: null` directly — it calls `danxbot_complete({status: …})` and the worker stamps the trigger atomically.
 
 ## Read via MCP, write via Edit
 
@@ -170,16 +192,18 @@ Decide one of three outcomes:
 
 | Outcome | Action | YAML changes |
 |---|---|---|
-| **Keep** | Card is sound; promote into the dispatch queue. | `ready_at: "<current ISO>"` (derives status `ToDo` via rule 5), `triage.last_status: Keep`, `triage.ice` populated. **No direct `status` write** — the field is derived. |
-| **Cancel** | Obsolete / superseded / no-longer-desired. | `cancelled_at: "<current ISO>"` (derives status `Cancelled` via rule 1), `triage.last_status: Cancel`, `triage.ice` zeros, `retro.{good, bad}` filled honestly (what was right about the card vs. why it's being cancelled — the worker auto-renders the `## Retro` comment on the terminal save the cancellation triggers). **No direct `status` write** — the field is derived. |
-| **Approve** | Implementable but the **direction needs human sign-off** before work starts (architectural risk, cross-cutting scope, ambiguous tradeoff). | `ready_at: "<current ISO>"` (derives status `ToDo` via rule 5 once `requires_human` is cleared), `requires_human: {reason, steps[], set_by: "agent", set_at: <ISO>}`, `triage.last_status: Approve`, `triage.ice` populated (so when the human flips `requires_human: null` and the card unblocks for dispatch, the queue already has a score). **No direct `status` write** — the field is derived. |
+| **Keep** | Card is sound; promote into the dispatch queue. | Edit `triage.last_status: Keep` + `triage.ice` populated. Then `danxbot_complete({status: "ready", summary})` — worker stamps `ready_at` + clears `blocked` (rule 4 → `ToDo`). **Do NOT write `ready_at` / `status` directly** — worker owns the lifecycle stamp. |
+| **Cancel** | Obsolete / superseded / no-longer-desired. | Edit `triage.last_status: Cancel`, `triage.ice` zeros, `retro.{good, bad}` filled honestly. Then `danxbot_complete({status: "cancelled", summary})` — worker stamps `cancelled_at` + clears `dispatch` + renders the `## Retro` comment (rule 1 → `Cancelled`). **Do NOT write `cancelled_at` / `status` directly** — worker owns the lifecycle stamp. |
+| **Park** | Card is on hold (revisit later, not now, not cancelled — e.g. depends on long-running external work). | Edit `triage.last_status: Park`, `triage.ice` zeros. Then `danxbot_complete({status: "archive", summary})` — worker stamps `archived_at` + clears `ready_at` (rule 5 → `Backlog`). **Do NOT write `archived_at` / `status` directly** — worker owns the lifecycle stamp. |
+| **Approve** | Implementable but the **direction needs human sign-off** before work starts (architectural risk, cross-cutting scope, ambiguous tradeoff). | Edit `requires_human: {reason, steps[], set_by: "agent", set_at: <ISO>}` + `triage.last_status: Approve` + `triage.ice` populated. Then `danxbot_complete({status: "ready", summary})` — worker stamps `ready_at` (the `requires_human` gate keeps the picker from dispatching until the operator clears it). **Do NOT write `ready_at` / `status` directly** — worker owns the lifecycle stamp. |
 
 **Before emitting `Approve`:** read `.claude/rules/danx-requires-human.md` first — the whitelist + blacklist there is authoritative on whether `Approve` is the right call. Then populate `requires_human` with a clear `reason` (one sentence — what direction needs human sign-off) and `steps[]` (concrete actions the operator must take to clear the field — e.g. "Confirm direction in design doc", "Decide between options A and B"). Set `set_by: "agent"` and `set_at` to the current ISO timestamp. The poller's dispatch filter (`src/poller/local-issues.ts`) skips any card with `requires_human != null`, so the card stays parked until the human clears the field via the dashboard "Mark Resolved" affordance.
 
-Distinguishing `Approve` vs `Cancel` vs `Keep`:
+Distinguishing `Keep` vs `Approve` vs `Park` vs `Cancel`:
 
-- Could a competent agent finish the card without ever asking the human a question? → **Keep**.
-- Card is implementable but the chosen direction needs sanity-check? → **Approve**.
+- Could a competent agent finish the card without ever asking the human a question? → **Keep** (promote to ToDo, no human gate).
+- Card is implementable but the chosen direction needs sanity-check? → **Approve** (promote behind `requires_human`).
+- Card is genuinely on hold (revisit later, not now, not cancelled — depends on long-running external work)? → **Park** (move to Backlog via `archive`).
 - Card is no longer desired / superseded by a different approach / duplicate? → **Cancel**.
 
 **Validate `effort_level` on every Review save (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy file carries the operator-tunable assignment prompt and the operator-configured 7-row level ladder. For the card under triage, compute the level that matches the work the description implies (default `medium`; bump UP only for deep reasoning / multi-file refactor / subtle concurrency; bump DOWN for mechanical edits / single-file fixes / doc tweaks). Compare against the YAML's existing `effort_level`:
@@ -204,7 +228,7 @@ A card sits in Blocked because some prior agent claimed a human-only blocker. **
 
 | Audit outcome | Action | YAML changes |
 |---|---|---|
-| **Every step is locally executable** — wrongly punted | **Demote** to ToDo. Append a comment naming the misclassification (which steps were local-runnable). | `blocked: null` (clearing the gate flips the derived status off `Blocked`), `ready_at: "<current ISO>"` if currently unset (derives status `ToDo` via rule 5; preserve an existing `ready_at` from a prior promotion), `triage.last_status: Demote`, `triage.last_explain: "<one sentence — what was misclassified>"`, `triage.reassess_hint: ""` (cleared — card is no longer parked). **No direct `status` write** — the field is derived. The next worker dispatch will pick it up and DO the local work; this triage agent does NOT execute the steps itself. |
+| **Every step is locally executable** — wrongly punted | **Demote** to ToDo. Append a comment naming the misclassification (which steps were local-runnable). | Edit `triage.last_status: Demote`, `triage.last_explain: "<one sentence — what was misclassified>"`, `triage.reassess_hint: ""`. Then `danxbot_complete({status: "ready", summary})` — worker stamps `ready_at` + clears `blocked` (rule 4 → `ToDo`). **Do NOT write `blocked` / `ready_at` / `status` directly** — worker owns the lifecycle stamp. The next worker dispatch will pick up the demoted card and DO the local work; this triage agent does NOT execute the steps itself. |
 | **At least one step is genuinely human-only** | **Confirm** Blocked. Write `triage.reassess_hint` — the one fast check that decides whether to re-confirm next time. | `blocked` (unchanged — `blocked.at` stays so derived status stays `Blocked` via rule 3), `triage.last_status: Confirm-Block`, `triage.last_explain: "<one sentence — which human-only step gates the card>"`, `triage.reassess_hint: "<≤120 chars, action-shaped>"`. **No `status` write** — the field is derived from the unchanged `blocked.at`. |
 | **Mixed** (some local, some human-only) | Same as Confirm — but mention in `last_explain` that the next worker dispatch should execute the local steps before re-confirming. The `reassess_hint` tells the next triage agent how to verify the human-only step landed. | Same as Confirm above. |
 
@@ -367,7 +391,7 @@ Do NOT flag a conflict when:
 - One card is documentation-only (README / `.md` edits) and the other is code
 - The overlap is a trivial shared file (e.g. `package.json`) that both cards merely bump dependencies in — not a blocker
 
-**Output (REQUIRED):** call `danxbot_complete({status: "completed", summary: <JSON>})` exactly once. The summary MUST be a single valid JSON object on its own line:
+**Output (REQUIRED):** call `danxbot_complete({status: "complete", summary: <JSON>})` exactly once. The summary MUST be a single valid JSON object on its own line:
 
 ```
 {"ok": true, "reason": "Candidate touches dashboard/; in-progress sibling touches src/poller/. Disjoint domains."}
