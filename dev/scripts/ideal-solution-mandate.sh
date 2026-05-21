@@ -39,5 +39,26 @@ Red flags that mean STOP: "I'll just add a flag for now" · "It's faster to keep
 Scope note: this mandate is PRINCIPLES-ONLY. When / whether to surface a decision to a human collaborator is owned by human-collaboration:human-loop, not by this skill. The four principles apply regardless of who consumes the resulting work.
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+DEBUG_MANDATE=""
+TESTING_MANDATE=""
+GIT_MANDATE=""
+
+if [ "$EVENT" = "SessionStart" ] || [ "$EVENT" = "UserPromptSubmit" ]; then
+    read -r -d '' DEBUG_MANDATE <<'EOF' || true
+
+DEBUGGING — MANDATORY before any bug, error, investigation, or factual assertion about this system's behavior. Self-trigger gate: STOP before sending any response containing `✗`, `FAIL`, `Error`, `Failed:`, `regression`, `broken`, `bug`, `wrong`, `failure`, `leak`, `race`, `crash`, `doesn't work`, a numbered `## #N` bug heading. Confirm `dev:debugging` IS loaded THIS turn. If not, invoke via Skill tool BEFORE finalizing the draft. Load full skill for the Reproduce → Evidence → Hypothesis → Proof checklist + Phase 12 per-bug breakdown format (Affects / Env / Scenario / Expected / Actual) required for every bug discussed.
+EOF
+
+    read -r -d '' TESTING_MANDATE <<'EOF' || true
+
+TESTING — MANDATORY on first test action (invoke runner, write test, fix failing test, delete test, create/update mocks, inspect coverage). Self-trigger gate: STOP before running any test command or touching test code. Confirm `dev:testing` IS loaded THIS turn. If not, invoke via Skill tool BEFORE the first tool call. Load full skill for the pre-run check (output-to-file), TDD, you-own-every-test, filter-first, no-skip, deterministic fixtures checklist.
+EOF
+
+    read -r -d '' GIT_MANDATE <<'EOF' || true
+
+GIT-DISCIPLINE — MANDATORY before ANY `git` command (no exceptions for "read-only"). Self-trigger gate: STOP before composing any Bash call containing the token `git ` (with space). Confirm `dev:git-discipline` IS loaded THIS turn. If not, invoke via Skill tool BEFORE the Bash tool call. Load full skill for ABSOLUTE rules (never destroy work, never delete repos, never use git checkout/restore/revert) + allowed operations (status/diff/log anytime; pull --rebase on push rejection; nothing else without approval).
+EOF
+fi
+
+jq -n --arg event "$EVENT" --arg ctx "$MANDATE" --arg debug "$DEBUG_MANDATE" --arg testing "$TESTING_MANDATE" --arg git "$GIT_MANDATE" \
+   '{hookSpecificOutput:{hookEventName:$event, additionalContext:($ctx + $debug + $testing + $git)}}'

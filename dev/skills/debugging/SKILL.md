@@ -5,39 +5,13 @@ description: 'MANDATORY for every bug, error, unexpected behavior, failing test,
 
 # Debugging Skill
 
-Bugs are produced by skipped steps. This skill exists because every "I'll just quickly check X" turns into a wrong fix. The checklist is the work — not overhead before the work.
+Bugs = skipped steps. The checklist IS the work.
 
-## When to Invoke
+**Triggers:** test fails · command returns error · unexpected value · user reports broken · stack trace / error log · any claim about system behavior · timing/latency claims · paraphrased code description · causality claim ("failed because Y") · config-value assertion.
 
-**ALWAYS, the moment you suspect anything is wrong OR are about to claim anything about this system's behavior.** No exceptions. Triggers include:
+**No minimum size.** Typo = 500 error. Same checklist applies.
 
-**Bug / error triggers:**
-- A test fails (yours, pre-existing, flaky-looking, doesn't matter)
-- A command, request, job, or pipeline returns a non-zero exit / error / 4xx / 5xx
-- A value is unexpected — wrong type, wrong shape, missing field, stale, malformed, null where required, scalar where structured
-- A user reports anything broken, weird, slow, missing, or "off"
-- You read a stack trace, error log, audit record, or alert
-- A previously-working flow stops working
-- You catch yourself thinking "that's odd" / "that shouldn't happen" / "let me just check"
-- Pipeline discovery (DRY violation, dead code, surprising state) where root cause is unclear
-
-**Investigation triggers (user-initiated, not a bug report):**
-- User says "investigate," "look into," "find out," "dig into," "figure out," "trace," "audit," "check on," "look at" ANY state or behavior
-- User asks "why is X happening?" / "why does X work this way?" / "how does Y work?" / "what's going on with Z?" about local system behavior
-- User asks you to report / verify / confirm state ("is the agent running?", "did the job dispatch?", "what does the config say?")
-- Any task that reads "understand X before we act on it"
-
-**Assertion triggers (about to make a factual claim about this system):**
-- About to state timing / latency / performance claims ("this takes ~Xms", "that's slow", "on a healthy system this would…")
-- About to describe what code "does" in paraphrased form rather than quoted lines
-- About to explain causality ("this failed because Y", "the reason X happens is Z", "root cause is W")
-- About to answer "why" a local design choice exists, when the answer requires more than quoting a comment or docstring
-- About to compare runtime behavior under different conditions (cold/warm, healthy/loaded, before/after)
-- About to assert what a config value, timeout, env var, or threshold means in practice
-
-**There is no minimum size.** A typo's root cause matters as much as a 500's. "Explanation mode" is not a lower-evidence register — the same Reproduce → Evidence → Hypothesis → Proof chain applies. If your answer would be an essay built from priors, you are in the exact failure mode this skill exists to prevent.
-
-**The "direct quote" exemption:** You do NOT need the skill to answer "what are the parameters of function X?" — that's a file read + quote. You DO need the skill the moment your answer contains *any* claim that isn't a direct quotation from code, docs, or a tool result captured in this conversation. If you find yourself writing "probably," "typically," "usually," "on the order of," "a matter of," "cold start," "warm system," or any other hedge about local behavior — stop, invoke the skill, measure.
+**Direct-quote exemption:** "What params does func X take?" = file read + quote. Any claim beyond direct quotation = needs this skill.
 
 ## Mandatory Setup — Create the Todo List FIRST
 
@@ -61,174 +35,33 @@ You do NOT skip phases. If a phase doesn't apply, mark it complete with a one-li
 
 ---
 
-## Phase 1 — Reproduce
+## Phases 1–5: Reproduce → Prove
 
-**Goal:** Trigger the bug deterministically. If you cannot reproduce, you do not understand the bug.
+**1. Reproduce:** exact inputs/env/sequence. If user-reported, ask URL/request-id/steps — don't guess. STOP if can't reproduce.
 
-- Identify the exact inputs, environment, user/team, and sequence that triggers it.
-- If user-reported: ask for the URL, request id, audit request id, console log, exact steps — do not guess.
-- Run the trigger yourself OR find runtime evidence the trigger already happened (logs, audit records, DB state).
-- If you cannot reproduce after a real attempt, STOP and tell the user. Do not proceed on a hypothetical bug.
+**2. Capture evidence:** pull actual data (offending row, payload, log, audit record). DB bugs: `SELECT *` + timestamps. Forbidden: "code suggests it must do X".
 
-**Acceptance:** You can name the exact conditions under which the bug occurs.
+**3. Identify producer:** find what wrote the bad value. (1) currently buggy, (2) was buggy, fixed now, (3) expectation wrong, (4) external source. Answer all four before editing.
 
-## Phase 2 — Capture Runtime Evidence
+**4. Form hypothesis:** one sentence "X happening because Y causing Z." Every link independently verifiable. 4+ links = don't understand yet.
 
-**Goal:** Look at what actually happened, not what the code suggests might happen.
+**5. Prove hypothesis:** experiment (log, debug cmd, repro, dump state). Proof = runtime artifact (log line, file:line, command output, DB row, JSONL). Forbidden proof: different instance, code-read, pattern-match. Pre-report audit: `LINK: <claim> | PROOF: <artifact-id>` for every causal link.
 
-- Pull the actual data: the offending row, payload, response body, log lines, audit request, session log, error message in full.
-- For DB-backed bugs: `SELECT *` the offending row(s). Check `created_at` / `updated_at`.
-- For job/queue bugs: read the AuditRequest's `logs` field, `apiLogs`, `errorLogEntries`, parent/child chain.
-- For UI bugs: read the actual frontend component AND observe in the browser. API response is not evidence of what the UI rendered.
-- Verify the runtime data was produced by CURRENT code/infra, not a previous version. If unsure, reproduce live.
+## Phases 6–11: Decide → Close
 
-**Forbidden:** Reading source code and concluding "it must be doing X." Code is not evidence.
+**6. Decide:** diagnose-only default (need action verb: fix/implement/change). Exceptions: pipeline discovery (own it), user said "fix it" in bug message. Forbidden: treating question/observation/concept-approval as auth.
 
-**Acceptance:** You can quote the actual runtime values — not paraphrase what the code "should" produce.
+**6.5. Solution quality:** (1) mechanism not symptom, (2) textbook for platform, (3) class not instance. Tier 1 (fixes mechanism, textbook) > Tier 2 (architectural) > Tier 3 (observability, co-ships with T1) > Tier 4 (defense, under T1 only). Forbidden: symptom-only patch, retry as primary, local patch without naming others, "later" without artifact.
 
-## Phase 3 — Identify the Producer (for unexpected values)
+**7. Write failing test:** TDD non-negotiable. Test describes bug, not fix. "Can't unit test" = misunderstanding. All categories (infra, config, cross-process) require tests.
 
-**Goal:** Find what wrote the bad value. Skip only if the bug is purely behavioral/control-flow with no data involved.
+**8. Implement:** fix producer (case #1/#4), plan data fix (case #2), fix expectation (case #3). Minimal. Forbidden: consumer tolerant (`??`, `try/catch`), "legacy data accept it", "error message tells what to change".
 
-A wrong value is the output of one or more producers — a write path, a migration, an external import, an upstream service, a cache, a default, a serializer, user input. ONE of the following is true:
+**9. Verify:** failing test passes · related tests pass · original trigger gone · evidence captured.
 
-1. **Producer is currently buggy** — code in the tree right now writes bad values. Fix the producer + backfill rows it wrote.
-2. **Producer was buggy in the past, since fixed** — old rows from old code still carry bad values; current code is correct. Need a one-shot data fix; do NOT add tolerance to the consumer.
-3. **Producer is correct, consumer's expectation is wrong** — the schema/type/assumption was always wrong. Fix the consumer's expectation by representing reality, not by silencing it.
-4. **External/uncontrolled source** — user input, third-party API, file upload, manual DB edit. The boundary code that ingests must validate; downstream consumers can then trust.
+**10. Backfill:** idempotent + incremental (delta + high-water mark, not truncate-reload). Cost/time 10th run identical.
 
-**Mechanical check — answer all four before any code edit:**
-1. What is the actual offending value? (quoted from runtime, not inferred)
-2. What code wrote it? (`git log -S "field"`, search for assignments, check writers/migrations/imports)
-3. When was it written? (timestamps vs. git log of the writer)
-4. Is the producing code still in the tree, and is it still wrong?
-
-If you cannot answer one, STOP and investigate. A consumer patch with unanswered producer questions is always a silent fallback in disguise.
-
-**Acceptance:** You have named which of the 4 cases applies and have evidence for it.
-
-## Phase 4 — Form Hypothesis
-
-**Goal:** State what you think is wrong, in writing, before testing it.
-
-- One sentence: "I believe X is happening because Y, which is causing Z."
-- Every link in the causal chain (X → Y → Z) must be independently verifiable.
-- "A could cause B" is NOT "A is causing B." Check: same file? Same code path? Actually executed?
-- If the chain has 4+ links, you don't understand it yet — keep investigating.
-
-**Acceptance:** Hypothesis is written down and every link is testable.
-
-## Phase 5 — Prove the Hypothesis
-
-**Goal:** 100% confidence via runtime proof, not 99%.
-
-- Run an experiment: log statement, debug command, reproduction with controlled inputs, dump intermediate state.
-- A passing or failing experiment confirms or refutes ONE link in the chain.
-- "I'm pretty sure" is not confidence — it's a guess. Guesses cost 30+ minutes when wrong; proof costs 60 seconds.
-- If runtime proof is impossible (rare), STATE this and ask the user before proceeding.
-
-**Forbidden:** Skipping this phase because the answer "feels obvious." Especially for one-line fixes.
-
-**Pre-report causal-chain audit — MANDATORY before any "root cause" claim, fix-options list, or recommendation crosses into user-facing text.** For every link in the X → Y → Z chain, write one line of the form `LINK: <claim> | PROOF: <runtime artifact id>` where the artifact is a specific log line, file path:line, command output, DB row, or session JSONL entry you captured in THIS investigation for THIS failing instance (same UUID / dispatch id / row id). Forbidden proof shapes: (a) artifact from a different instance of the same bug class ("I saw this error message in my probe earlier"), (b) "the code shows it would do X", (c) "pattern matches the runbook", (d) "a previous session reported this". Cross-instance pattern matching is a HYPOTHESIS, not proof. If ANY link's PROOF cell is empty / cross-instance / code-read, you are NOT in Phase 5 — you are in Phase 4 with a guess; either gather the missing proof or label the report PROVISIONAL with the named next probe BEFORE the fix-options list (not after).
-
-**Acceptance:** You have direct runtime evidence (log, output, query result, reproduction) that confirms the hypothesis end-to-end — and that evidence comes from the SAME failing instance you are reporting on, not a sibling failure.
-
-## Phase 6 — Decide: Diagnose vs. Fix
-
-**Default = diagnose-only.** The user must give an explicit action verb (fix, implement, change, do it, go ahead) to authorize a code change. After presenting findings + options, you are in a HARD STOP — text only until the action verb.
-
-**Exceptions:**
-- Pipeline discovery (a test failing during your own work, a DRY violation found mid-refactor): own it, fix it via TDD.
-- User said "fix it" / "make it work" in the same message describing the bug: action verb is present, proceed.
-
-**Forbidden:** Treating a question ("why is X happening?") as authorization. Treating an observation ("X is broken") as authorization. Treating concept approval ("good idea") as authorization.
-
-**Acceptance:** Either you have an explicit action verb, OR you have presented findings and stopped.
-
-## Phase 6.5 — Solution Quality Bar — Root Cause Over Symptom
-
-The fix you are about to TDD must clear three questions BEFORE you write the failing test. Failing any question = draft, not a fix.
-
-1. **Mechanism, not symptom.** Does the change address the underlying mechanism Phase 5 proved? Raising a timeout, adding a retry, swallowing an exception, widening an allowlist, or restarting the process makes the symptom disappear without touching the mechanism — that is not a fix.
-2. **Textbook for the platform.** Would a senior engineer reading the diff agree this is the canonical way the language / framework / platform recommends solving this class of problem? If not, name the textbook answer in the commit body and justify the deviation in writing.
-3. **Class, not instance.** Does the fix eliminate the failure class, or only the one observed instance? If the same mechanism lives at N other call sites and they remain exposed, the fix is partial. Either widen the scope or open a follow-up artifact (issue / card / TODO with a date or condition) before claiming the bug closed.
-
-**Tiered options — mandatory ordering when presenting more than one fix to the user.** Rank by root-cause depth, never by ease:
-
-| Tier | Role |
-|---|---|
-| 1 | Fixes the underlying mechanism. The textbook answer. Default recommendation. |
-| 2 | Reduces the mechanism's blast radius via architectural change (isolation, decoupling, concurrency caps, backpressure). |
-| 3 | Observability. Instrumentation so the next regression surfaces before it bites. Co-ships with Tier 1, never replaces it. |
-| 4 | Defense in depth — retries, timeouts, fallbacks, graceful degradation. Ship ONLY UNDER a Tier 1 fix and label as a safety net. Never the primary recommendation. |
-
-**Forbidden as a primary fix (each fails the bar):**
-
-- Symptom-only patch ("raise the timeout to 60s").
-- Retry / fallback / fail-soft branch as the primary mechanism.
-- Local patch when the same mechanism exists at N other call sites and the patch covers only one — without naming the others.
-- "Quick win now, real fix later" without a named follow-up artifact.
-- Refusing Tier 1 because it is "a bigger change." Bigger IS what root-cause work looks like — name the cost honestly instead of hiding it.
-
-**When evidence is insufficient to commit to Tier 1:** STOP, return to Phase 1–5 with a named next probe. Never default to a Tier 4 patch because the data is thin.
-
-**Acceptance:** The fix you are about to test passes all three questions OR you have explicitly named the deviation and the user has approved it.
-
-## Phase 7 — Write the Failing Test
-
-**TDD is non-negotiable for every change — bugs and features alike.**
-
-- Write a test that reproduces the bug.
-- Run it; verify it fails for the reason you expect (not for an unrelated reason).
-- The test name describes the bug, not the fix.
-- "This can't be unit tested" means you don't understand the bug yet — go back to Phase 1.
-- Infrastructure, config, cross-process, agent dispatch — all categories require a test. No exemptions.
-
-**Acceptance:** A test exists, fails when run, and the failure mode matches your hypothesis.
-
-## Phase 8 — Implement the Minimal Fix
-
-- Fix the producer if Phase 3 identified case #1 or #4.
-- Plan a data fix (Phase 10) if case #2.
-- Fix the consumer's expectation if case #3.
-- Smallest change that addresses the root cause. No surrounding cleanup, no opportunistic refactor.
-- **Three forbidden reflexes:**
-  - Make the consumer tolerant (`is_string`, `?? []`, `try/catch`, return null, default value) — converts a loud bug into a silent one.
-  - "It's just legacy data, accept it" — without proving the producer is fixed, you don't know it's legacy.
-  - "The error message tells me what to change" — the error tells you where the symptom surfaced; the fix usually lives elsewhere.
-
-**Acceptance:** Code change is minimal and addresses the producer/expectation, not the symptom.
-
-## Phase 9 — Verify
-
-- The failing test from Phase 7 now passes.
-- Run related tests (`--filter` on the affected area).
-- Reproduce the original bug trigger from Phase 1 — confirm it no longer reproduces.
-- Never claim "this should work" or "try refreshing." Test it; confirm; report evidence.
-- Never remove debug logs added during investigation until the user confirms the fix works in production.
-
-**Acceptance:** New test passes, related tests pass, original trigger no longer reproduces, evidence captured.
-
-## Phase 10 — Backfill / Migrate (if data was wrong)
-
-If Phase 3 identified case #2 (past producer wrote bad rows now in DB) or if your fix changes a value's expected shape:
-
-- Plan the data fix: migration, repair script, backfill job.
-- Make it idempotent — running twice must be safe.
-- Make it incremental — process delta only, store high-water mark, not truncate-and-reload.
-- State expected cost/time of the 10th run vs. 1st — they should be identical for a recurring job, vastly cheaper for a one-shot backfill.
-- Run it. Verify by re-querying the affected rows.
-
-**Acceptance:** All known bad rows are repaired, and the producer can no longer create new bad rows.
-
-## Phase 11 — Close the Loop
-
-- Update the active issue card (Edit the YAML `comments[]` / `retro` directly — the chokidar watcher mirrors the change to the DB and the post-completion auto-sync pushes to the tracker) or session notes with what was found and fixed (if applicable).
-- If a rule, doc, or skill failure enabled the bug, file an Action Item via `mcp__danx-issue__danx_issue_create` (see `self-improvement.md`).
-- If the same class of bug has bitten more than once, propose a rule update — not a memory note.
-- Confirm the user sees the fix as resolved before closing the todo.
-
-**Acceptance:** Trello and rules state reflect what was learned; user has confirmed.
+**11. Close:** update card/notes, file Action Item if rule/doc failure enabled bug, propose rule update if class repeats.
 
 ---
 
