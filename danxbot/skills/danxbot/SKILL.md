@@ -132,7 +132,7 @@ The poller is the ONLY thing that calls Trello. Do not invent agent-path Trello 
 
 ## Pre-dispatch prep step (DX-291 / DX-297)
 
-Every multi-agent dispatch begins with the `danxbot:danx-prep` skill running on the agent's worktree. The prep agent runs commit-first WIP recovery, branch sync against `origin/main`, file-scope conflict reasoning against in-progress siblings, and a self-stuck check on the candidate card, then emits ONE verdict via `mcp__danxbot__danxbot_prep_verdict`:
+Every multi-agent dispatch begins with the `danx-prep` skill running on the agent's worktree. The prep agent runs commit-first WIP recovery, branch sync against `origin/main`, file-scope conflict reasoning against in-progress siblings, and a self-stuck check on the candidate card, then emits ONE verdict via `mcp__danxbot__danxbot_prep_verdict`:
 
 | Verdict | Worker route side-effect |
 |---|---|
