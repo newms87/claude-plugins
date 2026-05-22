@@ -1,200 +1,132 @@
 ---
 name: pipe-finish
-description: 'Use (a) immediately after every `/pipe-commit` to produce a post-commit report + invoke the next pipeline step, AND (b) at session end to surface unwritten knowledge + spawn Action Items cards. Replaces the retired `/pipe-report` skill. All output sections follow the `convey` format (auto-loaded base skill) — concept-first headline, behavior-diff tables, ASCII flow, caveats list, verify line.'
+description: 'Use (a) immediately after every `/pipe-commit` to produce a post-commit report + invoke the next pipeline step, AND (b) at session end to surface unwritten knowledge + spawn Action Items cards. Replaces the retired `/pipe-report` skill. All output sections follow the `convey` format (auto-loaded base skill) — concept-first headline, behavior-diff tables, ASCII flow, caveats, verify line.'
 ---
 
 # Finish — post-commit reports AND end-of-session wrap
 
-This skill has two modes, invoked at different cadences:
-
-| Mode | When | What it does |
+| Mode | When | Output |
 |---|---|---|
-| **Post-commit** (mode `A`) | Immediately after every `/pipe-commit` | Emits a `convey`-format report of the just-committed change, then invokes `/next-phase` or recurses into mode `B` if the session is done. |
-| **Final wrap** (mode `B`) | At session end (last phase committed OR user wraps up) | Action Items spawning, session knowledge dump, recommended next actions, final session report. |
+| A — Post-commit | After every `/pipe-commit` | `convey`-format report (≤30 lines), then invoke next step |
+| B — Final wrap | Session end / last phase | Action Items + knowledge dump + next actions (≤60 lines) |
 
-All output produced by either mode follows the `convey` format — see the auto-loaded `base:convey` skill for the scaffold (headline → goal → behavior diff table → flow → caveats → verify). Length budgets: post-commit report 30 lines, final wrap 60 lines.
+All output follows `base:convey` scaffold (headline → goal → diff table → flow → caveats → verify).
 
----
+## Mode A — Post-commit
 
-## Mode A — Post-commit report
+1. `git show --stat HEAD` — sanity check.
+2. Emit convey report:
+   - Headline ≤12 words
+   - Goal — one sentence
+   - Behavior diff table (skip if trivial one-line commit)
+   - Caveats — `- [ ]` for operator deploy/publish/restart
+   - Verify — `cmd → ✅ N/N`
+   - Skipped findings — list any validly-skipped pipe-quality findings
+3. State next step as declarative fact, invoke without pausing.
 
-Replaces the retired `/pipe-report` skill. Use immediately after `/pipe-commit` succeeds.
+### Next-step decision
 
-### Steps
-
-1. `git show --stat HEAD` — sanity-check the commit landed.
-2. Emit a `convey`-format report (use the scaffold from `base:convey`):
-   - **Headline** — what now works / fails / changed in ≤12 words.
-   - **Goal** — one sentence.
-   - **Behavior diff** — table for any "Before / After" axis the commit changed. Skip if a one-line commit with one clear effect.
-   - **Caveats / next actions** — `- [ ]` checkboxes for operator deploy / publish / restart steps, known limitations.
-   - **Verify** — `cmd → ✅ N/N` line. Skip per-suite tables unless something failed.
-   - **Skipped findings** — list any validly-skipped pipe-quality findings.
-3. State the next step as a **declarative fact**, then invoke it without pausing.
-
-### Decision tree for the next step
-
-| Situation | Next step | Action |
-|---|---|---|
-| More phases remain in the plan | Name the next phase | Invoke `/next-phase` in the same response. |
-| This was the final phase | `/pipe-finish` (mode B) | Recurse into mode B in the same response. |
-| Waiting on external input the pipeline cannot produce itself (human-only Trello approval, third-party API outage) | State the blocker | Stop. Do not invoke a pipeline step. |
+| Situation | Action |
+|---|---|
+| More phases | Invoke `/next-phase` same response |
+| Final phase | Recurse into Mode B same response |
+| External blocker (human approval, API outage) | State blocker, stop |
 
 ### Forbidden — never ask permission for pipeline-mandated steps
 
-`/next-phase` and the mode-B wrap are pre-approved by the original plan approval. Writing any of these is a rule violation:
-
-- "Let me know if you want me to also…"
-- "Say go / go ahead / approve and I'll…"
+`/next-phase` + Mode B are pre-approved by plan approval. Violations:
+- "Let me know if you want…"
+- "Say go and I'll…"
 - "…want me to run X?"
-- Any `?` attached to a pipeline step name
+- Any `?` on a pipeline step name
 
-Correct pattern: declarative statement + immediate invocation. The user can interrupt if they want something else.
+Correct: declarative + immediate invocation. User can interrupt.
 
----
-
-## Mode B — Final session wrap
+## Mode B — Final wrap
 
 ### Hard skip — dispatched workers
 
-**If `process.env.DANXBOT_DISPATCH_ID` is set, Mode B does NOT run.** Dispatched workers terminate via `danxbot_complete`; the worker handles retro rendering, Action Items spawning from `retro.action_item_ids[]`, and the file move `open/` → `closed/` automatically (see `danxbot:danx-next` Step 11 "What the worker does on signal"). The Mode B output stream is discarded by SIGTERM and the action-item spawning duplicates work the worker already does from YAML. Skip the entire section, call `danxbot_complete`, emit nothing further.
+**If `process.env.DANXBOT_DISPATCH_ID` is set, Mode B does NOT run.** Worker handles retro + Action Items spawn from `retro.action_item_ids[]` + file move automatically. Call `danxbot_complete`, emit nothing further.
 
-Mode B is for **human-loop sessions only** — the operator's terminal, not dispatched agents.
+Mode B = human-loop sessions only.
 
-### Human-loop only — what follows
+### Part 1 — Action Items
 
-Context is about to be destroyed — anything not written down is lost forever. Three jobs: spawn Action Items cards, dump session knowledge, present recommended next actions. All output follows `convey`.
+For each session issue, ask:
+- Wasted >10 min?
+- Human frustrated / corrected same mistake twice?
+- Concrete fix exists (rule / tool / docs)?
 
----
+If yes: call `mcp__danx-issue__danx_issue_create` directly.
 
-## Part 1: Action Items
+**Categories** (frame `type` + description):
+- Prompt/rules fix · New tool/skill · Skill improvement · Documentation · Code refactor · Better error messages
 
-Review the session for anything that went wrong or needs attention. For each issue, decide:
+**Rules, not memory.** Corrections → rules files (`~/.claude/rules/` global or project). Helps any codebase → global, else project.
 
-- Did this waste meaningful time (>10 min)?
-- Was the human frustrated or had to correct the same mistake twice?
-- Is there a concrete fix (rule change, new tool, better docs)?
+**Create args:**
+- Required: `type` (`Bug` / `Feature`), `title`, `description` (what happened, why wasted time, proposed fix)
+- Optional: `status` (default `ToDo`), `parent_id`, `children`, `ac`, `phases`, `comments`
 
-If YES to any: spawn a fresh issue card by calling `mcp__danx-issue__danx_issue_create` with typed args.
+Returns `{created: true, id, path, external_id}` or `{created: false, errors}`. On false, fix errors + recall.
 
-**Action item categories** (use to choose `type` + frame description):
-- **Prompt/rules fix** — rule missing, ambiguous, or wrong → caused mistake
-- **New tool/skill** — manual workflow should be automated
-- **Skill improvement** — existing skill missed case or could be tightened
-- **Documentation** — code comments, CLAUDE.md updates that would have saved time
-- **Code refactor** — misleading code sent agent down wrong path
-- **Better error messages** — script failed silently or unhelpfully
+**Apply small rule fixes directly** (1-10 lines) — no card. Commit rule changes separately: `[Rules] <desc>`, stage rule files only.
 
-**Rules, Not Memory.** Corrections → rules files (`~/.claude/rules/` or project `.claude/rules/`), never memory. Would help ANY codebase? → global. No → project-local.
+### Part 2 — Knowledge Dump
 
-**Spawn procedure:**
-
-Call `mcp__danx-issue__danx_issue_create({...})` directly — no draft YAML required. Required args:
-
-- `type`: `"Bug"` (broken behaviour) or `"Feature"` (new tools/skills/docs)
-- `title`: short description of what went wrong or needs fixing
-- `description`: markdown body — what happened, why it wasted time, proposed fix (specific files/changes)
-
-Optional args (omit for defaults):
-
-- `status` — defaults `"ToDo"`
-- `parent_id` — `"ISS-N"` reference or `null`
-- `children` — `string[]` of `ISS-N` refs (epics)
-- `ac` — `[{ title, checked? }, ...]`; `checked` defaults `false`
-- `phases` — `[{ title, status?, notes? }, ...]`; defaults `Pending` / `""`
-- `comments` — `[{ author, timestamp?, text }, ...]`
-
-The tool allocates `ISS-N`, builds the canonical YAML, pushes via `tracker.createCard`, and writes `<id>.yml`. Returns `{created: true, id: "ISS-N", path, external_id}` or `{created: false, errors: [...]}`. On `false`, fix the validation errors and re-call.
-
-**Apply immediate rule fixes directly.** Small rule additions (1-10 lines) to `~/.claude/rules/` or project rules — just make the edit. No card needed for small rule tweaks.
-
-**Commit rule changes separately** if any were made:
-- Message: `[Rules] Brief description`
-- Stage only rule files
-
----
-
-## Part 2: Session Knowledge Dump
-
-Walk through: Issue cards (status/blockers/discoveries), Code comments (gotchas), Rules (patterns learned), Outstanding work (loose ends), Observations (stale data, broken tests, infrastructure). Output concise lists grouped by category. Skip empty categories.
+Walk: issue cards, code comments, rules, outstanding work, observations. Group by category, skip empty.
 
 ```
 ## Session Notes
 
 ### Outstanding
-- [things not yet done, blockers, next steps]
-
+- ...
 ### Observations
-- [things noticed but not addressed — stale data, broken tests, etc.]
-
+- ...
 ### Undocumented Knowledge
-- [things learned that aren't captured in rules/docs/comments/cards]
+- ...
 ```
 
-If the session was clean and everything is captured: output "Session complete. Nothing outstanding."
+Clean session → "Session complete. Nothing outstanding."
 
-### What NOT to do
+**Never:** repeat existing card/commit content · fabricate observations · create cards for observations · write files.
 
-- Don't repeat what's already on issue card YAMLs, in commit messages, or in flow-report output
-- Don't fabricate observations to look thorough — silence is fine
-- Don't create cards for observations (those are for the user to decide)
-- Don't write files for this — just output to the conversation
+### Act on Undocumented Knowledge
 
-### CRITICAL: Act on Undocumented Knowledge
+Document it WHERE:
+- **CLAUDE.md** — system behavior, cross-file gotchas
+- **Rules** — behavioral patterns, recurring mistakes
+- **Code comments** — local function gotchas
+- **Issue YAML description / comments[]** — context fresh agent needs (chokidar mirrors, auto-sync pushes)
 
-Undocumented Knowledge is not just a dump — it drives the first items in Recommended Next Actions. For each piece of undocumented knowledge, decide:
+Skip if one-off, obvious, or noise. Each rule competes for attention.
 
-**Document it if** it helps future agents avoid mistakes, understand how the system works, know how to test/build/deploy, or improves agent behavior. The right places:
-- **CLAUDE.md** — how the system works, key concepts, gotchas that affect multiple files
-- **Rules files** — behavioral patterns, workflow conventions, things agents keep getting wrong
-- **Code comments** — local gotchas in specific functions where the next reader will be confused
-- **Issue card YAML descriptions** — context that a fresh agent needs to pick up work (Edit the `description` field directly, or append a `comments[]` entry — the chokidar watcher mirrors the change to the DB; the post-completion auto-sync pushes to the tracker)
+**Test:** "Fresh agent tomorrow, zero context — would this prevent a real mistake?" Yes → document. No → drop.
 
-**Skip it if** it's one-off implementation detail, obvious from reading the code, or would add noise without preventing real mistakes. Too many rules degrade behavior — each rule competes for attention. A rule that saves 5 minutes once but gets read 100 times is net negative.
+### Part 3 — Recommended Next Actions
 
-**The test:** "If a fresh agent starts tomorrow with zero context, would this documentation prevent a real mistake or save meaningful time?" If yes, document it. If no, let it go.
+Last thing user sees. Build by walking these sources:
 
----
-
-## Part 3: Recommended Next Actions
-
-**End every session with a numbered action list.** The user should be able to glance at this and know exactly what to do next, in priority order. This is the last thing the user sees before closing the session.
-
-### How to build the list
-
-Walk through these sources in order. Each produces zero or more actions:
-
-1. **Documentation from Undocumented Knowledge** — ALWAYS first. For each item from Part 2's Undocumented Knowledge that passes the "fresh agent" test, create an action: "Document X in Y" with the specific file and what to write. This is the highest priority because undocumented knowledge is destroyed when this session ends. Everything else on this list can be rediscovered; knowledge cannot.
-2. **Incomplete phases on the active issue card** — if an `ISS-N` is assigned and has unchecked items in `phases[]` or `ac[]`, the next unchecked one is the top action
-3. **Issue cards spawned during this session** — Action Items spawns, epic phase cards, bug cards — list their `ISS-N` ids
-4. **Blockers requiring user action** — things only the human can do (restart a service, approve a publish, test in browser, make a business decision)
-5. **New issue cards to spawn** — problems observed that warrant a card but weren't created (because the agent doesn't spawn cards for observations — the user decides)
-
-### Output format
+1. Documentation from Undocumented Knowledge — ALWAYS first (knowledge dies with session)
+2. Incomplete phases on active card — next unchecked `phases[]`/`ac[]` item
+3. Cards spawned this session — list `ISS-N` ids
+4. Blockers needing human (restart, approve, browser test, business decision)
+5. New cards to spawn (observed problems user should decide on)
 
 ```
 ## Recommended Next Actions
 
-1. **[Action verb] [specific thing]** — [why, with link/path if relevant]
-2. **[Action verb] [specific thing]** — [context]
-3. ...
+1. **[verb] [specific thing]** — [why + path/link]
+2. ...
 ```
 
-### Rules for the list
-
-- **Actionable and specific.** "Fix the bug" is useless. "Run `npx vitest run` and verify all pass" is actionable.
-- **Ordered by priority.** Most impactful or blocking action first.
-- **Include commands/URLs/card links** where relevant so the user can act immediately.
-- **Max 7 items.** If more than 7, group related items or defer low-priority ones.
-- **Skip if truly nothing.** If the session completed all work with no loose ends, say "No actions needed — all work complete."
-
----
+Rules: actionable + specific · priority order · include commands/URLs · max 7 · skip if nothing.
 
 ## Rules
 
-- **Sparingly on Action Items.** Most sessions produce zero cards.
-- **Thorough on knowledge dump.** Actually think about what you know. The session is about to be destroyed.
-- **NEVER write files to `~/.claude/`** except rule files in `~/.claude/rules/`.
-- **Action Items cards land as fresh `ISS-N` YAMLs** with `status: ToDo` — the human decides what to act on.
-- **Knowledge dump is conversation output only** — no files, no commits, just tell the user.
-- **NEVER call `mcp__trello__*` tools from agent path** — issue creation goes through `mcp__danx-issue__danx_issue_create`; the danxbot worker is the sole writer to the backend tracker.
+- Sparingly on Action Items (most sessions = zero cards)
+- Thorough on knowledge dump
+- NEVER write to `~/.claude/` except `~/.claude/rules/`
+- Action Items land as fresh `ISS-N` YAMLs `status: ToDo`
+- Knowledge dump = conversation only, no files/commits
+- NEVER call `mcp__trello__*` — use `mcp__danx-issue__danx_issue_create`
