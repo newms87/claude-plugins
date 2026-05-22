@@ -1,30 +1,6 @@
 ---
 name: testing
-description: |-
-  MANDATORY before any test ACTION — running a test, writing a test, fixing a failing test, deleting a test, adding/changing mocks or fixtures, or REASONING about test coverage. Trigger fires the FIRST time in a session that any of those happen. Pick the right answer mechanically — the disambiguator is "is the user about to act on test contents or test behavior?" If yes, this skill is required. If they are only renaming a file, bumping a dep, editing docs, or moving a fixture path WITHOUT touching test code, this skill is not the right tool.
-
-  FIRES on:
-  - Invoking a test runner — `vitest`, `pytest`, `jest`, `rspec`, `phpunit`, `go test`, `cargo test`, `npm test`, `yarn test`, `make test*`, `./vendor/bin/sail test`, any language-specific runner
-  - Writing a new test file or adding a test case (`it(...)`, `test(...)`, `def test_*`, etc.) to an existing file
-  - Writing a failing test as part of a TDD bug-fix or feature flow
-  - Fixing a failing test — changing assertions, adjusting mocks, debugging output, root-causing
-  - Deleting a test file or test case (including "obsolete" cleanup of tests whose subject module is gone)
-  - Creating / updating / removing mocks, stubs, spies, fixtures, factories, conftest fixtures, `vi.mock`, `jest.mock`, monkeypatch
-  - Inspecting a test file to answer coverage questions — "does this cover the 401 path?", "is X tested?", "list the gaps in coverage for Y"
-  - Reasoning about whether something is sufficiently tested — listing coverage gaps, judging suite quality
-  - Reading or reporting test pass/fail counts, suite outputs, CI test results
-
-  DOES NOT fire on (these are FILE / CONFIG / DOCS edits, NOT test actions):
-  - Renaming a test file with no content change (e.g. "rename launcher.test.ts to spawn-agent.test.ts — file rename only")
-  - Moving a fixture file to a new path and updating imports (path-only edit, no test logic touched)
-  - Bumping a test-framework dependency version in `package.json` / `pyproject.toml` / `Cargo.toml` (dep version bump only)
-  - Updating CI / GitHub Actions / pipeline config — cache settings, runner image, scheduling — when no test code or test command changes
-  - Adding test-output directories (`coverage/`, `.pytest_cache/`, `.vitest-cache/`) to `.gitignore`
-  - Editing docs ABOUT tests — README badge URLs, CONTRIBUTING heading anchors, doc rewordings of test sections
-  - Updating non-test npm / cargo / composer scripts (lint, format, build) where the test-script line is untouched
-  - Deleting test-adjacent shell scripts / runner wrappers when no test code or test invocation changes
-
-  Loads the complete testing discipline (output-to-file, TDD, you-own-every-test, filter-first, no-skip, deterministic fixtures, mock discipline, framework gotchas, anti-pattern catalog) as a TodoWrite checklist. Invoke BEFORE the first tool call in a test-related sequence — never after. You do not get to invoke a single test "just to see," add a fixture, create a mock, delete a test file, fix a failing test, or report test results without this skill first.
+description: 'Test discipline: pre-run output-to-file, TDD, own-every-test, filter-first, no-skip, deterministic fixtures.'
 ---
 
 # Testing Skill

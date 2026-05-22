@@ -1,6 +1,6 @@
 ---
 name: code-quality
-description: 'MANDATORY before every code edit, before proposing solutions, before refactor decisions. Loads SOLID/DRY/Zero-Debt discipline (refactor first, extract abstractions, instance state over param threading, no backwards compat, no fallbacks, comments-are-authoritative) as TodoWrite checklist.'
+description: 'SOLID + DRY + zero-tech-debt discipline: refactor first, extract abstractions, no backwards compat, no fallbacks, comments-are-authoritative.'
 ---
 
 # Code Quality

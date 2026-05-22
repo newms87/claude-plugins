@@ -1,5 +1,5 @@
 {
-  "description": "Ideal-solution-mindset mandate (SessionStart + UserPromptSubmit). Surfaces the four core dev principles every session so feature planning, investigations, and bug fixes default to the ideal correct solution — no legacy, no fallbacks, no dead code, lowest-complexity-that-is-still-correct, reuse-before-you-build.",
+  "description": "Ideal-solution-mindset mandate (SessionStart only). Surfaces the four core dev principles + self-trigger gates for debugging / testing / git-discipline so the agent loads the full skill at the right moment.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,16 +7,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ideal-solution-mandate.sh SessionStart"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ideal-solution-mandate.sh UserPromptSubmit"
           }
         ]
       }

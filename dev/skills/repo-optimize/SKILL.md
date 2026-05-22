@@ -1,6 +1,6 @@
 ---
 name: repo-optimize
-description: 'User-invokable audit + optimization skill for the rules / skills / agents / CLAUDE.md surface that affects the current repo. Triggers — user invokes `/repo-optimize`, says "optimize my rules", "audit my CLAUDE.md", "what can I trim from .claude/", "are my rules duplicated", "reduce token usage in this repo", "my context is getting full from rules", "find machine-specific stuff in plugins"; about to spend a session manually scanning rules. Loads the full audit checklist (in-repo + global + plugin scope) so the agent runs an ORDERED diagnostic — never random — and reports a prioritized fix plan with concrete savings estimates and migration steps. NEVER applies fixes without explicit per-finding user approval; this is read-only audit + recommendations until the user picks targets.'
+description: 'User-invokable audit of rules/skills/agents/CLAUDE.md surface — prioritized fix plan with savings estimates, read-only until user picks targets.'
 ---
 
 # Repo Optimize — Audit Rules / Skills / Agents / CLAUDE.md

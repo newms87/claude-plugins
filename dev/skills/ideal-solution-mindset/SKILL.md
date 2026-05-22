@@ -1,6 +1,6 @@
 ---
 name: ideal-solution-mindset
-description: 'MANDATORY before every feature plan, investigation, bug fix, refactor proposal, or architectural decision — applies in EVERY context (autonomous workers, dispatched agents, human-in-the-loop sessions alike). Loads the four core principles (ideal solution first, no legacy / no fallbacks / no dead code, reduce complexity, DRY + SOLID reuse-first) as a TodoWrite checklist. Triggers — about to brainstorm; about to enter plan mode; about to write a plan document; about to propose an approach; about to add a new class / file / abstraction; about to ship a fix that leaves the legacy path running; about to surface a trade-off framed in dev effort or token cost; about to leave a `// TODO` / `// legacy` / `// deprecated` marker in the codebase; about to write a fallback / shim / compat layer; about to declare a plan ready while still feeling "this is complex". Question-vs-decide ergonomics with the user are NOT in scope here — that lives in human-collaboration:human-loop.'
+description: 'Four core dev principles: ideal correct solution, no legacy/fallbacks/dead code, reduce complexity, DRY + SOLID reuse-first.'
 ---
 
 # Ideal Solution Mindset
