@@ -1,6 +1,6 @@
 ---
 name: pipe-quality
-description: 'Post-review decision audit. Validates that all findings are addressed and no rationalizations slipped through.'
+description: 'Post-review decision audit — validates all findings addressed, no rationalizations slipped through.'
 ---
 
 # Quality Check — Decision Audit

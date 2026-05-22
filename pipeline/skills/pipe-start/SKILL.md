@@ -1,6 +1,6 @@
 ---
 name: pipe-start
-description: 'Pipeline start — reload critical development rules before every implementation phase. Invoke at phase boundaries, after planning, and before writing code. Autonomous-friendly: runs identically in human-loop and dispatched-worker contexts.'
+description: 'Reload critical development rules at phase boundary / before writing code.'
 ---
 
 # Pipe-Start — Pre-Implementation Rule Reload

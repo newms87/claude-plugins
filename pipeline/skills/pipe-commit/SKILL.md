@@ -1,6 +1,6 @@
 ---
 name: pipe-commit
-description: 'Stage and commit changes with a summary table.'
+description: 'Stage and commit changes with summary table.'
 ---
 
 # Commit Workflow

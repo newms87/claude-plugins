@@ -1,6 +1,6 @@
 ---
 name: pipe-review
-description: 'Post-commit review. Runs reviewer agents in parallel against the just-pushed commit; ALL findings ship as a SEPARATE follow-up commit.'
+description: 'Post-commit reviewer-agent fan-out; findings ship as a separate follow-up commit.'
 ---
 
 # Post-Commit Code Review

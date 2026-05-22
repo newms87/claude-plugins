@@ -1,6 +1,6 @@
 ---
 name: pipe-plan
-description: 'MANDATORY before EnterPlanMode, before checking off any AC item, before declaring a phase complete, before any commit closing a phase. Loads card-overrides-plan-mode, prose-only plans, zero-context test, phase-boundary audit (no stopgap scaffolding), pipeline auto-execution discipline as TodoWrite checklist. ALSO MANDATORY when picking up a card whose path is NOT clear after initial investigation — this skill carries the "complex card escape hatch" autonomous workers use to expand under-specified cards or escalate architectural unknowns to Blocked.'
+description: 'Card-overrides-plan-mode + prose-only plans + zero-context test + phase-boundary audit + pipeline auto-execution discipline.'
 ---
 
 # Pipe-Plan — Planning + Complex-Card Escape Hatch

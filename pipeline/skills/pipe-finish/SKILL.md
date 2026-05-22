@@ -1,6 +1,6 @@
 ---
 name: pipe-finish
-description: 'Use (a) immediately after every `/pipe-commit` to produce a post-commit report + invoke the next pipeline step, AND (b) at session end to surface unwritten knowledge + spawn Action Items cards. Replaces the retired `/pipe-report` skill. All output sections follow the `convey` format (auto-loaded base skill) — concept-first headline, behavior-diff tables, ASCII flow, caveats, verify line.'
+description: 'Post-commit report + next-step invocation; session-end unwritten-knowledge sweep + Action Item card spawning.'
 ---
 
 # Finish — post-commit reports AND end-of-session wrap
