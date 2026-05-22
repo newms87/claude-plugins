@@ -1,6 +1,6 @@
 ---
 name: bash-exit-capture
-description: 'MANDATORY before writing any chained bash command containing a long-running process (deploys, builds, full test suites, container ops). Loads exit-code-capture discipline as TodoWrite checklist. Triggers — about to write `command1 && command2; tail` or `command; echo $?`-style chain; about to interpret `EXIT=0` from a chain ending in `tail`/`grep`/`head`/`cat`.'
+description: Exit-code capture discipline for chained bash commands — avoid `cmd; tail` swallowing the real exit; use `EXIT=$?` pattern.
 ---
 
 # Bash Exit-Code Capture

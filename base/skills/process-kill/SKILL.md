@@ -1,6 +1,6 @@
 ---
 name: process-kill
-description: 'MANDATORY before delivering any signal (SIGTERM / SIGKILL / SIGINT / etc.) to any specific process or PID. Loads Iron Rule + Proof Block requirement as TodoWrite checklist. Fires IMMEDIATELY on intent — do NOT pre-verify PID ownership, container state, or process aliveness before loading. Fires on: `kill <pid|name>`, `kill -9 <target>`, `kill -<sig> <target>`, `pkill <name>`, `pkill -f <pattern>`, `killall <name>`, `taskkill /F /PID <n>`, `docker kill <container>` (sends signal to container main process), "send SIGTERM/SIGKILL to <target>", "cleanup of stale processes", "kill the runaway X", "terminate the stuck Y", composite plans like "ps aux | grep X and then kill it" or "docker top X to find the PID and then send it SIGKILL". Does NOT fire on: read-only inspection without a follow-up signal verb (`ps`, `ps aux`, `pgrep`, `docker top`, `lsof`, `docker inspect --format`); signal-verb help/print (`kill --help`, `kill -l`, `kill -L`); graceful lifecycle managers (`docker compose down`, `docker compose restart`, `docker compose stop`, `docker stop`, `systemctl stop`, `systemctl restart`, HTTP `/api/cancel`, HTTP `/api/stop`); figurative usage ("kill the build", "kill the test run" meaning interrupt a runner via its own controls).'
+description: Signal-delivery discipline — Iron Rule + Proof Block before kill / pkill / SIGKILL / docker kill of any specific process or PID.
 ---
 
 # Process Kill Discipline

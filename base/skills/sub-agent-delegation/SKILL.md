@@ -1,6 +1,6 @@
 ---
 name: sub-agent-delegation
-description: 'MANDATORY before every Agent / Task sub-agent dispatch. Loads pre-dispatch check (synthesis ratio, isolation justification, raw-passthrough detection) as TodoWrite checklist. Sub-agents = synthesis / judgment / parallelism / context isolation; never raw read/MCP-fetch passthrough.'
+description: Sub-agent dispatch checklist — synthesis ratio, isolation justification, raw-passthrough detection; sub-agents synthesize, never proxy reads.
 ---
 
 # Sub-Agent Delegation Rules

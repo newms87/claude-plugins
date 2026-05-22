@@ -1,6 +1,6 @@
 ---
 name: monitor-polling
-description: 'MANDATORY before arming any `Monitor` tool call OR writing any `until <condition>; do sleep N; done` poll loop. Polling has real cost (process spawn + DB connection + chat notification per tick). Triggers: about to call Monitor, about to write a sleep loop watching backend job state (artisan, queue, LLM, agent dispatch, schema/template builder, octane, horizon, dispatch round-trip), about to poll remote API for status, about to use `tail -f | grep` to watch a stream, about to write "tell me when X is done" logic. Loads decision tree (Bash run_in_background vs Monitor vs tail-grep), interval floor table, and load-failure override as TodoWrite checklist.'
+description: Polling discipline — Bash run_in_background vs Monitor vs tail-grep decision tree, interval floors, cost-aware ticks.
 ---
 
 # Monitor & Poll-Loop Discipline

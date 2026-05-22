@@ -22,29 +22,13 @@ if [ "$EVENT" = "UserPromptSubmit" ]; then
 fi
 
 read -r -d '' MANDATE <<'EOF' || true
-CONVEY — high-yield information transfer is the default for every report, commit message, PR description, issue comment / description / retro, Slack reply, code-review feedback, investigation finding, unblock note, hand-off prompt to a subagent. Full skill: base:convey.
+CONVEY — default scaffold for reports/commits/PRs/comments/Slack/hand-offs/investigations. Full skill: base:convey.
 
-Format (apply to any finished artifact someone else will read to decide something):
+Scaffold: ## headline (≤12w) → Goal (1 sentence) → Behavior diff table → Flow (ASCII, multi-actor only) → Why non-obvious (≤2 lines) → Caveats (checkbox) → Verify (`cmd` → ✅ N/N).
 
-  ## <headline — what now works/fails/changed — ≤12 words>
+Rules: concepts before paths; tables over prose; bullets over sentences; drop fillers. Budgets — report 30 lines, commit body 8, PR 40, comment 20, Slack 12, investigation 20.
 
-  **Goal.** 1 sentence. User-visible. Plain English. No file paths.
-
-  **Behavior diff.** | axis | Before | After | table.
-
-  **Flow.** ASCII arrow diagram (only if multi-actor / non-linear).
-
-  **Why non-obvious.** ≤2 lines. Skip when goal covers it.
-
-  **Caveats / next actions.** Checkbox list — operator deploy / publish / restart, known limits.
-
-  **Verify.** `cmd` → ✅ N/N | path:line audit pointers.
-
-Rules — concepts before paths, tables over prose, bullets over sentences, present-tense system-actor verbs, drop fillers ("just", "basically", "actually", "essentially", "in order to", "make sure that", "the following is"). Composes with caveman — convey owns content + structure; caveman owns word-level form.
-
-Self-trigger gate: before sending any response containing "Summary", "What shipped", "What I did", "Report", "Findings", "Results", a wall of file paths with prose around them, OR 3+ paragraphs about one change — apply the scaffold. If draft >40 lines for a single completed action, you're not applying convey.
-
-Length budgets — end-of-turn report 30 lines, commit body 8, PR description 40, issue comment 20, Slack reply 12, investigation 20.
+Self-trigger: "Summary"/"Report"/"Findings"/"Results" in draft, wall of paths, 3+ paragraphs on one change, or >40 lines for one action → apply.
 EOF
 
 jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \

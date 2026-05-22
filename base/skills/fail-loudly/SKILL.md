@@ -1,6 +1,6 @@
 ---
 name: fail-loudly
-description: 'MANDATORY when drafting any fix-options list, designing error-handling for a critical operation, or about to add a fallback / retry / graceful-degradation path. Triggers — saving state across a system boundary (MCP tool, dispatch, schema-builder agent), MCP tool unreachable, sub-agent contract violation, dispatch state corruption, any "what should we do if X fails" decision. Loads no-silent-fallback discipline as TodoWrite checklist.'
+description: No-silent-fallback discipline for error handling on critical paths — surface failures, never paper over with retries or graceful degradation.
 ---
 
 # Fail Loudly — No Fallbacks for Critical Failures

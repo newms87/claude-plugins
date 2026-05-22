@@ -29,33 +29,20 @@ if [ "$EVENT" = "UserPromptSubmit" ]; then
 fi
 
 read -r -d '' MANDATE <<'EOF' || true
-PLUGIN SKILL LOAD MANDATE — installed plugin skills are LOAD-FIRST, NOT LOAD-IF-CONVENIENT.
+PLUGIN SKILL LOAD MANDATE — installed plugin skills are LOAD-FIRST. BEFORE the first mutating tool call (Edit/Write/MCP mutate/git commit/push) of any task matching a trigger below, invoke the matching skill via the Skill tool. Read-only orientation (Read/Glob/Grep/ls) allowed first.
 
-This is not a suggestion. Skill descriptions in the available-skills list are necessary but insufficient — past sessions have skipped skills because the trigger was paraphrased, the task "felt small," or the agent thought it knew the rule already. Every one of those was a workflow violation. Treat the rules below as overriding any default impulse to "just do the simple thing first."
+Hard MANDATORY triggers — match any one, load the skill immediately. Only installed plugins apply:
 
-(1) BEFORE the first substantive tool call of any task that matches a trigger below, you MUST invoke the matching skill via the Skill tool. Substantive = Edit/Write, MCP mutation tool, git commit/push, anything that mutates real state. Read-only orientation (Read/Glob/Grep/Bash ls) is allowed first; the skill is loaded BEFORE the first mutating action.
+(1) base:tool-discipline: TRIGGER: file op via cat/head/tail/sed/awk/grep over Read/Edit/Write; MCP call without schema; trailing `&`/`nohup`/`setsid`/`disown` in Bash (use `run_in_background: true`).
+(2) base:process-kill: TRIGGER: kill / pkill / killall / taskkill / `kill -9` / `kill -<sig>` / docker kill of a specific process or PID; composite "find PID then kill it". Read-only `ps`/`pgrep`/`lsof` and graceful lifecycle (`docker compose down`, `systemctl stop`) do NOT fire.
+(3) base:sub-agent-delegation: TRIGGER: any Agent / Task sub-agent dispatch.
+(4) base:bash-exit-capture: TRIGGER: chained bash with a long-running step (deploys, builds, full suites, container ops); interpreting `EXIT=0` from a chain ending in `tail`/`grep`/`head`/`cat`.
+(5) base:monitor-polling: TRIGGER: arming Monitor; `until <cond>; do sleep N; done`; polling backend job state / remote API / `tail -f | grep`; "tell me when X is done".
+(6) base:docs-first: TRIGGER: asserting behavior of an external product (Claude Code, Anthropic API, Trello, Docker, Vite, npm); designing a hook/wrapper around one; grepping local install to figure out behavior.
+(7) base:convey: TRIGGER: drafting any report / commit / PR / comment / Slack reply / hand-off / investigation longer than one line.
+(8) base:fail-loudly: TRIGGER: fix-options list; error-handling design on a critical path; adding a fallback / retry / graceful-degradation branch.
 
-(2) Hard MANDATORY triggers — match any one and load the skill immediately. Only triggers for INSTALLED plugins apply (skills not in the available-skills list cannot be loaded — skip those triggers):
-
-   • base:tool-discipline / base:process-kill / base:sub-agent-delegation / base:bash-exit-capture / base:monitor-polling
-       - any kill / pkill / SIGTERM / SIGKILL → process-kill FIRST
-       - any Agent / Task sub-agent dispatch → sub-agent-delegation FIRST
-       - any chained bash with long-running step → bash-exit-capture FIRST
-       - any Monitor / `until ...; do sleep` poll loop → monitor-polling FIRST
-       - any file op (cat/head/tail/sed/awk over Read/Edit/Write) → tool-discipline FIRST
-       - any trailing `&` / `nohup` / `setsid` / `disown` in a Bash command (workers, dev servers, build watches, deploys, anything that outlives the Bash tool call) → tool-discipline FIRST (use `run_in_background: true` instead of shell `&`)
-
-
-(3) NO rationalization. The following are violations, not reasoning:
-   - "I already know the schema/rule" — schema knowledge ≠ lifecycle knowledge.
-   - "Just one card / just one command / just a quick check" — exactly when the trap fires.
-   - "User only asked for X" — load the skill, then act on X.
-   - "Skill is overkill for this" — if a skill exists for the domain, use it.
-   - "I'll load it after I orient" — orient first is allowed; act before loading is not.
-
-(4) The skill description list is necessary but insufficient. Always prefer to LOAD the skill when in doubt; the cost of an unneeded skill load is one tool call. The cost of a skipped skill is a workflow violation.
-
-(5) "I forgot to load the skill" is never an explanation. Do not pattern-match around it; do not promise to load it next time. Load it now and re-do whatever step needed it.
+NO rationalization. "I already know the rule" / "just one quick X" / "skill is overkill" / "load it after I orient and act" are violations, not reasoning. Load now, then act. "Forgot to load" is never an explanation — load it and redo the step.
 EOF
 
 jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \

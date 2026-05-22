@@ -1,6 +1,6 @@
 ---
 name: docs-first
-description: 'MANDATORY before claiming behavior of any external product (Claude Code, Anthropic API, Trello API, Docker, Vite, npm, etc.) — the docs page on that exact feature MUST be fetched FIRST via WebFetch / context7. Triggers — about to assert "X does Y", about to design a hook / script / wrapper around a documented product, about to grep the local install to figure out behavior. Loads docs-first discipline as TodoWrite checklist.'
+description: Docs-first discipline — fetch the official docs page (WebFetch / context7) before asserting behavior of any external product or wrapping it.
 ---
 
 # Docs-First for External Products

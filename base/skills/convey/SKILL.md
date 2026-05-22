@@ -1,6 +1,6 @@
 ---
 name: convey
-description: Use when transferring information to another entity (human or agent) — reports, commits, PRs, issue YAMLs, Slack, code-review, hand-offs, summaries, plans, investigations, unblock notes. Concept-first headline, behavior-diff tables, ASCII flows, caveats, verify line. Signal/token ratio high, scan <30s. Auto-triggers on draft with "Summary", "What shipped", "Report", "Findings" OR wall of paths.
+description: Concept-first scaffold for reports/commits/PRs/comments/Slack/hand-offs — headline, behavior diff, ASCII flow, caveats, verify.
 ---
 
 # convey — Concept-First Information Transfer
