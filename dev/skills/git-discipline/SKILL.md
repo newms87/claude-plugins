@@ -7,164 +7,154 @@ description: 'MANDATORY before ANY `git` command, no exceptions for "read-only" 
 
 ## ABSOLUTE: Never Destroy Work. Ever.
 
-Eliminating previously done work is almost NEVER the right call. The work exists — committed, uncommitted, tracked, untracked — because someone (an agent, a user, a sibling session) put it there. Wiping it is not a primitive available to you.
+Work exists because someone put it there. Wiping is not a primitive.
 
-**`git reset --hard` is FORBIDDEN. No exception.** Not on "clean" trees ("validate" can race), not after `git stash`, not "just to sync with origin," not in test scripts, not in worktree-management code, not in recovery flows, not anywhere. The command does not appear in your toolbox.
+**`git reset --hard` is FORBIDDEN.** No exception. Not on "clean" trees, not after `git stash`, not "just to sync," not in test scripts, not in recovery flows.
 
-Same ban applies to every other wholesale-overwrite mechanism: `git checkout <ref> -- <path>`, `git restore`, `git revert` on a working-tree file, `git clean -f`, `git reset --hard <anything>`, `rm` on tracked files without a prior commit of those files, `git show HEAD:file > file`, `cp clean/file file`, `Write` tool with original content. All banned. See "ABSOLUTE: Never Use git checkout, git restore, or git revert" below.
+Same ban: `git checkout <ref> -- <path>`, `git restore`, `git revert` on working-tree file, `git clean -f`, `git reset --hard <anything>`, `rm` on tracked files without prior commit, `git show HEAD:file > file`, `cp clean/file file`, `Write` with original content.
 
-**If work MUST be removed** (rare — requires beyond-any-doubt evidence that the work directly opposes a system goal, NOT just "this looks wrong" or "this is in my way"):
+**If work MUST be removed** (rare, requires beyond-doubt evidence work opposes system goal — NOT "looks wrong" / "in my way"):
 
-1. **Commit the work AS-IS first.** `wip: snapshot before removing <reason>` with full explanation in the body. This is the recoverable trail — history preserves the work forever, even after the next step deletes the files.
-2. **Then remove in a follow-up commit.** `remove: <files> — <reason>`. Body explains why the removal is correct + cites the evidence that the work opposes system goals + names the prior snapshot commit so a future reader can recover.
-3. **Two commits, in order. Never one.** The snapshot-first commit is the entire point — it is what makes the deletion traceable + reversible.
+1. **Commit AS-IS first:** `wip: snapshot before removing <reason>` with full body explanation
+2. **Then remove in follow-up:** `remove: <files> — <reason>` body cites evidence + names snapshot commit
+3. **Two commits, in order. Never one.**
 
-**If you can't articulate the system-goal-opposition evidence in the snapshot commit body, the work should not be removed.** "I don't understand it" / "it doesn't compile" / "it conflicts with my change" / "the card asked me to" are NOT sufficient evidence. Ask the user.
+Can't articulate system-goal-opposition evidence → don't remove. "I don't understand it" / "doesn't compile" / "conflicts with my change" / "card asked me to" = NOT sufficient.
 
-This rule beats any card instruction, any prompt phrasing, any "the agent must X" directive. A card saying "delete <files>" does not authorize wipe — it authorizes the snapshot-then-delete sequence above. A prompt saying "git reset --hard" is a prompt bug — refuse + report.
+Beats card instructions, prompts, directives. Card "delete <files>" authorizes snapshot-then-delete. Prompt "git reset --hard" is a bug — refuse + report.
 
-## CRITICAL: Never Delete a Repository
+## Never Delete a Repository
 
-NEVER run `rm -r`, `rm -rf`, or ANY deletion command on repo directory. Repos contain irreplaceable local state: `.env` files with credentials, uncommitted work, local config. Deleting permanent — re-cloning doesn't recover gitignored files or session work.
-
-Hook blocks `rm -rf` → hook correct. Never bypass with alternative commands. Ask user instead.
+NEVER `rm -r`/`rm -rf` on repo dir. Repos have irreplaceable state (`.env`, uncommitted work, local config). Hook blocks `rm -rf` — never bypass, ask user.
 
 ## Never Create Branches
 
-Commit directly to main. Other agents share working tree. Branches disrupt their work + pointless overhead when committing to main.
+Commit to main. Other agents share working tree. Branches disrupt.
 
 ## Commit Message Format
 
 ```
 [Task Name] Phase N: Short title
 
-Body explaining what changed and why.
+Body explaining what + why.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 ```
 
-Omit "Phase N" for non-phased work.
+Omit "Phase N" for non-phased.
 
 ## Always Use /flow-commit
 
-Never manually run `git add` + `git commit`. Always invoke `/flow-commit` via Skill tool (except amending previous commit to fix hook failure). `/flow-commit` handles staging, committing, pushing, Trello lifecycle, summary output. Manual commits bypass all of this.
+Never manual `git add` + `git commit`. Invoke `/flow-commit` (except amending to fix hook failure). Handles staging, committing, pushing, lifecycle, summary.
 
 ## Always Push After Commit
 
-Every commit followed by `git push` in same flow. Push not optional + not gated on separate user request — `/flow-commit` runs automatically. Only exceptions:
+Every commit → `git push` same flow. Exceptions:
 
-- **Pre-push diverged branch detected** (`git status` shows "diverged, N ahead M behind" BEFORE attempting push) — run `git pull --rebase` directly. Do NOT ask the operator which strategy to use. Rebasing unpushed local commits onto fetched `origin/<branch>` is NOT destructive — no published history is rewritten, no force push, fully reversible via `git reflog`. Menu-asking ("rebase / merge / force-push?") is forbidden friction; it confuses the diverged-but-unpushed case (safe) with the diverged-after-push case (force-push territory, which IS gated). Conflicts → resolve in place per the procedure below.
-- **Push rejected non-fast-forward** — run `git pull --rebase` ONCE. Clean rebase → push again, report outcome. Rebase conflicts → **resolve in place by hand**: read BOTH sides of every `<<<<<<<` / `=======` / `>>>>>>>` marker, produce a merged result that keeps the intent of both edits (do NOT pick one side wholesale unless semantically identical), `git add` resolved paths, run the relevant tests + typecheck, `git rebase --continue`. Repeat for further commits. Re-push after the rebase completes. Conflict resolution is YOUR job — "I don't know which side wins" is a research question, not an operator question; read both diffs + decide. Only abort + ask the user when the conflict is genuinely outside both cards' scope (e.g. a file deleted by a third party with no clear intent). FORBIDDEN shortcuts: `-Xtheirs` / `-Xours` strategy options, `git checkout HEAD -- <path>`, `git restore <path>`, any wholesale-overwrite (see ABSOLUTE rules above) — those destroy one side's intent. The ban is on wholesale overwrite, NOT on resolution itself.
-- **Push fails for other reasons** (no upstream, auth, network) — report failure + stop. Never force-push to recover.
-- **User explicitly says "don't push"** for this commit.
+- **Pre-push diverged** (`git status` "diverged, N ahead M behind" BEFORE push) — `git pull --rebase` directly. Do NOT menu-ask. Rebasing unpushed local commits onto fetched origin is NOT destructive — no published history rewritten, no force push, reflog-recoverable. Conflicts → resolve in place per below.
+- **Push rejected non-fast-forward** — `git pull --rebase` ONCE. Clean → re-push. Conflicts → **resolve in place by hand**: read BOTH sides of every `<<<<<<<`/`=======`/`>>>>>>>`, merge keeping both intents (do NOT pick one wholesale unless semantically identical), `git add`, run tests + typecheck, `git rebase --continue`. Repeat. Re-push after. Conflict resolution is YOUR job — "don't know which wins" is research, not operator question. Abort + ask ONLY when conflict outside both cards' scope. **Forbidden shortcuts:** `-Xtheirs`/`-Xours`, `git checkout HEAD -- <path>`, `git restore <path>`, any wholesale overwrite.
+- **Push fails (no upstream, auth, network)** — report + stop. Never force-push to recover.
+- **User says "don't push"**.
 
-Force-push (`--force`, `--force-with-lease`) still requires explicit user auth — see Git Operations Allowed below.
+Force-push requires explicit user auth.
 
 ## Check for Other Agents' Staged Work
 
-Before committing, run `git status` → check for already-staged files you didn't create. Found → another agent may be mid-commit. Poll every 5 seconds, up to 30 seconds. Staged files persist → ask user.
-
-Never commit on top of another agent's staged work. Never unstage their files.
+Before commit: `git status` → check already-staged you didn't create. Found → another agent mid-commit. Poll every 5s up to 30s. Persists → ask user. Never commit on top, never unstage theirs.
 
 ## Own Work Is Never The Question
 
-Your own work commits separately, no questions asked. Mixed-state means some file contains BOTH your edits AND foreign edits — that question resolves on the FOREIGN edits only (commit-along, leave for sibling agent, or ask about orphaned drift). NEVER ask the user whether to commit your own work. NEVER gate your own-work commit on foreign-work attribution. NEVER ask "should I split or commit-all?" framed around your own files — the answer is always "commit your own files now, decide on the foreign hunks separately."
+Your own work commits separately, no questions. Mixed-state = some file has BOTH your edits AND foreign edits — question resolves on FOREIGN only. NEVER ask user about your own work. NEVER gate own-work commit on foreign attribution.
 
-Order of operations when the working tree is mixed:
-1. Identify which files / hunks are YOURS (this session's edits, traceable in your tool call history).
-2. Stage + commit + push YOUR files. No question to the user.
-3. THEN look at the remaining foreign drift. Ask the user only about the foreign hunks: "Files X, Y modified outside this session — active sibling agent (leave), or orphaned (commit-along / ask owner)?"
+Order:
+1. Identify YOUR files/hunks (this session, traceable in tool history)
+2. Stage + commit + push YOUR files — no question
+3. Then look at remaining foreign drift. Ask only about foreign: "Files X, Y modified outside this session — active sibling (leave) or orphaned (commit-along / ask owner)?"
 
-The "ASK" rule below applies ONLY to isolating foreign hunks FROM your hunks inside a single file, NOT to whether your work ships at all.
+"ASK" rule below applies ONLY to isolating foreign hunks FROM yours inside one file.
 
 ## Mixed-State Files: ASK, Never Surgically Isolate
 
-After own-work is committed (see above), if a file remaining in the working tree contains BOTH your edits AND pre-existing foreign drift you cannot cleanly separate by path, → STOP. Single round-trip:
+After own-work committed: if file has BOTH your edits AND pre-existing foreign drift you can't cleanly separate by path → STOP. Single round-trip:
 
-> "Working tree mixed (yours + pre-existing in <files>). Commit-all in one commit, or split? If split: which paths are yours?"
+> "Working tree mixed (yours + pre-existing in <files>). Commit-all in one, or split? If split: which paths are yours?"
 
-Wait for answer. Then `git add <named-paths>` + commit.
+Wait for answer. `git add <named-paths>` + commit.
 
-**Exception — background-system drift never asks, always commits.** Files auto-mutated by the running system (poller / triage / chokidar mirror / heartbeat / TTL timer / auto-sync) are NEVER an "ask" target — they ride along on every dispatch and the agent IS the only actor that can carry them through a rebase. Specifically: any modified path under `<repo>/.danxbot/issues/`, `<repo>/.danxbot/.trello-retry/`, `<repo>/.danxbot/dispatch-stops/`, or `<repo>/.danxbot/CRITICAL_FAILURE`. Stage them into the same commit as session work (or into a sibling `chore(issues): mid-session YAML drift` commit when the diff is large), then proceed. Rebase conflicts on these paths are YOUR job to resolve — "I don't know which version to keep" is a research question, not an operator question; read the file, the YAML schema, the chokidar mirror direction, decide. The operator cannot answer; only the agent has the schema knowledge.
+**Exception — background-system drift never asks.** Files auto-mutated by running system (poller / triage / chokidar / heartbeat / TTL timer / auto-sync) ride along on every dispatch. Paths under `<repo>/.danxbot/issues/`, `.trello-retry/`, `dispatch-stops/`, `CRITICAL_FAILURE`. Stage into same commit (or sibling `chore(issues): mid-session YAML drift`). Rebase conflicts on these = YOUR job — operator can't answer schema questions.
 
-**Forbidden rationalizations** — every one ends in destroyed user work:
+**Forbidden rationalizations:**
 
-- "I'll back up to /tmp, revert file to HEAD, replay only my edits, commit, restore backup" → uses `git show HEAD:file > file` = wholesale overwrite (see next section). Banned.
-- "stash forbidden, but cp/`git show`/Write-original-content is just 'isolating my hunks'" → same wholesale overwrite, different verb. Banned.
-- "Pre-existing edits don't overlap mine, replay safe" → cannot prove non-overlap; another agent may have written between your snapshot + your replay.
+- "Back up to /tmp, revert to HEAD, replay only my edits" — uses `git show HEAD:file > file` = wholesale overwrite
+- "stash forbidden but cp/`git show`/Write-original is just isolating" — same overwrite, different verb
+- "Pre-existing don't overlap mine, replay safe" — can't prove non-overlap
 
-**Denied primitive = STOP signal, not escalation cue.** `git stash` blocked, `git add -p` non-interactive, no per-hunk staging available → ASK. Each additional surgical step multiplies blast radius. One question to the user beats four steps that may corrupt their tree.
+**Denied primitive = STOP, not escalation cue.** `git stash` blocked, `git add -p` non-interactive, no per-hunk → ASK. One question beats four steps that may corrupt.
 
 ## Never Reset or Remove Other Changes
 
-NEVER use `git reset`. When committing, stage ONLY your changes (`git add <specific-files>`). Never reset staging area. Never unstage already-staged files.
+NEVER `git reset`. Stage ONLY your changes (`git add <specific-files>`). Never unstage already-staged.
 
 ## Never Use git stash
 
-Forbidden. No exceptions. Understand failure → investigate code itself. Stashing destroys uncommitted work + can corrupt multi-agent sessions.
+Forbidden. No exceptions. Investigate code itself. Stashing destroys uncommitted + corrupts multi-agent.
 
-**Banned rationalization: "baseline."** "Was this broken before my changes?" is NOT a question worth asking. You OWN every failing test in the tree, regardless of origin (cross-session ownership — see line 123 of this skill, plus code-quality:115, pipe-quality:47, testing:29). Only exception: another agent has UNCOMMITTED ACTIVE changes — verifiable via `git status` showing files YOU did not touch in YOUR diff. Otherwise: skip the baseline question, fix the failures. Do NOT `git stash`, do NOT `git checkout`, do NOT swap the working tree to "prove it was already broken." The proof is irrelevant — your responsibility either way.
+**Banned rationalization: "baseline."** "Was this broken before?" is NOT worth asking. You OWN every failing test regardless of origin (cross-session ownership). Only exception: another agent has UNCOMMITTED ACTIVE changes — verifiable via `git status` showing files YOU didn't touch. Otherwise: skip baseline, fix failures. Do NOT stash/checkout/swap "to prove already broken."
 
 ## Before Deleting Any File: Grep for Consumers First
 
-Before running `rm`, Edit-to-empty, Write-empty-string, any file removal: **grep entire source tree** for imports, requires, includes, textual references to file. ANY consumer exists → STOP — either delete wrong, or consumers must migrate first.
+Before `rm` / Edit-to-empty / Write-empty: **grep entire tree** for imports, requires, includes, textual refs. ANY consumer → STOP. Either delete wrong or consumers must migrate first.
 
-**Never trust card description or prior agent's note claiming "only used by X" — verify yourself.** Parenthetical "(verify with grep first)" on delete card = load-bearing, not optional. Skipping grep + fixing broken compile with `git checkout` = exact failure mode next section prevents.
+**Never trust card "only used by X" — verify yourself.** Parenthetical "(verify with grep first)" = load-bearing, not optional. Skipping grep + fixing broken compile with `git checkout` = exact failure mode next section prevents.
 
-Cost of grep: few seconds. Cost of unverified delete that breaks consumer: either forbidden `git checkout` recovery (silently destroys whatever else touched file between delete + recovery) or broken tree user has to clean up.
+## ABSOLUTE: Never Use git checkout / restore / revert
 
-## ABSOLUTE: Never Use git checkout, git restore, or git revert
+Never undo changes via these (or `cp` from clean, `git show HEAD:file > file`, Write-original-content). Files may have user changes mixed with yours; wholesale replacement destroys user work.
 
-NEVER use these to undo changes. Includes `cp` from clean source, `git show HEAD:file > file`, Write tool with original content — any mechanism that overwrites file wholesale. Files may contain user changes mixed with yours; wholesale replacement destroys user work.
+**Most destructive action you can take.** Other agents + users actively work on files. `git checkout <file>` silently destroys ALL uncommitted with ZERO recovery. Caused real damage in prod.
 
-**Single most destructive action you can take.** Other agents + users actively working on files in repo. `git checkout <file>` silently destroys ALL their uncommitted work in file with ZERO recovery. Other agent won't know work destroyed. Caused real damage in production sessions.
+**System notification "modified by user or linter":** another agent/user doing intentional work. NEVER touch. NEVER revert. NEVER investigate "correct"-ness.
 
-**When system notifications say file "modified by the user or a linter":** Another agent or user doing intentional work. NEVER touch file. NEVER revert. NEVER investigate whether changes "correct." Assume mission-critical work must not be interrupted.
-
-Instead: Run `git diff`, identify YOUR specific changes, use Edit to remove only those. Preserve all user + other agent changes. Unsure what's yours → ask user.
+Instead: `git diff`, identify YOUR specific changes, Edit to remove only those. Preserve user + other agent. Unsure → ask user.
 
 ### If you deleted a file and now need it back
 
-**Most common rationalization path into forbidden `git checkout`.** Reasoning: "Just deleted file, nothing else could have touched it, restoring from HEAD harmless." Reasoning wrong:
+Most common rationalization into forbidden `git checkout`. Reasoning wrong:
 
-1. In multi-agent working tree you **cannot prove** nothing else touched file between delete + recovery. Another agent may have created new version, or renamed it into place, in window between `rm` + `git checkout`.
-2. Even if nothing else touched, shortcut trains habit. Next time reach for `git checkout` to recover, situation less benign + same shortcut.
-3. `git restore` and `git checkout -- <path>` and `git show HEAD:<path>` piped to file = ALL same action from this rule's perspective — wholesale overwrite. Rule not about command name; about overwrite.
+1. In multi-agent tree you **cannot prove** nothing else touched file between delete + recovery
+2. Shortcut trains habit — next time less benign
+3. `git restore` / `git checkout -- <path>` / `git show HEAD:<path>` piped = ALL same wholesale overwrite
 
-**Only safe recovery:** stop, tell user what deleted + why need back, wait explicit direction. Don't run any recovery command without user's action verb.
+**Only safe recovery:** stop, tell user what deleted + why need back, wait explicit direction.
 
 ## Cherry-pick Is Destructive: Treat Conflicts as STOP-and-Ask
 
-`git cherry-pick`, `git apply`, `git rebase`, `git merge` all rewrite files in the working tree. When the source ref is based on a stale HEAD, conflict resolution can revert legitimate committed work that the source ref didn't have yet. A file showing up as "modified" after a cherry-pick is NOT automatically a bug to fix — it may be the cherry-pick reverting real work.
+`git cherry-pick` / `apply` / `rebase` / `merge` rewrite working tree. Stale source + conflict resolution can revert legitimate committed work.
 
 **Before cherry-pick / apply / rebase / merge:**
 
-1. Run `git log --oneline <source-ref>..HEAD` — list every commit the source ref doesn't have. If non-empty, the source ref is stale.
-2. Stale source + non-empty `git diff --name-only` after the operation = STOP. Every file in the diff is a candidate for "this is the cherry-pick reverting work." Diff each file against HEAD before deciding anything is "wrong."
-3. Found a file that looks like a regression? **Do not "fix" by reverting.** Ask the user: "Cherry-pick on stale base touched <file> — diff shows <one-sentence summary>. Is this a regression to revert, or intentional drop the source ref made?"
+1. `git log --oneline <source-ref>..HEAD` — list commits source doesn't have. Non-empty = stale source.
+2. Stale + non-empty `git diff --name-only` after = STOP. Diff each file against HEAD before "wrong."
+3. Looks like regression? **Do not "fix" by reverting.** Ask: "Cherry-pick on stale base touched <file> — diff shows <summary>. Regression to revert, or intentional drop?"
 
-**Forbidden recovery patterns** (every one destroys real work):
+**Forbidden recovery:**
 
-- `git checkout HEAD -- <file>` to "restore the right version" after cherry-pick — silently discards both the cherry-pick's edits AND any unstaged work in the file. See "ABSOLUTE: Never Use git checkout".
-- `git reset` to "throw out the cherry-pick" — destroys conflict resolutions you've already done by hand and any unstaged work.
-- "Diff looks small, just revert it" — small ≠ safe. Other agent's intentional one-line removal looks identical to a stale-base regression.
+- `git checkout HEAD -- <file>` to "restore right version" — discards cherry-pick edits AND unstaged work
+- `git reset` to "throw out cherry-pick" — destroys hand-resolved conflicts + unstaged
+- "Diff small, just revert" — small ≠ safe; intentional one-line removal looks like stale-base regression
 
-**The forked-Agent worktree trap:** dispatching an `Agent` with `isolation: "worktree"` creates a worktree based on the parent's HEAD AT FORK TIME. If main advances during the agent's run, integrating its commits via cherry-pick replays them onto a HEAD the agent never saw. Files outside the agent's intended scope can mutate during the merge. **Do not use `isolation: "worktree"` for tasks that overlap recently-changed files** — do the work inline in the main worktree instead, or rebase the worktree onto current HEAD before the agent commits.
+**Forked-Agent worktree trap:** dispatching Agent with `isolation: "worktree"` forks from parent HEAD AT FORK TIME. If main advances, integrating via cherry-pick replays onto HEAD the agent never saw. Don't use `isolation: "worktree"` for tasks overlapping recently-changed files — work inline or rebase worktree before commit.
 
-## CRITICAL: All Code Is Your Code
+## All Code Is Your Code
 
-Wrote 100% of everything in every repo — committed, uncommitted, tracked, untracked. You = sum of all Claude sessions past + present. No "not my change," "pre-existing," "someone else did this," "out of scope." Every line code your responsibility even without context from session that wrote it.
+Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," "pre-existing," "out of scope." Every line your responsibility.
 
-**Exception for uncommitted changes:** Another agent (another version of you) may be actively working on uncommitted changes outside session context. Only commit changes from YOUR current session. See uncommitted changes not from this session: acknowledge, explain what they are, ask user what to do — never ignore, never deflect, never commit without explicit instruction.
+**Exception for uncommitted:** Another agent may be actively working uncommitted outside session. Only commit YOUR session's changes. See foreign uncommitted: acknowledge, explain, ask user. Never ignore, never commit without instruction.
 
 ## Git Operations Allowed
 
-**Read-only:** `git status`, `git diff`, `git log` (anytime)
-
-**Via pipeline:** `git add` + `git commit` + `git push` when executing `/flow-commit` (automatically allowed)
-
-**`git pull --rebase` on push rejection:** allowed ONCE per push-rejection. Conflict-free rebase → re-push. Conflict → resolve in place by hand (read both diffs, merge intents, `git add`, run tests, `git rebase --continue`); see "Push rejected non-fast-forward" above for the full procedure. Abort + ask the user ONLY when the conflict is outside both cards' scope. Interactive rebase, rebase onto arbitrary ref, `-X` strategy options: not allowed without explicit user request.
-
-**Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request
-
-**Otherwise:** Not allowed without explicit user request
+- **Read-only:** `git status`, `git diff`, `git log` (anytime)
+- **Via pipeline:** `git add`/`commit`/`push` when running `/flow-commit`
+- **`git pull --rebase` on push rejection:** ONCE per rejection. Clean → re-push. Conflict → resolve in place by hand (per above). Abort + ask ONLY when outside both cards' scope. Interactive rebase, rebase onto arbitrary ref, `-X` strategy: not allowed without explicit user request.
+- **Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request.
+- **Otherwise:** Not allowed without explicit user request.
