@@ -1,6 +1,6 @@
 ---
 name: host-environment
-description: 'MANDATORY when running shell commands or starting/inspecting docker on the host dev machine. Loads cd-first / relative-paths / HMR-immediate / docker-just-start / async-needs-ScheduleWakeup / never-edit-node_modules discipline as TodoWrite checklist. Triggers — about to run a long-running command, about to ask the user about their environment, about to install host-side deps.'
+description: 'Host-machine shell discipline: cd-first, relative paths, HMR-immediate, docker-just-start, async-needs-ScheduleWakeup, never-edit-node_modules.'
 ---
 
 # Environment Rules

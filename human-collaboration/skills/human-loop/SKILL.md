@@ -1,6 +1,6 @@
 ---
 name: human-loop
-description: 'MANDATORY at session start when a human drives the prompts. Loads read-only-default discipline, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, never-substitute-better-approach, mistakes-are-questions as TodoWrite checklist. Triggers — every session involving human-driven prompts; before every Edit/Write tool call; when user asks a question containing `?`. Do NOT install on autonomous dispatched workers — diagnostic-mode-on-question would deadlock the worker on any question mark in the dispatch prompt.'
+description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions.'
 ---
 
 # Human-in-the-Loop Rules

@@ -1,6 +1,6 @@
 ---
 name: docs
-description: 'Stop current work and update documentation based on what was done incorrectly. Improves CLAUDE.md, rules, or agent files.'
+description: 'Stop current work and improve CLAUDE.md / rules / agent files based on what was done incorrectly.'
 ---
 
 # Documentation Update Workflow

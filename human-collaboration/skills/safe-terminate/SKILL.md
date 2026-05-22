@@ -1,6 +1,6 @@
 ---
 name: safe-terminate
-description: User-invokable end-of-session audit. Triggers on `/safe-terminate`, "safe to close", "anything outstanding before I end", "session wrap check". Walks the full conversation transcript and produces a recap — every Open / Closed item from this session w/ a one-line title, plus a brief description of what + why for anything still open. Goal — user reads in <30s and knows whether termination is safe or whether items still need resolution. Format follows base:convey (concept-first, tables, no filler).
+description: 'End-of-session audit — recap every Open/Closed item from the session, surface termination-blocking items.'
 ---
 
 # Safe Terminate — End-of-Session Audit

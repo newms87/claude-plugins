@@ -1,6 +1,6 @@
 ---
 name: explain
-description: "Explain why the AGENT did something wrong. Use ONLY when the user asks why YOU (Claude) made a mistake, took a wrong action, or violated a rule. This is for agent self-reflection, NOT for debugging code or investigating application bugs."
+description: 'Explain why the agent (Claude) did something wrong — agent self-reflection, NOT app debugging.'
 ---
 
 # Explain Behavior Skill
