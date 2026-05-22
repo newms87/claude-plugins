@@ -1,6 +1,6 @@
 ---
 name: unblock
-description: 'MANDATORY when working on, picking up, or about to touch any issue card whose status is `Blocked` or has non-null `waiting_on`, OR when explicitly invoked via `/unblock <ISS-N>`. Triggers — Read of `.danxbot/issues/open/<id>.yml` shows `status: Blocked` or non-null `waiting_on`; user says "unblock", "get unstuck", "what does this card need", "fix the blocker on", "operator action for"; about to start phase work that overlaps with a Blocked card (same parent epic, same files, same AC scope). Loads the unblock-report contract — extract blocker, summarize what is done vs what operator must do, give exact commands, define the success/failure branch — so the human gets one terse actionable report instead of a re-investigation.'
+description: 'Unblock-report contract: extract blocker, what is done vs what operator must do, exact commands, success/failure branch.'
 ---
 
 # Unblock Skill

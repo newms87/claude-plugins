@@ -1,6 +1,6 @@
 ---
 name: settings-deep
-description: 'MANDATORY when touching `<repo>/.danxbot/settings.json` schema, ownership, lifecycle, or any reader/writer code. Triggers — editing `src/settings-file.ts`, `src/poller/index.ts` settings reads, `src/slack/listener.ts` settings reads, `src/worker/dispatch.ts` settings reads, `src/worker/syncSettingsFileOnBoot`, dashboard Agents tab handlers (`GET /api/agents[/repo]`, toggle PATCH), `setup` skill seeding logic, `deploy` writers; about to add a new feature toggle or display field; about to bypass `isFeatureEnabled` in an enforcement path; investigating why operator toggles got clobbered after a deploy or worker restart; investigating the pre-rename `trelloPoller` key fallback. Loads the schema, ownership matrix, writer-merge invariants, the `isFeatureEnabled` hot-path contract, the why-worker-not-deploy-writes-display rationale, and the pre-rename key fallback as a TodoWrite checklist.'
+description: '<repo>/.danxbot/settings.json schema, ownership matrix, writer-merge invariants, isFeatureEnabled hot path, pre-rename trelloPoller fallback.'
 ---
 
 # Per-Repo Settings File Deep Contract

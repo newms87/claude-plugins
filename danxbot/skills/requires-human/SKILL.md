@@ -1,6 +1,6 @@
 ---
 name: requires-human
-description: 'MANDATORY before populating the `requires_human` field on any issue YAML. Triggers — about to set `requires_human: {reason, steps, set_by, set_at}` on a card; about to flip `requires_human` from null to populated mid-dispatch; about to call `danxbot_complete` after setting the field. Loads the whitelist (3rd-party API token rotation, granting access to an external dashboard, manual deploy of vendor infra agent has no programmatic reach into) + blacklist (ambiguous spec, failing test, merge conflict, missing local dependency, manual UI smoke, post-terminal-save state, "needs deploy" — all of which are Blocked or in-session work, NOT requires_human) + termination contract (populate all four fields, save YAML, call danxbot_complete, do NOT also flip status to a terminal value) as TodoWrite checklist. Setting requires_human incorrectly parks a card that the next agent could finish — same class of error as a false `status: Blocked`.'
+description: 'Whitelist + blacklist for requires_human + termination contract; distinguishes legitimate human-only actions from blockers and in-session work.'
 audience: worker
 ---
 

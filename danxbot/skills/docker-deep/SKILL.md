@@ -1,6 +1,6 @@
 ---
 name: docker-deep
-description: 'MANDATORY when touching the deep contracts that govern danxbot container layout, env layering, MCP injection, or workspace cwd isolation. Triggers — editing `src/poller/inject/inject-root-mcp.ts`, `src/poller/index.ts#syncRepoFiles`, `deploy/secrets.ts`, `deploy/cli.ts` env collection, `<repo>/.danxbot/config/compose.yml`, danxbot Dockerfile, anything that writes the root `.mcp.json` of a connected repo, anything that builds or merges `.env.<target>` overlays, anything that resolves a workspace `cwd` for a dispatched agent; about to add a new MCP server to the repo-root inject path; about to introduce a new env-overlay location; about to change container bind-mounts or path layout. Loads the root `.mcp.json` injection contract (DX-201/203), the per-target env overlay merge contract, the workspace cwd isolation rules, and the Laravel `.env.{APP_ENV}` production trap as a TodoWrite checklist.'
+description: 'Deep contracts for danxbot container layout, root .mcp.json inject, .env.<target> overlay merge, workspace cwd isolation.'
 ---
 
 # Danxbot Docker / Inject / Overlay Deep Contracts

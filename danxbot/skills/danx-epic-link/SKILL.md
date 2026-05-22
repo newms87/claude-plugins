@@ -1,6 +1,6 @@
 ---
 name: danx-epic-link
-description: Wire two-way parent_id ↔ children[] linkage between an Epic card and its phase cards already on the tracker. Triggered the FIRST time an agent picks up an Epic whose `children[]` is empty. Never creates new cards — only links existing ones.
+description: Wire two-way parent_id ↔ children[] linkage between an Epic and its existing phase cards. Never creates cards.
 ---
 
 # Danx Epic Link

@@ -1,6 +1,6 @@
 ---
 name: db-reset
-description: 'MANDATORY when an agent is about to run any destructive database operation (Laravel `migrate:fresh` / `migrate:refresh` / `migrate:reset` / `db:wipe`, raw `DROP DATABASE` / `DROP SCHEMA`, `dropAllTables` / `dropAllViews` / `dropAllTypes`, or any shell-or-MCP route that achieves the same effect), encounters the `base/scripts/deny-destructive-db.sh` "BLOCKED: destructive database operation" deny message, OR reasons about "the test DB needs a clean slate", "tests are failing because of leftover rows", "I need to re-run migrations from scratch", "my schema is corrupted", "I need to reset the database". Loads the only sanctioned reset path: `bash <worktree>/.danxbot/safe-reset-db.sh` (optionally `--seed`). The script is the contract — the skill body forbids chmod-ing, editing, mimicking, or replicating it via psql / artisan / docker exec / raw SQL.'
+description: 'Sanctioned destructive-DB-reset path: bash <worktree>/.danxbot/safe-reset-db.sh. Forbids replicating it via psql/artisan/raw SQL.'
 audience: worker
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: danx-next
-description: Pull the top card from ToDo and run the full autonomous card processing workflow. You process ONE card. Orchestrator — do not delegate except Step 5 (quality gates) and Step 4 (batch-edits). Never ask operator; decide unilaterally + document or escalate Blocked. Use /loop ONLY for in-card monitoring (builds, long tests, triggered state). FORBIDDEN: waiting for human (use Blocked), waiting for next card, /loop armed + danxbot_complete same dispatch. Read + edit YAML directly at <repo>/.danxbot/issues/open/<id>.yml via Edit/Write — no tracker calls, no save verb. Chokidar watcher mirrors to Postgres; per-tick mirror to tracker (~30-60s). danxbot_complete triggers immediate tracker push.
+description: 'Pull top ToDo card and run full autonomous card-processing workflow. Orchestrator: decide unilaterally or escalate Blocked, never wait on human.'
 ---
 
 # Danx Next Card

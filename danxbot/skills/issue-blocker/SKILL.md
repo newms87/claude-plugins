@@ -1,6 +1,6 @@
 ---
 name: issue-blocker
-description: 'MANDATORY before stamping `blocked: {at, reason}` on any card (the self-block dispatch gate; status derives → `Blocked` via `deriveStatus` rule 3 — agents NEVER write `status: "Blocked"` directly) OR appending a `## Blocked` comment OR calling `danxbot_complete({status: "failed", ...})` with a "operator must X" framing. Blocked is a dispatch gate that leaves the card''s column alone — the picker skips dispatch via the gate, not the status. Loads the 8-item gating checklist (false-blocker pattern audit, forbidden git ops audit, programmatic-substitute audit, root-cause trace audit) as a TodoWrite checklist. Refuses to ship a Blocked move that fails any item — sends you back to in-session work or Action Item creation.'
+description: 'Gating checklist for stamping blocked:{at,reason} on a card: false-blocker audit, forbidden git ops, programmatic substitute, root-cause trace.'
 audience: worker
 ---
 

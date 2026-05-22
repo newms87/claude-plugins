@@ -1,6 +1,6 @@
 ---
 name: no-false-blockers
-description: 'MANDATORY before stamping `blocked: {at, reason}` on a card (which derives status `Blocked` via rule 3) whose blocker may be one of three commonly-mistaken patterns. Triggers — about to mark a card Blocked because (a) a test failure in a file your card does not touch, (b) an AC says "manual UI smoke" / "operator clicks X at http://localhost:5566", or (c) the AC verifies state that fires AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, chokidar mirror, any self-derived state). Loads the three false-blocker patterns with their programmatic substitutes (component test → playwright → rewrite AC; Action Item card filing; unit-test the derivation function) plus the STRICTLY FORBIDDEN destructive working-tree ops list (`git stash`, `git checkout --`, `git restore`, `git reset`, `git clean`) and the 3-step pre-action gate as TodoWrite checklist. Extends `danx-next/SKILL.md` Step 10 — does not replace it.'
+description: 'Three commonly-mistaken false-blocker patterns + their programmatic substitutes; forbidden destructive working-tree git ops list.'
 audience: worker
 ---
 

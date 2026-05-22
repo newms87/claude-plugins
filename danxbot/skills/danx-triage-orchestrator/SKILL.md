@@ -1,6 +1,6 @@
 ---
 name: danx-triage-orchestrator
-description: 'Operator-invoked triage orchestrator. Default scope = Review list. Reads optional `## Operator notes` block from this dispatch prompt, lists candidates via `mcp__danx-issue__danx_issue_list`, then drains them in parallel batches of up to 3 in-session subagents — each subagent invokes `danxbot:danx-triage-card` on one card. Triggered by the dashboard Triage button (`POST /api/triage`). Single-shot — no `/loop`, no `ScheduleWakeup`.'
+description: 'Operator-invoked triage orchestrator: drains Review list via parallel batches of up to 3 in-session subagents. Single-shot.'
 argument-hint: '(no args — operator notes carried as `## Operator notes` block in the prompt body)'
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: issue-card-workflow
-description: 'MANDATORY when reading/writing/saving any issue card. Load THIS IN ADDITION to (NOT instead of) workflow skills (`danx-next`, `danx-triage-card`, `unblock`, `issue-blocker`) when a card id named with lifecycle verb (move/pick/block/comment/edit). Triggers: touching `<repo>/.danxbot/issues/`, calling `mcp__danx-issue__*`, any `<PREFIX>-N` shape, terminal save with retro, words "epic"/"phase"/"split"/"make a card"/"create ticket", plan to write YAML under `.danxbot/issues/`. NO "I already know schema" exemption — schema ≠ lifecycle. NO "just one card" exemption — that's when epic-without-phases trap fires. "Create epic for X" = MUST load THIS before writing epic YAML — creating epic without same-turn phase cards is workflow violation ONLY this skill spells out.'
+description: 'Issue card YAML schema + lifecycle: status derivation, mcp__danx-issue__* tools, comment/retro/blocked/waiting_on contracts, epic-atomic rule.'
 ---
 
 # Issue Card Workflow

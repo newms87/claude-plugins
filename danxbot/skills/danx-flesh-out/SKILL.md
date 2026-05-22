@@ -1,6 +1,6 @@
 ---
 name: danx-flesh-out
-description: 'Per-card flesh-out agent. Single Claude session takes half-baked card (one-sentence title + thin description) and produces fully fleshed-out card — probes repo via Read/Grep/Glob, rewrites description to pass zero-context-test bar, populates ac[] with verifiable items, splits into phase children via danx_issue_create when scope warrants, and stamps triage{} block when card status is Review. Read-only on repo; writes YAML in place. Dispatched 1-card-per-call by dashboard Create-Card button (DX-348 Phase 2).'
+description: 'Per-card flesh-out agent: expands half-baked card to full spec, populates ac[], splits into phases when scope warrants. Read-only on repo.'
 argument-hint: <PREFIX>-N card id
 ---
 

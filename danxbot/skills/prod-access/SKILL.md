@@ -1,6 +1,6 @@
 ---
 name: prod-access
-description: 'MANDATORY when user asks about anything in production — deployed danxbot job, dispatch, container, log, DB row, instance state — OR when about to claim "I can't reach production from here" / "I would need access to the prod box". Triggers — user mentions "prod", "production", "deployed", "the gpt target", a job_id from a deployed worker, the URL `danxbot.sageus.ai` (or any other deployment dashboard URL); about to invoke `make deploy-status`, `make deploy-logs`, `make deploy-ssh`, `make deploy-smoke`; about to read SSM, Terraform state, or EC2 details for any danxbot target; investigating "why did job X time out / fail / stall" where the worker is deployed; comparing worker state vs Laravel dispatch row. Loads three reach paths (HTTP API / SSH / make targets), the canonical debug recipes, and the forbidden-actions list as a TodoWrite checklist so you stop saying "production unreachable" and start pulling the data.'
+description: 'Three reach paths into production (HTTP API / SSH / make targets), canonical debug recipes, forbidden-actions list.'
 ---
 
 # Production Access — You DO Have Direct Shell Access

@@ -1,6 +1,6 @@
 ---
 name: halt-flag
-description: 'MANDATORY when an environment-level blocker prevents the dispatched agent from functioning (MCP server failed to load, Bash tool broken, Claude auth missing, critical CLI tool unavailable). Loads the `status: "critical_failure"` vs `status: "failed"` decision rule and the `danxbot_complete` signaling contract as TodoWrite checklist. Triggers — about to call `danxbot_complete` with a non-success status; tool itself errored (not the result); about to exit the dispatch silently because the environment is unusable.'
+description: 'Decision rule for status:"critical_failure" vs "failed" and the danxbot_complete signaling contract on env-level blockers.'
 ---
 
 # Critical Failure — Signaling Environment Blockers

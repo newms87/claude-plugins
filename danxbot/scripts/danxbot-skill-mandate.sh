@@ -1,63 +1,40 @@
 #!/usr/bin/env bash
-# Danxbot plugin skill load mandate — high-violation triggers only.
-#
-# Fires on SessionStart and UserPromptSubmit. Injects an unambiguous
-# mandate forcing the agent to invoke high-violation danxbot skills
-# BEFORE the first mutating action of a task matching the triggers below.
-#
-# Lower-violation skills (comment-style, slack-agent, prod-access, vue-app-build,
-# dispatch-deep, settings-deep, docker-deep, danx-* workflow skills) rely
-# on frontmatter `description` only — NOT in this mandate.
-#
-# Argv: $1 = "SessionStart" or "UserPromptSubmit" (hook event name).
-
+# Danxbot plugin skill load mandate — fires on SessionStart only.
 set -euo pipefail
 
 EVENT="${1:-SessionStart}"
 
-# Drain stdin for UserPromptSubmit.
-if [ "$EVENT" = "UserPromptSubmit" ]; then
-    cat >/dev/null
-fi
-
 read -r -d '' MANDATE <<'EOF' || true
-DANXBOT PLUGIN SKILL LOAD MANDATE — 10 high-violation triggers only.
+DANXBOT SKILL LOAD MANDATE. Load the matching skill BEFORE the first mutating action.
 
-These skills address the hardest-to-repair failure modes in autonomous dispatch. Load them BEFORE the first mutating action when you match any trigger below.
+HIGH-VIOLATION:
+(1) danxbot:issue-card-workflow — touching <repo>/.danxbot/issues/, mcp__danx-issue__*, <PREFIX>-N card ids, "epic"/"phase"/"create a card"/"make a ticket". Epic creation atomic: "epic for X" = epic + every phase card in SAME turn.
+(2) danxbot:unblock — picking up Needs Help / Blocked card; "unblock"/"get unstuck"/"what does this need".
+(3) danxbot:issue-blocker — about to stamp `blocked: {at, reason}`, populate `waiting_on[]`/`conflict_on[]`, recommend Blocked, or call danxbot_complete with "operator must X" framing.
+(4) danxbot:no-false-blockers — assessing blocker is genuine vs ambiguous/recoverable (three false-blocker patterns).
+(5) danxbot:requires-human — stamping `requires_human: {reason, set_by, set_at}`; requires_human vs Blocked vs workaround.
+(6) danxbot:no-unauthorized-worker-launch — about to run `make launch-worker`/`make launch-all-workers`/`make deploy*`/any worker or prod start.
+(7) danxbot:autonomous-mode — dispatched to worker (DANXBOT_REPO_NAME set); no AskUserQuestion, no plan-mode pause, one exit via danxbot_complete.
+(8) danxbot:halt-flag — CRITICAL_FAILURE present, poller halted, or signaling `danxbot_complete({status:"critical_failure"})`.
+(9) danxbot:danxbot — touching <repo>/.danxbot/, running make launch-worker/deploy, investigating stuck dispatch, explaining dispatch runtime.
+(10) danxbot:db-reset — destructive DB reset (`migrate:fresh`, `DROP DATABASE`, etc.).
 
-(1) danxbot:issue-card-workflow
-    TRIGGER: touching <repo>/.danxbot/issues/ (read OR write OR create), calling mcp__danx-issue__*, picking up a card id (any <PREFIX>-N), ANY request with "epic" or "phase" or "create a card" or "make a ticket". **MANDATORY for epic creation — atomic unit: "epic for X" = epic + every phase card in SAME turn. Creating epic without phase cards = violation.**
-
-(2) danxbot:unblock
-    TRIGGER: picking up a Needs Help / Blocked card, user says "unblock" / "get unstuck" / "what does this need".
-
-(3) danxbot:issue-blocker
-    TRIGGER: about to stamp `blocked: {at, reason}` on any YAML, about to populate `waiting_on[]` / `conflict_on[]`, about to recommend moving a card to Blocked, about to call danxbot_complete with "operator must X" framing.
-
-(4) danxbot:no-false-blockers
-    TRIGGER: assessing whether a card is genuinely blocked or the reason is ambiguous/recoverable. Extends issue-blocker — decision framework for the three false-blocker patterns: scope underspecified, input unavailable but fetchable, precedent card stuck (not terminal).
-
-(5) danxbot:requires-human
-    TRIGGER: stamping `requires_human: {reason, set_by: "agent", set_at: <now>}` on a card. Discipline on when requires_human is legitimate vs a blocker, when to escalate vs when to find a workaround.
-
-(6) danxbot:no-unauthorized-worker-launch
-    TRIGGER: about to run `make launch-worker` / `make launch-all-workers` / `make deploy*` / any worker or production start. Strict user-auth gate.
-
-(7) danxbot:autonomous-mode
-    TRIGGER: dispatched to a worker (DANXBOT_REPO_NAME set). Worker-only rules: no AskUserQuestion, no terminal prompts, no plan-mode pause, one exit via danxbot_complete, /loop narrow contract.
-
-(8) danxbot:halt-flag
-    TRIGGER: seeing CRITICAL_FAILURE, poller halted, or needing to signal `danxbot_complete({status: "critical_failure", ...})`. Framework for when env is broken vs when a card needs to fail.
-
-(9) danxbot:danxbot
-    TRIGGER: touching <repo>/.danxbot/ (any read/write), running make launch-worker / make deploy, investigating a stuck dispatch, explaining dispatch runtime / inter-process communication.
-
-(10) danxbot:db-reset
-    TRIGGER: about to run DB reset (`composer artisan migrate:fresh` on Laravel, `python manage.py reset_db` on Django, DROP DATABASE on SQL, etc.). Sanctioned path only.
-
-All other danxbot skills (comment-style, slack-agent, prod-access, vue-app-build, dispatch-deep, settings-deep, docker-deep, danx-triage-card, danx-flesh-out, danx-next, danx-start, danx-ideate, danx-chat, danx-epic-link, danx-triage-orchestrator) rely on skill frontmatter `description` as the primary trigger doc. Load via the Skill tool when their domain matches your task.
-
-NO rationalization — if a trigger matches, load the skill immediately. Do not pattern-match around it.
+DOMAIN-MATCH (load via Skill tool):
+- comment-style: editing `description`/`comments[]`/`retro.*` on issue YAMLs.
+- slack-agent: dispatched in `slack-worker` workspace.
+- prod-access: ops against deployed targets; "production unreachable" claims.
+- vue-app-build: Vue SPA template in danxbot workspace; `template_save`/`vite build`.
+- dispatch-deep: dispatch/resume/staged-files/Playwright-proxy/usage-dedup/stall code.
+- settings-deep: `<repo>/.danxbot/settings.json` schema/reader/writer code.
+- docker-deep: root `.mcp.json` inject, `.env.<target>` overlay, workspace cwd.
+- danx-next: `/danx-next` — top ToDo card, full autonomous workflow.
+- danx-start: `/danx-start` — all ToDo cards sequentially.
+- danx-ideate: `/danx-ideate` — generate feature cards.
+- danx-chat: auto-dispatched per chat-tab message.
+- danx-triage-card: auto-dispatched 1-card-per-tick by poller.
+- danx-triage-orchestrator: `/danx-triage` — drain Review via parallel subagents.
+- danx-flesh-out: auto-dispatched on Create-Card.
+- danx-epic-link: auto-fires on Epic with empty children[].
 EOF
 
 jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \

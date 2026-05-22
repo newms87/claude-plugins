@@ -1,6 +1,6 @@
 ---
 name: autonomous-mode
-description: 'MANDATORY for any dispatched agent running unattended with no operator terminal attached — issue-worker, slack-worker, any auto-dispatched `/danx-*` invocation. Triggers — about to call `AskUserQuestion`; about to invoke `ExitPlanMode` / plan-mode confirmation; about to write "Should I do A or B?" / "Which option do you prefer?" / "Ready to proceed?" in any form; about to load `brainstorming` / `writing-plans` / any decision-prompt skill; about to pause for operator approval. Loads the zero-interactive-prompt contract (decide unilaterally + document on the card OR escalate to Blocked with the question phrased on the card OR block on another card via Step 10b) as TodoWrite checklist. Inline interactive prompts hang the dispatch until the inactivity timer kills it.'
+description: 'Zero-interactive-prompt contract for dispatched workers: decide unilaterally, escalate via Blocked, never AskUserQuestion or plan-mode pause.'
 audience: worker
 ---
 

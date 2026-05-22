@@ -1,6 +1,6 @@
 ---
 name: danx-triage-card
-description: 'Per-card triage agent. Single Claude session reads ONE card YAML, decides per status (Review / Blocked / Waiting On), writes TTL-stamped triage{} block back with Edit tool. Dispatched 1-card-per-tick by poller (Phase 4 / ISS-94). Replaces bulk-triage orchestrator.'
+description: 'Per-card triage agent: reads ONE card YAML, decides per status (Review/Blocked/Waiting On), writes TTL-stamped triage{} block.'
 argument-hint: <PREFIX>-N card id
 ---
 

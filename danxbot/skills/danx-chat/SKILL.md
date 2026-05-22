@@ -1,6 +1,6 @@
 ---
 name: danx-chat
-description: 'Per-card chat agent. Single Claude session-per-card. Each dispatch runs ONE turn — read the card YAML at <repo>/.danxbot/issues/{open,closed}/<PREFIX>-N.yml, respond to the user''s message, optionally edit the YAML in place when the user explicitly asks for a change, then call danxbot_complete. Subsequent messages resume this session via claude --resume so the conversation history persists. Dispatched 1-message-per-call by the dashboard''s Chat tab (DX-348 Phase 3 / DX-351).'
+description: 'Per-card chat agent: single Claude session-per-card, one turn per dispatch, resumes via claude --resume; optional in-place YAML edit on explicit ask.'
 argument-hint: <PREFIX>-N card id
 ---
 

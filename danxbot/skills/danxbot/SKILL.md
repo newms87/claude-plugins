@@ -1,6 +1,6 @@
 ---
 name: danxbot
-description: 'MANDATORY when reasoning about, configuring, debugging, or dispatching through danxbot — the autonomous Claude Code orchestrator that processes issue cards, runs Trello sync, and serves the `/api/launch` dispatch API. Triggers — about to invoke `mcp__danx-issue__*`; editing `<repo>/.danxbot/`; reading `<repo>/.danxbot/issues/`, `.danxbot/workspaces/`, `.danxbot/config/`; reading any `danxbot/logs/<uuid>/` dispatch dir; reading any `~/.claude/projects/*danxbot*` or `*workspaces*` session JSONL; investigating ANY dispatch by UUID (stuck, completed, or unknown — read-only "what happened" lookups count); running `make launch-worker`, `make deploy`; comparing local-worker vs deployed-worker behavior; explaining "where does the agent run", "who calls Trello", "how does my Laravel app talk to a remote agent host"; touching MCP servers consumed by danxbot workspaces (`@thehammer/schema-mcp-server`, `@thehammer/mcp-server-trello`, `@thehammer/danx-issue-mcp`). Loads networking model, runtime envs, deployment vs local, issue-tracker + Trello poller boundary as a TodoWrite checklist so you stop confusing repo location with runtime location and stop trying to call backend trackers from the agent path.'
+description: 'Networking model, runtime envs, deployment vs local, issue-tracker + Trello poller boundary, MCP server consumers of danxbot workspaces.'
 ---
 
 # Danxbot — How It Works

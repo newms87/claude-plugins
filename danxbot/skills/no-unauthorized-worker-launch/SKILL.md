@@ -1,6 +1,6 @@
 ---
 name: no-unauthorized-worker-launch
-description: 'MANDATORY before running ANY command that starts a danxbot poller, worker, infra container, or production deploy — `make launch-worker*`, `make launch-all-workers`, `make launch-infra`, `make launch-dashboard-host`, `make deploy*`, `make deploy-secrets-push`, `make deploy-destroy`, direct `npx tsx src/index.ts`, `docker compose up` against `<danxbot>/docker-compose.yml` or `docker-compose.prod.yml`, `docker start danxbot-worker-*` / `docker restart danxbot-worker-*`, or any equivalent shell incantation whose effect is "a danxbot poller starts polling". Strictly prohibited without explicit per-invocation user authorization in the CURRENT user message — prior-session approvals do NOT carry forward, skills/pipelines do NOT override, "I am sure it is fine" is not authorization. Dispatched autonomous agents have no user channel — for them the rule is NEVER, period. Loads forbidden-command table + what-to-do-instead branch as TodoWrite checklist.'
+description: 'Strict per-invocation user-auth gate for make launch-worker*, make deploy*, and any command that starts a danxbot worker or prod deploy.'
 ---
 
 # STRICTLY PROHIBITED — Never Launch a Danxbot Worker / Poller / Deploy Without Explicit Per-Invocation Authorization
