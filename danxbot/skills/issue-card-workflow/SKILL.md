@@ -1,6 +1,6 @@
 ---
 name: issue-card-workflow
-description: 'Issue card YAML schema + lifecycle: status derivation, mcp__danx-issue__* tools, comment/retro/blocked/waiting_on contracts, epic-atomic rule.'
+description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issue_* tools, comment/retro/blocked/waiting_on contracts, epic-atomic rule.'
 ---
 
 # Issue Card Workflow

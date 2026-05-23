@@ -16,24 +16,9 @@ The always-on `.claude/rules/docker-runtime.md` rule file documents the runtime 
 5. If creating an `.env.local` (or any `.env.{APP_ENV}`) at a Laravel repo root → STOP. Production-burning trap.
 6. After edit: confirm idempotent re-run is a no-op + atomic write preserved.
 
-## Root `.mcp.json` injection contract (DX-201, DX-203)
+## Workspace `.mcp.json` contract
 
-The poller injects exactly ONE MCP server — `danx-issue` — into every connected repo's root `.mcp.json` on every tick. A developer running bare `claude` at the repo root sees the `danx-issue` tool surface (atomic `<PREFIX>-N` allocation via `danx_issue_create`, list/get/save/close) and nothing else from danxbot. Worker-only MCPs (Trello, Playwright, context7, ...) still live exclusively inside per-workspace dirs (`<repo>/.danxbot/workspaces/<name>/.mcp.json`); they are NEVER added at the repo root.
-
-The injection is implemented by `src/poller/inject/inject-root-mcp.ts#injectDanxIssueMcp` and wired into `syncRepoFiles`. Contract:
-
-- ADDS the `danx-issue` entry to `mcpServers` when the key is missing. The entry shape is `{type: "stdio", command: "npx", args: ["-y", "@thehammer/danx-issue-mcp"], env: {DANX_REPO_ROOT: <literal abs path>}}`. `DANX_REPO_ROOT` is baked as a literal (NOT `${DANX_REPO_ROOT}` placeholder) because the host-session `claude` that consumes this file does not have the worker's env-injection layer — `${DANX_REPO_ROOT}` would resolve to the empty string and the MCP server would refuse to start.
-- **The env block contains exactly `DANX_REPO_ROOT` (DX-203).** The `DANX_TRACKER` / `TRELLO_API_KEY` / `TRELLO_API_TOKEN` triple older versions injected was retired when `@thehammer/danx-issue-mcp` became purely a YAML manipulator. The MCP server does NOT call any tracker — `danx_issue_create` writes YAML with `external_id: ""` and the worker's `orphan-push.ts` mirrors it to Trello asynchronously. Re-introducing tracker creds into the inject path puts Trello back in the agent's critical path (an architectural violation — see CLAUDE.md "Trello Is Background Infrastructure — Never In The Agent's Critical Path"). A broken Trello has zero effect on agent operations and surfaces ONLY in the dashboard.
-- NEVER deletes, rewrites, or reorders any other `mcpServers` entry — pre-existing servers (operator's own MCPs, playwright in repos that ship one at root, etc.) survive byte-identical.
-- NEVER touches top-level keys outside `mcpServers`.
-- Operator override wins: if `mcpServers["danx-issue"]` already exists with different content, it is left alone.
-- Malformed JSON → log error, no write. The user's file is never overwritten when we can't parse it.
-- Atomic write via `.tmp` + `renameSync`; a poller crash mid-write leaves the original file intact.
-- Idempotent — re-running is a no-op when the key already exists. Safe to run every tick.
-
-Operators can opt out by adding `danx-issue` themselves with different content — the poller leaves whatever exists alone. Operators can also gitignore the file or commit it; danxbot doesn't dictate either way.
-
-Workers' per-dispatch MCPs are unchanged — they still come from `<repo>/.danxbot/workspaces/<name>/.mcp.json` merged with the danxbot infrastructure server inside `dispatch()`. The root `.mcp.json` is the dev's interactive surface only; it does not feed worker dispatches.
+Workers' per-dispatch MCPs come from `<repo>/.danxbot/workspaces/<name>/.mcp.json` merged with the danxbot infrastructure server inside `dispatch()`. The workspace `.mcp.json` defines the full tool surface for dispatched agents. The root `.mcp.json` (if present) is the dev's interactive surface only; it does not feed worker dispatches.
 
 ## Per-target env overlays — `.env.<target>` merge contract
 

@@ -23,7 +23,6 @@ When this skill is invoked, write these as TodoWrite items and tick them off as 
 2. Identify which **runtime** owns the action — main session, dispatched workspace, or worker.
 3. If touching backend trackers (Trello, etc.) → confirm you are NOT in agent path.
 4. If touching MCP servers consumed by workspaces → confirm publish step required.
-5. If editing issue cards → use `mcp__danx_dashboard__issue_*` MCP tools, never `mcp__trello__*`.
 
 ## Two-Machine Networking Model
 
@@ -52,7 +51,7 @@ Three distinct runtime contexts. Don't confuse them.
 
 | Runtime | Where | Tool surface |
 |---|---|---|
-| **Main session** | Your shell on the dev host | `mcp__danx-issue__*` (writes local YAML), normal Edit/Read/Write/Bash. NEVER `mcp__trello__*`. |
+| **Main session** | Your shell on the dev host | Normal Edit/Read/Write/Bash. NEVER `mcp__trello__*`. |
 | **Dispatched workspace** | Inside a Claude Code CLI subprocess on Machine B (or local worker) launched from `<repo>/.danxbot/workspaces/<name>/` | Workspace's `.mcp.json` + `.claude/agents/*.md` + `.claude/rules/*.md` define tool surface. Per-workspace, isolated. |
 | **Worker process** | `node` running the danxbot dist on Machine B; runs the Trello poller and `/api/launch` HTTP server | Calls `IssueTracker.*` (the only direct Trello write surface in the system); spawns Claude CLI dispatches via `dispatch()`. |
 
@@ -64,7 +63,7 @@ The dispatched-workspace runtime is what the dispatch API hands work to. The wor
 |---|---|
 | `make launch-worker REPO=<name>` (from danxbot repo) | Starts a local Docker worker container for the named repo on this dev box. Compose file: `<connected-repo>/.danxbot/config/compose.yml`. Uses local image `danxbot:latest`. |
 | `make deploy TARGET=<target>` (from danxbot repo) | Deploys danxbot + every repo's worker to the target's AWS instance. Per-target config: `deploy/targets/<target>.yml`. Pushes per-target env overlays from SSM. |
-| `make publish-mcp` / `make publish-trello-mcp` / `make publish-danx-issue-mcp` (from connected repo) | Publishes the MCP server to npm. Required before a new dispatch can pick up the change. **You own these packages — publish freely without asking.** |
+| `make publish-mcp` / `make publish-trello-mcp` / other `publish-*` targets | Publishes MCP servers to npm. Required before a new dispatch can pick up changes. **You own these packages — publish freely without asking.** |
 
 "Deploy the X danxbot" ALWAYS means `make deploy TARGET=<x>` from the danxbot repo. NEVER means `make launch-worker` (that's local). NEVER means deploying the connected repo's own app.
 
@@ -96,18 +95,17 @@ Per-target overlays are layered ONLY at deploy time (`make deploy TARGET=<x>`). 
 The issue tracker is split across layers:
 
 ```
-Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical, Phase 2)
+Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical)
                                        │
                                        │  (worker poll, ~60s)
                                        ▼
-                            danxbot worker IssueTracker (worker's local mirror, Phase 3)
+                            danxbot worker IssueTracker (worker's local mirror)
                                        │
                                        ▼
                               backend tracker (Trello, inbound: new cards + human comments only)
 ```
 
 - The DB is canonical (via MCP tools). Workers maintain a local YAML mirror for poller dispatch logic and sync to the backend asynchronously.
-- The agent path uses `mcp__danx-issue__*` (declared in main `.mcp.json`) only.
 - The backend write surface (`mcp__trello__*`) is loaded ONLY by the trello-worker dispatch on Machine B, NOT by the main session. Never call `mcp__trello__*` from main session.
 - Agents NEVER refer to issues by tracker-native ids. Internal id `ISS-N` is the only stable handle.
 
@@ -189,9 +187,9 @@ Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That
 
 ## MCP Server Ownership
 
-| Package | Source | Loaded by | Publish command |
-|---|---|---|---|
-Each MCP server consumed by a danxbot workspace has an owner repo with a `make publish-<x>` target. The `danx-issue-mcp` server is owned by the danxbot repo itself; tracker/schema/trello servers may be owned by other repos in the operator's tree. The workspace's `.mcp.json` declares which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
+## MCP Server Ownership
+
+Each MCP server consumed by a danxbot workspace has an owner repo with a `make publish-<x>` target. Tracker/schema/trello servers may be owned by other repos in the operator's tree. The workspace's `.mcp.json` declares which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
 
 ## Common Failure Modes
 
@@ -200,7 +198,7 @@ Each MCP server consumed by a danxbot workspace has an owner repo with a `make p
 | New MCP tool not available in dispatched agent | Forgot to publish after editing source | `make publish-mcp` (or relevant publish target), then re-dispatch |
 | YAML edited, Trello unchanged | Worker hasn't polled yet (~60s tick) OR sync failure (check worker logs) | YAML is canonical; don't worry unless tick > a few minutes |
 | Dispatch fails with "Timed out after 2000ms waiting for PID file" | WSL → Windows interop stall on host-mode launcher | check the operator's WSL-interop runbook (host-mode only) |
-| `mcp__trello__*` not found in main session | Correct — it's not loaded there. Use `mcp__danx-issue__*` and let the worker sync. | This skill |
+| `mcp__trello__*` not found in main session | Correct — it's not loaded there. Worker handles Trello sync. | This skill |
 | Editing `mcp-server/` doesn't change agent behavior | Source change ≠ runtime change. Must publish to npm + clear npx cache. | This skill — Repo Location ≠ Runtime Location |
 | Confusion about whether Laravel can reach the agent's `/tmp/schemas/{id}/` | It cannot. Boundary is HTTP. Machine B owns local FS. | This skill — Two-Machine Networking Model |
 

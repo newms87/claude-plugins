@@ -18,9 +18,9 @@ git rev-list HEAD..origin/main --count
 
 This step is read-only — if `git status` shows uncommitted changes BEFORE you do anything, worker mis-routed (should have caught dirty state). Same comment + Blocked.
 
-## Step 1 — Read the YAML and Set Effort Level
+## Step 1 — Read the Issue and Set Effort Level
 
-`Read <repo>/.danxbot/issues/open/<id>.yml`. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
+Query the v2 DB via `mcp__danx_dashboard__issue_get({issue_id})` to fetch the card. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
 
 **Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy carries operator-tunable assignment prompt + 7-rung level ladder. If YAML's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set `effort_level: "<level>"`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
 
@@ -97,8 +97,8 @@ If NOT splitting, skip to Step 4.
 
 ## Step 3.2 — Perform the Split
 
-1. Edit parent YAML: set `type: Epic`. Keep `status: In Progress`. Append comment summarizing split (no `id`). Don't fill `children[]` yet — don't have phase ids until `danx_issue_create` returns. Save.
-2. For each phase, write draft YAML at `<repo>/.danxbot/issues/open/<slug>.yml` with required fields:
+1. Call `mcp__danx_dashboard__issue_edit({issue_id, ...})` to update parent: set `type: Epic`. Keep `status: In Progress`. Append comment summarizing split. Don't fill `children[]` yet — don't have phase ids until `danx_issue_create` returns.
+2. For each phase, prepare required fields:
    - `schema_version: 10`
    - `tracker: <same as parent>`
    - `id: ""` (worker assigns next `<PREFIX>-N`)
@@ -223,11 +223,11 @@ Append commit shas to `retro.commits[]`.
 
 ## Step 8 — Definition-of-Done Gate
 
-Before deciding Done vs Blocked, **inspect actual state of every AC item in YAML.**
+Before deciding Done vs Blocked, **inspect actual state of every AC item in the card.**
 
 **Mechanical procedure:**
 
-1. Re-read `<repo>/.danxbot/issues/open/<id>.yml`.
+1. Re-fetch the card via `mcp__danx_dashboard__issue_get({issue_id})`.
 2. Count `ac` entries where `checked === false`.
 3. **Zero unchecked** → Step 9 (Done).
 4. **One or more unchecked** → run **Step 1.5 fix-it-yourself check** FIRST. Can you fix underlying defect in this dispatch? YES → fix, re-verify, re-check AC, re-run this gate. Only after exhausting in-session fixes proceed to Step 10. Do NOT move to Done. Do NOT rationalize.
@@ -328,26 +328,19 @@ If only thing blocking is human action → use Step 10 (Blocked).
 ### Procedure
 
 1. **Find blocking card(s).** Search in order until ≥1 concrete `<PREFIX>-N` id describing unblock work:
-   1. **Phase siblings via parent epic.** If card has `parent_id`, read epic's `children[]`, check each phase YAML. Blocker usually phase shipping first.
-   2. **Open issues by topic.** `Grep` + `Read` across `open/*.yml` for cards covering prerequisite — ToDo, In Progress, Blocked, Action Items all qualify (poller imports all every tick).
+   1. **Phase siblings via parent epic.** If card has `parent_id`, read epic's `children[]`, check each phase card via `mcp__danx_dashboard__issue_get`. Blocker usually phase shipping first.
+   2. **Open issues by topic.** Use `mcp__danx_dashboard__issue_list` to find cards covering prerequisite — ToDo, In Progress, Blocked, Action Items all qualify.
    3. **In Progress queue.** Cards being worked on may be blocker.
-2. **No existing card describes unblock work?** You MUST create one. Build draft YAML at `<repo>/.danxbot/issues/open/<slug>.yml` describing exactly what needs to happen. Call `danx_issue_create({filename: "<slug>"})`. Pick status:
-   - Autonomous agent work → `status: "ToDo"`. Poller dispatches.
-   - Human work → stamp `blocked: {at: "<current ISO>", reason: "<one sentence>"}` on draft (derived `Blocked` via rule 3). Include all evidence human needs.
+2. **No existing card describes unblock work?** You MUST create one. Prepare the card data describing exactly what needs to happen. Call `danx_issue_create({type, title, description, ac, ...})`. Pick status:
+   - Autonomous agent work → call `mcp__danx_dashboard__issue_transition({action: 'ready'})` so the poller dispatches.
+   - Human work → call `mcp__danx_dashboard__issue_transition({action: 'block', reason: "<one sentence>"})` (derived `Blocked` via rule 3). Include all evidence human needs in description.
    Capture new card's returned `id`.
-3. **Edit this card's YAML:**
-   - Set `waiting_on` to:
-     ```yaml
-     waiting_on:
-       reason: "<one-sentence explanation — what needs to happen first>"
-       timestamp: "<current ISO 8601>"
-       by:
-         - <PREFIX>-N of each IMMEDIATE blocker
-     ```
-   - **`by[]` is IMMEDIATE blocker(s) only.** If A→B→C, A's `by[]` is `["B"]` — NOT `["B", "C"]`. Chain computed auto by poller + dashboard from each card's direct blocker; restating upstream is redundant + drifts. Same for phase chains (Phase 3 → Phase 2 only, never `["Phase 2", "Phase 1"]`).
-   - Do NOT change `status`. Leave as is. `waiting_on` is independent — setting `Blocked` wrong (Blocked human-only). Picker uses `waiting_on` alone as dispatch gate.
-   - Append comment to `comments[]` summarizing what you did, blocker(s) found/created, state once blockers ship. No `id`.
-4. Fill `retro.{good, bad, action_item_ids, commits}` honestly — gap between shipped + needed is "what went wrong." Same action-items rule: only large separately-scopeable follow-ups. Create action item first via `danx_issue_create`, push `<PREFIX>-N`. Small in-scope work belongs in THIS dispatch or blocker card, not retro action item.
+3. **Set this card's dependency:**
+   - Call `mcp__danx_dashboard__issue_dependency({id: <this-card>, action: 'add', kind: 'depends_on', blocker_ids: [<PREFIX>-N of each IMMEDIATE blocker]})`.
+   - **`blocker_ids[]` is IMMEDIATE blocker(s) only.** If A→B→C, A's blocker is `["B"]` — NOT `["B", "C"]`. Chain computed auto by dashboard from each card's direct blocker; restating upstream is redundant + drifts. Same for phase chains (Phase 3 depends on Phase 2 only, never both Phase 2 and Phase 1).
+   - Do NOT change `status` directly. The `waiting_on` gate is independent — setting it via dependency call only. Picker uses `waiting_on` alone as dispatch gate.
+   - Call `mcp__danx_dashboard__issue_comment({id: <this-card>, text: "<summary of blockers found/created and state once they ship>"})` to add a comment record.
+4. Call `mcp__danx_dashboard__issue_retro({id: <this-card>, good: "...", bad: "...", action_item_ids: [...], commits: [...]})` — gap between shipped + needed is "what went wrong." Same action-items rule: only large separately-scopeable follow-ups. Create action item first via `mcp__danx_dashboard__issue_create`, push `<PREFIX>-N`. Small in-scope work belongs in THIS dispatch or blocker card, not retro action item.
 
 ### Save and exit
 

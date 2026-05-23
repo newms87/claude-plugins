@@ -53,8 +53,8 @@ If found, Demote instead.
 ## Status = Waiting On
 
 **Re-check `waiting_on.by[]`.** For each blocker id:
-- `Read .danxbot/issues/open/<PREFIX>-N.yml` (fall back to `closed/`).
-- Note its `status`. Terminal = `Done` or `Cancelled`. Non-terminal = anything else.
+- Query the v2 DB via `mcp__danx_dashboard__issue_get({issue_id: "<PREFIX>-N"})`.
+- Note its derived `status`. Terminal = `Done` or `Cancelled`. Non-terminal = anything else.
 
 | Outcome | Action | YAML write | Terminal call |
 |---|---|---|---|
