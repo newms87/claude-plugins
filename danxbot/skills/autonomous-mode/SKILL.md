@@ -52,17 +52,14 @@ Pick exactly one of the following. Do not pause first.
    credentials or design intent you don't have, follow Step 10 of
    `danx-next/SKILL.md`:
    - Stop processing.
-   - Set `status: "Blocked"` and populate `blocked: {reason, timestamp}`.
-   - Add a `comments[]` entry with the question phrased the way you'd
-     have asked the human, every option you considered, and your
-     recommended choice with reasoning.
-   - Save and exit. The poller stops dispatching this card; a human
-     answers on the tracker; the next operator-driven move releases the
+   - Call `issue_transition({id, action: 'block', reason: "<question>"})` with the blocking reason.
+   - Call `issue_comment({id, action: 'add', text: "<question phrased the way you'd have asked>"})` with the question phrased the way you'd have asked the human, every option you considered, and your recommended choice with reasoning.
+   - Exit. The poller stops dispatching this card; a human
+     answers via the dashboard or by editing; the next dispatch releases the
      card.
 
-3. **Block on another card.** If the question is "should we do X first?"
-   and X is real work tracked on another card, use Step 10b (Blocked)
-   instead — set `blocked.by` to the dependency's `<PREFIX>-N`. Don't ask, don't
+3. **Escalate to waiting_on.** If the question is "should we do X first?"
+   and X is real work tracked on another card, use Step 10b instead — call `issue_dependency({id, action: 'add', kind: 'depends_on', target_id: "<PREFIX>-N>"})` to set a dependency on the other card. Don't ask, don't
    wait for an answer, don't sit idle.
 
 That's the entire menu. There is no fourth option that involves waiting.

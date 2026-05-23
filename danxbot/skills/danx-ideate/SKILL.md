@@ -57,23 +57,12 @@ re-fire the loop after the dispatch is logically over.
    - Updates the Feature Inventory with current status of features.
    - ICE-scores every non-Complete feature.
    - Brainstorms + prioritizes new feature ideas.
-   - Checks `<repo>/.danxbot/issues/open/*.yml` for duplicates (search by title / keywords).
+   - Checks for duplicates via `issue_list({type: 'Feature'})` (search by title / keywords).
    - Generates 3-5 prioritized feature drafts.
-   - For each draft, writes a YAML at `<repo>/.danxbot/issues/open/<filename>.yml` with:
-     - `id: ""` (worker assigns the next `<PREFIX>-N` — drafts with non-empty `id` are REJECTED)
-     - `parent_id: null`
-     - `children: []`
-     - `dispatch: null`
-     - `status: "Review"`
-     - `type: "Feature"` (or `"Bug"` for bug drafts)
-     - `title`, `description` populated
-     - `triage: {expires_at: "", reassess_hint: "", last_status: "", last_explain: "", ice: {total: 0, i: 0, c: 0, e: 0}, history: []}`
-     - `ac: [{check_item_id: "", title: "...", checked: false}, ...]`
-     - `comments: []`
-     - `retro: {good: "", bad: "", action_item_ids: [], commits: []}`
-     - `schema_version: 10`
-     - `tracker: "memory"` (or whichever tracker the repo uses — leave the value the parent YAML carries)
-   - Calls `danx_issue_create({filename: "<filename>"})` for each draft. The worker validates, allocates the next `<PREFIX>-N`, stamps it back into the YAML, and renames the file to `<id>.yml`. Captures the returned `id`.
+   - For each draft, calls `issue_create({type: 'Feature'|'Bug', title: "...", description: "...", ac: [...]})` with the draft content.
+     - Do NOT set `id` (server assigns the next `<PREFIX>-N`).
+     - Do NOT set `parent_id`, `children`, `dispatch`, `status`, `triage`, `comments`, `retro` — server sets defaults.
+   - Captures the returned `id` from each successful creation.
    - Saves discoveries back to `docs/features.md`.
 
 3. Report what the ideator produced:
@@ -84,10 +73,6 @@ re-fire the loop after the dispatch is logically over.
 
 4. **Signal completion (MANDATORY):** `danxbot_complete({status: "complete", summary: "..."})`. Worker finalizes the dispatch row + SIGTERMs the Claude process. Never exit without it.
 
-## Filename convention
+## Validation
 
-Drafts use a kebab-case slug derived from the title, e.g. `add-jsonl-tail-helper.yml`. Keep filenames stable across the create call — the worker renames the file to `<id>.yml` after `danx_issue_create` succeeds. Until then, the filename is the only handle.
-
-## Drafts that fail validation
-
-If `danx_issue_create` returns `{created: false, errors: [...]}`, the YAML failed schema validation. Read the errors, fix the draft YAML, and retry. Do NOT delete the draft file unless you intend to abandon the idea — the file is the durable record until an `id` is assigned.
+If `issue_create` returns `{ok: false, body: {error}}`, the request failed schema validation. Read `body.error`, fix the draft fields, and retry. Do NOT delete the draft idea — the data structure (not a file) is the durable record until an `id` is assigned.

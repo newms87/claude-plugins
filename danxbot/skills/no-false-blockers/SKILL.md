@@ -185,7 +185,7 @@ derivation function IS the verification.
 
 ## Generalized rule
 
-A card derives to **Blocked** (via `blocked.at`) only when a HUMAN ACTION
+A card derives to **Blocked** (via `issue_transition({action: 'block'})`) only when a HUMAN ACTION
 (credential rotation, external repo write access, ambiguous spec needing a
 design decision) is the next step. Three things that are NOT human actions:
 
@@ -195,18 +195,14 @@ design decision) is the next step. Three things that are NOT human actions:
 | "Manual UI smoke" AC | Wording defect or programmatic substitute available | Component test → playwright → rewrite AC |
 | Post-terminal-save behavior verification | Self-referential AC | Rewrite AC to point at the unit test for the code path |
 
-Before stamping `blocked: {at, reason}` (which derives the card to `Blocked`),
-mechanically run this checklist:
+Before calling `issue_transition({action: 'block'})`, mechanically run this checklist:
 
 1. Does this require a HUMAN to act (rotate credentials, push to SSM,
    make a design decision, edit a repo I cannot write to)? **No → not
    Blocked.**
-2. Does any existing tool in my dispatch (Bash, Edit, Write, playwright
-   MCP, dashboard token file, component test runner, unit test runner)
-   produce evidence equivalent to what the AC asks for? **Yes → use it.**
+2. Does any existing tool in my dispatch (Bash, playwright MCP, dashboard token file, component test runner, unit test runner) produce evidence equivalent to what the AC asks for? **Yes → use it.**
 3. If the AC's literal wording demands something only a human can do,
    does its INTENT have a programmatic substitute? **Yes → rewrite the
-   AC to the substitute, add a `comments[]` note explaining the rewrite,
-   verify, check off.**
+   AC to the substitute, add a comment via `issue_comment` explaining the rewrite, verify, check off.**
 
 Only after answering all three "no" do you proceed to Step 10.

@@ -6,39 +6,31 @@ description: Wire two-way parent_id ↔ children[] linkage between an Epic and i
 # Danx Epic Link
 
 You are running because the orchestrator picked up an Epic-typed card whose
-local YAML's `children: []` is empty. That means one of two things happened:
+DB `children[]` is empty. That means one of two things happened:
 
 1. **A human created phase cards directly on the tracker UI** without going
-   through `danx_issue_create`. The phase YAMLs were bulk-synced into local
-   `issues/open/` by the poller on a previous tick, but no `parent_id` was
-   set on them and no `children[]` was set on the epic.
-2. **A previous agent split the epic via `danx_issue_create`** but a code
+   through `issue_create`. The phase cards were bulk-synced into the DB
+   on a previous tick, but no `parent_id` was set on them and no `children[]`
+   was set on the epic.
+2. **A previous agent split the epic via `issue_create`** but a code
    regression skipped the linkage step. (You should not be hit if that
-   path ran cleanly — `danx_issue_create` writes `parent_id` itself.)
+   path ran cleanly — `issue_create` writes `parent_id` itself.)
 
-**Your one job**: identify which open issue YAMLs are this epic's phase
-cards, set `parent_id` on each, and set `children[]` on the epic. Then
+**Your one job**: identify which open issue cards (in DB) are this epic's phase
+cards, set `parent_id` on each via `issue_edit`, and set `children[]` on the epic. Then
 return control to the orchestrator. **Do NOT create any new cards. Do NOT
 edit any phase card content beyond `parent_id`.**
 
 If `children[]` is already non-empty when this skill is invoked, exit
 immediately — the epic is already linked.
 
-Blocked / Waiting On: This skill uses terminology borrowed from the old
-schema. When linking, you edit the `parent_id` and `children[]` fields only;
-you do NOT set `waiting_on` on phase cards unless they're already split and
-you're stamping serial ordering in Step 3.5 (which uses `waiting_on`, not
-the old `blocked` field). The field has been renamed from `blocked` (the
-old dep-chain field) to `waiting_on`.
-
 ---
 
 ## Step 1 — Identify candidate phase cards
 
-1. The orchestrator's dispatch prompt has the epic's YAML path. Read it.
-2. List `<repo>/.danxbot/issues/open/*.yml`.
-3. For each open issue (excluding the epic itself), read the YAML and
-   extract `id`, `parent_id`, `title`, `type`.
+1. The orchestrator's dispatch prompt names the epic's id. Load it via `issue_get({id})`.
+2. Call `issue_list({parent_id: null, include_closed: false})` to list all open cards without a parent.
+3. For each open card (excluding the epic itself), extract `id`, `parent_id`, `title`, `type`.
 4. Build a candidate set:
    - `parent_id == null` (already-linked phase cards aren't candidates).
    - Title pattern, content, or domain looks like a phase of THIS epic.
@@ -49,7 +41,7 @@ old dep-chain field) to `waiting_on`.
 5. List the matched candidates back to yourself with their ids and titles.
 
 If zero candidates match, the epic genuinely has no phase children —
-leave `children: []` on the epic and exit. There is no in-card phase
+leave `children[]` empty and exit (call the appropriate `issue_transition` if the epic needs a status bump, or just return). There is no in-card phase
 checklist (ISS-81 retired that field). The orchestrator continues with
 normal Step 4 implementation directly on the epic itself; epics
 without phase children are implemented as a single card.
@@ -79,42 +71,15 @@ after this skill returns. Order matters.
 
 ## Step 3 — Wire the linkage
 
-For each candidate phase YAML, in the order from Step 2:
+For each candidate phase card, in the order from Step 2:
 
-1. `Read <repo>/.danxbot/issues/open/<phase-id>.yml`
-2. `Edit` the YAML: set `parent_id: "<epic-id>"`. Touch nothing else
-   (don't change `status`, `description`, `ac[]`, etc.).
-3. Append a comment to `comments[]` (no `id` field):
-   - `author: "danxbot"`
-   - `timestamp: <current ISO>`
-   - `text:` `Linked to parent epic <epic-id> by danx-epic-link skill.`
-4. The chokidar watcher catches the `Edit` and mirrors the change to
-   the DB; the poller's per-tick mirror pushes to the tracker. There is
-   no save verb to call — the watcher is the canonical write path.
+1. Call `issue_edit({id: <phase-id>, parent_id: "<epic-id>"})`  to set the parent.
+2. Call `issue_comment({id: <phase-id>, action: 'add', text: "Linked to parent epic <epic-id> by danx-epic-link skill."})` to append a comment.
 
-After all phase YAMLs are saved, edit the epic's YAML:
+After all phase cards are linked, edit the epic:
 
-1. Set `children: ["<phase-1-id>", "<phase-2-id>", ...]` in the order
-   from Step 2.
-2. Append a comment to `comments[]` (no `id` field):
-   - `author: "danxbot"`
-   - `timestamp: <current ISO>`
-   - `text:` a multi-line markdown body:
-     ```
-     ## Epic linkage
-
-     `danx-epic-link` wired the two-way parent_id ↔ children[] linkage
-     for this epic's phase cards (created directly on the tracker UI
-     without going through `danx_issue_create`).
-
-     **Children:**
-
-     - <phase-1-id>: <phase-1-title>
-     - <phase-2-id>: <phase-2-title>
-     - ...
-     ```
-3. The watcher mirrors the epic edit to the DB; the poller's per-tick
-   mirror pushes to the tracker.
+1. Call `issue_edit({id: <epic-id>, children: ["<phase-1-id>", "<phase-2-id>", ...]})` with the ordered phase id list.
+2. Call `issue_comment({id: <epic-id>, action: 'add', text: "## Epic linkage\n\n`danx-epic-link` wired the two-way parent_id ↔ children[] linkage for this epic's phase cards (created directly on the tracker UI without going through `issue_create`).\n\n**Children:**\n\n- <phase-1-id>: <phase-1-title>\n- <phase-2-id>: <phase-2-title>\n- ..."})` with the linkage comment.
 
 ---
 
@@ -122,15 +87,13 @@ After all phase YAMLs are saved, edit the epic's YAML:
 
 Phase cards picked up by the poller dispatch in tracker-list-top order, NOT
 phase order. To force serial dispatch (Phase 1 → Phase 2 → ... → Phase N),
-stamp `waiting_on.by` on every phase except the first:
+set `waiting_on` on every phase except the first via `issue_dependency`:
 
-For each phase YAML at index `i >= 1` in the ordered `children[]`:
+For each phase card at index `i >= 1` in the ordered `children[]`:
 
-1. `Read <repo>/.danxbot/issues/open/<phase-id>.yml`.
-2. Edit: set `waiting_on: {reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete.", timestamp: "<current ISO>", by: ["<children[i-1]>"]}`.
-3. The watcher mirrors the change automatically.
+1. Call `issue_dependency({id: <phase-i-id>, action: 'add', kind: 'depends_on', target_id: "<children[i-1]>", reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete."})`.
 
-Phase 1 (`children[0]`) stays `waiting_on: null` — it dispatches first. The
+Phase 1 (`children[0]`) stays with no `waiting_on` — it dispatches first. The
 picker releases phase N+1 once phase N reaches Done / Cancelled (the
 `waiting_on` record itself stays on the card as a durable dep history note —
 never auto-cleared).
@@ -141,7 +104,7 @@ If you skip, explain in a comment on the epic.
 
 ### `waiting_on.by[]` is the IMMEDIATE blocker only — never list transitive blockers
 
-Phase 3 lists `["children[1]"]` (Phase 2). It does NOT list Phase 1, even
+Phase 3's `by[]` lists `["<phase-2-id>"]` (Phase 2). It does NOT list Phase 1, even
 though Phase 1 must ship before Phase 2 can ship. The chain Phase 3 → Phase
 2 → Phase 1 is computed automatically by the poller + dashboard from each
 card's direct blocker; restating the upstream chain in `by[]` is redundant
@@ -171,36 +134,22 @@ that up via the normal pipeline.
 
 ## Forbidden moves
 
-- **Do NOT call `danx_issue_create`.** Phase cards already exist on the
-  tracker. Creating new ones would duplicate them.
-- **Do NOT edit phase card descriptions, titles, or AC items.** Only
-  `parent_id` and an audit comment.
-- **Do NOT move any phase card across statuses.** They stay in `ToDo`
-  until the orchestrator picks the first one up.
-- **Do NOT delete YAMLs that don't match.** Cards in `open/` that
-  aren't this epic's phases are unrelated work — leave them alone.
-- **Do NOT recurse into nested epics.** If a candidate is itself an
-  Epic with its own children, link it as a phase of THIS epic
-  (`parent_id` to outer epic, `children[]` preserved on the inner
-  epic). The orchestrator handles nested epics on a future pickup.
+- **Do NOT call `issue_create`.** Phase cards already exist in the DB. Creating new ones would duplicate them.
+- **Do NOT edit phase card descriptions, titles, or AC items via `issue_edit`.** Only set `parent_id` and append a comment.
+- **Do NOT move any phase card across statuses via `issue_transition`.** They stay in `ToDo` until the orchestrator picks the first one up.
+- **Do NOT delete cards that don't match.** Cards in the DB that aren't this epic's phases are unrelated work — leave them alone.
+- **Do NOT recurse into nested epics.** If a candidate is itself an Epic with its own children, link it as a phase of THIS epic (`parent_id` to outer epic, `children[]` preserved on the inner epic). The orchestrator handles nested epics on a future pickup.
 
 ---
 
 ## When in doubt
 
-If the candidate set is ambiguous (e.g. two cards could be Phase 1 of
-different epics, or a candidate's title doesn't clearly belong to this
-epic), abort and let the orchestrator move the epic to Blocked.
-Append a comment to the epic's YAML describing the ambiguity:
+If the candidate set is ambiguous (e.g. two cards could be Phase 1 of different epics, or a candidate's title doesn't clearly belong to this epic), abort and let the orchestrator move the epic to Blocked. Append a comment to the epic describing the ambiguity:
 
 ```
 ## Epic linkage — ambiguous
 
-`danx-epic-link` could not unambiguously identify this epic's phase
-cards. Candidates examined: <list of ids + titles + reasoning>.
-Human review needed to set `parent_id` on the right children + the
-matching `children[]` on this epic.
+`danx-epic-link` could not unambiguously identify this epic's phase cards. Candidates examined: <list of ids + titles + reasoning>. Human review needed to set `parent_id` on the right children + the matching `children[]` on this epic.
 ```
 
-Then save and signal Blocked via the normal `danx-next` Step 10
-flow.
+Then call `issue_transition({id, action: 'block', reason: "Ambiguous phase candidate set"})` to move to Blocked.

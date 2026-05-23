@@ -23,7 +23,7 @@ When this skill is invoked, write these as TodoWrite items and tick them off as 
 2. Identify which **runtime** owns the action — main session, dispatched workspace, or worker.
 3. If touching backend trackers (Trello, etc.) → confirm you are NOT in agent path.
 4. If touching MCP servers consumed by workspaces → confirm publish step required.
-5. If editing `<repo>/.danxbot/issues/*.yml` → use `mcp__danx-issue__*` MCP tools, never `mcp__trello__*`.
+5. If editing issue cards → use `mcp__danx_dashboard__issue_*` MCP tools, never `mcp__trello__*`.
 
 ## Two-Machine Networking Model
 
@@ -91,22 +91,22 @@ Inside each connected repo:
 
 Per-target overlays are layered ONLY at deploy time (`make deploy TARGET=<x>`). Local dev never reads them.
 
-## Issue Tracker — Local YAML Is Authoritative
+## Issue Tracker — Dashboard DB Is Authoritative
 
-The issue tracker is split across two layers:
+The issue tracker is split across layers:
 
 ```
-Main session  ──Edit──>  <repo>/.danxbot/issues/open/<id>.yml  (canonical)
+Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical, Phase 2)
                                        │
                                        │  (worker poll, ~60s)
                                        ▼
-                            danxbot worker IssueTracker
+                            danxbot worker IssueTracker (worker's local mirror, Phase 3)
                                        │
                                        ▼
-                              backend tracker (Trello)
+                              backend tracker (Trello, inbound: new cards + human comments only)
 ```
 
-- The YAML is canonical. Workers sync to the backend asynchronously.
+- The DB is canonical (via MCP tools). Workers maintain a local YAML mirror for poller dispatch logic and sync to the backend asynchronously.
 - The agent path uses `mcp__danx-issue__*` (declared in main `.mcp.json`) only.
 - The backend write surface (`mcp__trello__*`) is loaded ONLY by the trello-worker dispatch on Machine B, NOT by the main session. Never call `mcp__trello__*` from main session.
 - Agents NEVER refer to issues by tracker-native ids. Internal id `ISS-N` is the only stable handle.

@@ -47,11 +47,8 @@ requires_human:
 - Cleared by the human, not by another agent. The dashboard's
   `RequiresHumanPanel.vue` (Phase 8 of DX-231) renders the reason +
   numbered step list and exposes a "Mark Resolved" button that PATCHes
-  `requires_human: null`. Phase 8 ships the dashboard affordance —
-  until then, the operator clears the field by editing the YAML
-  directly (`requires_human: null`); the chokidar watcher mirrors the
-  change and the next poll tick dispatches the card.
-- Toggling off (PATCH `requires_human: null`) re-enables dispatch on
+  `requires_human: null` via the dashboard API. Phase 8 ships the dashboard affordance.
+- Toggling off (via dashboard or `issue_requires_human({id, set: false})`) re-enables dispatch on
   the next poll tick.
 
 ## When to set — whitelist (rare)
@@ -80,20 +77,20 @@ Do NOT set `requires_human` for any of the following — these are
 `blocked: {at, reason}` cases (which derive the card's status to
 `Blocked` via `deriveStatus`) or in-session work:
 
-- **Ambiguous spec** → stamp `blocked: {at, reason}` with the question
-  in the comment. The human is supplying *information*, not performing
-  an external action. Blocked (derived) is the right channel.
-- **Failing test the agent can't fix** → stamp `blocked: {at, reason}`
+- **Ambiguous spec** → call `issue_transition({action: 'block', reason})` with the question
+  in a comment. The human is supplying *information*, not performing
+  an external action. Blocked is the right channel.
+- **Failing test the agent can't fix** → call `issue_transition({action: 'block', reason})`
   (after exhausting `danx-next/SKILL.md` Step 1.5 fix-it-yourself). The
   agent needs a human to investigate, not to rotate a token.
-- **Merge conflict** → stamp `blocked: {at, reason}`. The next dispatched
+- **Merge conflict** → call `issue_transition({action: 'block', reason})`. The next dispatched
   agent (or the operator on the host) resolves it; nothing 3rd-party is
   involved.
 - **Missing local dependency** (npm package, vendor lib, container) →
-  stamp `blocked: {at, reason}`. The host's dependency state is not a
+  call `issue_transition({action: 'block', reason})`. The host's dependency state is not a
   3rd-party system; the operator runs a local install.
-- **Need to ask a clarifying question** → stamp `blocked: {at, reason}`
-  with the question in the comment. The reply is information, not
+- **Need to ask a clarifying question** → call `issue_transition({action: 'block', reason})`
+  with the question in a comment. The reply is information, not
   external action.
 - **Pre-existing flaky test in unrelated file** → `.claude/rules/danx-no-false-blockers.md` Pattern 1. File an Action Item card; check the AC; proceed. Neither Blocked nor `requires_human`.
 - **AC says "manual UI smoke" / "operator clicks X"** → `.claude/rules/danx-no-false-blockers.md` Pattern 2. Component test or playwright drive; check the AC; proceed.
@@ -106,7 +103,7 @@ The triage agent and the worker dispatch path read this file; the next
 dispatched agent reads it; the dashboard reviewer reads it. If you set
 `requires_human` for a blacklisted reason, the next triage pass is
 allowed to clear it and re-route the card to derived `Blocked` (by
-stamping `blocked: {at, reason}`) — your save will be undone.
+calling `issue_transition({action: 'block', reason})`) — your save will be undone.
 
 ## How to set
 
@@ -114,20 +111,15 @@ When you decide to set the field — typically as a triage **Approve**
 decision OR mid-dispatch when you discover a 3rd-party action gate
 that was not knowable at pickup time:
 
-1. Populate **all four fields verbatim**:
+1. Call `issue_requires_human({id, set: true, reason, steps[]})` with:
    - `reason` — one sentence, headline-shaped, surfaces in the dashboard
      banner. Example: `"Need Stripe API key rotated"`.
    - `steps` — ordered list of concrete actions. **Each step must be
      executable by a non-engineer** (no shell incantations the operator
-     would have to translate). Numbered steps are non-negotiable; an
-     empty list is permitted but discouraged.
-   - `set_by: agent` (always — humans set the field via the dashboard).
-   - `set_at: <current ISO 8601 timestamp>`.
+     would have to translate). Array of strings; empty list permitted but discouraged.
+   - Server stamps `set_by: agent` and `set_at: <current ISO 8601 timestamp>`.
 
-2. Save the YAML with `Edit` / `Write`. The watcher mirrors the change
-   to the DB; the post-completion auto-sync pushes the tracker label.
-
-3. Do NOT also write `status` or stamp any lifecycle trigger
+2. Do NOT also call `issue_transition` or stamp any lifecycle trigger
    (`completed_at`, `cancelled_at`, `blocked.at`). The `requires_human`
    field is enough — the poller's dispatch filter handles the rest.
    Status is derived; leave the trigger fields alone (`Review`, `ToDo`,

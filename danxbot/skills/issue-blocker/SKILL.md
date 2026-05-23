@@ -108,8 +108,8 @@ a design decision that changes the goal of the card.
     of `danx-no-false-blockers.md`. Use component test → playwright →
     rewrite AC.
   - "Operator must restart the worker / deploy / run X command" → not
-    `status: Blocked`. This is an *external action* on infra the agent
-    cannot reach → use `requires_human` (see Field selection table
+    `issue_transition({action: 'block'})`. This is an *external action* on infra the agent
+    cannot reach → use `issue_requires_human` (see Field selection table
     above). Distinct from Blocked (= human supplies *information*).
     See `danx-next/SKILL.md` Step 10 forbidden-blocker list.
 
@@ -214,13 +214,11 @@ the root cause?
 ## After all 8 items pass
 
 Only then are you authorized to:
-1. Stamp `blocked: {at: <now ISO>, reason: <one sentence>}` per Step 10 of `danx-next/SKILL.md`. Worker derives `Blocked` from `blocked.at` (rule 3) — do NOT also write `status:`.
-2. Append the `## Blocked` comment.
+1. Call `issue_transition({id, action: 'block', reason: <one sentence>})` per Step 10 of `danx-next/SKILL.md`. Server derives `Blocked` from `blocked.at` (rule 3).
+2. Append a comment via `issue_comment` with the `## Blocker self-audit` section so the operator can audit your reasoning.
 3. Call `danxbot_complete({status: "failed", summary: "..."})`.
 
-Quote the 8 PASS results into a `## Blocker self-audit` section of the
-Blocked comment so the operator can audit your reasoning. If you
-cannot quote 8 PASS results, you have not earned the Blocked move.
+Quote the 8 PASS results into a `## Blocker self-audit` section of the comment so the operator can audit your reasoning. If you cannot quote 8 PASS results, you have not earned the Blocked move.
 
 ## Forbidden patterns this skill catches
 

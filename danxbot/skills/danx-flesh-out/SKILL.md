@@ -6,36 +6,35 @@ argument-hint: <PREFIX>-N card id
 
 # Danx Flesh-Out
 
-You flesh out **ONE** card: read YAML → probe repo → rewrite `description` → populate `ac[]` → optional epic split → optional triage stamp → save → `danxbot_complete({status: "ready"})`.
+You flesh out **ONE** card: read card → probe repo → rewrite `description` → populate `ac[]` → optional epic split → optional triage stamp → save via MCP → `danxbot_complete({status: "ready"})`.
 
 ## Quick Reference
 
 See references/overview.md for full contract + probe rules + YAML edit checklist + comment format + failure handling.
 
 **In-scope cards (per dashboard Create-Card flow):**
-- `status: Blocked` AND `blocked.reason` starts `"Awaiting flesh-out"` — flesh-out, parse ` start as <Review|ToDo>` token from sentinel, clear block on save.
-- `status: Review` AND short/thin `description` AND empty `ac[]` — flesh-out (do NOT stamp `triage{}`; existing Review).
-- `status: ToDo` AND short/thin `description` AND empty `ac[]` — flesh-out (do NOT stamp `triage{}`; ToDo skips triage).
+- `status_derived: Blocked` AND `blocked.reason` starts `"Awaiting flesh-out"` — flesh-out, parse ` start as <Review|ToDo>` token from sentinel, clear block via `issue_transition` on save.
+- `status_derived: Review` AND short/thin `description` AND empty `ac[]` — flesh-out (do NOT stamp triage; existing Review).
+- `status_derived: ToDo` AND short/thin `description` AND empty `ac[]` — flesh-out (do NOT stamp triage; ToDo skips triage).
 
 **Refuse paths (defense-in-depth):**
-- `status: In Progress / Done / Cancelled` → card already launched, don't re-flesh mid-flight.
-- `status: Blocked` AND `blocked.reason` doesn't start `"Awaiting flesh-out"` → non-sentinel self-block, human action required.
+- `status_derived: In Progress / Done / Cancelled` → card already launched, don't re-flesh mid-flight.
+- `status_derived: Blocked` AND `blocked.reason` doesn't start `"Awaiting flesh-out"` → non-sentinel self-block, human action required.
 - `waiting_on != null` OR `requires_human != null` → parked cards out of scope.
 - `children[]` non-empty → epic already split, refuse to orphan phases.
 
 ## Workflow
 
-1. **Read** — `Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`).
-2. **Probe** (5–10 min, read-only) — `Read` / `Grep` / `Glob` / git bash only. No executions, no code edits, no tracker calls.
+1. **Read** — call `mcp__danx_dashboard__issue_get({id})` to load the card from DB.
+2. **Probe** (5–10 min, read-only) — `Read` / `Grep` / `Glob` / git bash only. No executions, no code edits, no MCP write calls.
 3. **Rewrite** — `description` per zero-context-test (Goal / Context / Solution / Key Files). Exact file paths, gotchas, verify command.
 4. **AC populate** — 3–8 verifiable items (imperative-verb prefix). Forbidden shapes: "Active sessions run /reload-plugins", "operator verifies in their environment", "manual UI smoke", "post-terminal-save auto-flip".
-5. **Epic split** (optional) — if 3+ phases / spans domains / >500 LOC: set `type: Epic`, create phase YAMLs via `danx_issue_create`, stamp `children[]` + `waiting_on` chains.
-6. **Triage stamp** (optional, Review only) — `triage.{expires_at, last_status, last_explain, ice, history}` per ICE rubric (Impact×Confidence×Ease, each 1–5).
-7. **Append comment** — ONE `## Flesh-out — <date>` entry (author: "danxbot-flesh-out", markdown body).
-8. **Save** — `Edit` / `Write` YAML, re-read to confirm parsing. Chokidar mirrors.
-9. **Complete** — `danxbot_complete({status: "ready"})` (default) OR `"review"` (sentinel target).
+5. **Epic split** (optional) — if 3+ phases / spans domains / >500 LOC: call `issue_create({type: 'Epic', phase_children: [...]})` to create phases atomically, then `issue_edit` to wire `parent_id` on any manual children, then set `waiting_on` chains via `issue_dependency`.
+6. **Save changes** — call `issue_edit({id, description, ac})` to persist the prose changes. If sentinel-blocked, call `issue_transition({id, action: 'unblock'})` to clear the block.
+7. **Append comment** — call `issue_comment({id, action: 'add', text: "## Flesh-out — <date>\n..."})` with markdown body.
+8. **Complete** — `danxbot_complete({status: "ready"})` (default).
 
-**FORBIDDEN:** Never `complete` (DX-734 / DX-735 half-baked-done bug). Never `loop` or `ScheduleWakeup`. Never write `status:` direct.
+**FORBIDDEN:** Never call `complete` with `status: "done"` or similar (DX-734 / DX-735 half-baked-done bug). Never `loop` or `ScheduleWakeup`. Never call `issue_edit` with `status` key.
 
 ## In-Scope vs Refuse
 
@@ -46,10 +45,10 @@ See references/overview.md for full contract + probe rules + YAML edit checklist
 ## Boundaries
 
 - One card only (plus phase children if split).
-- Read-only probe (no code execution).
+- Read-only probe (no code execution, no MCP reads beyond `issue_get`).
 - No tracker calls (`mcp__trello__*` forbidden).
 - No subagents.
 - Do NOT implement the work — flesh-out is spec rewrite, not code change.
-- Do NOT alter `parent_id`, `blocked` (except DX-544 clear), `waiting_on`, `requires_human`, `retro`, `dispatch`.
+- Do NOT alter `parent_id`, `blocked` (except DX-544 clear via `issue_transition`), `waiting_on` (except chains on epic split), `requires_human`, `retro`, `dispatch`.
 
-**Re-read after save.** Confirm YAML parses (no indentation breaks). Malformed → `{_malformed: true, raw: <text>}` in dashboard → recover before calling `danxbot_complete`.
+**Verify after MCP calls.** If an MCP tool returns `{ok: false, body: {error}}`, read `body.error` and abort the flesh-out. Surface the error in the final summary.

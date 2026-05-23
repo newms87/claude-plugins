@@ -5,52 +5,60 @@ description: 'Issue card YAML schema + lifecycle: status derivation, mcp__danx-i
 
 # Issue Card Workflow
 
-Universal rules for issue cards at `<repo>/.danxbot/issues/{open,closed}/<id>.yml`. Worker mirrors state to backend tracker (Trello) for human visibility (~60s). **Local YAML is sole source of truth.**
+Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`); worker mirrors to backend tracker (Trello) for human visibility (~60s).
 
 ## Source of Truth & Tracker Contract
 
-**Local YAML** (title, description, status, AC, children, comments, retro, blocked, waiting_on) lives canonically in `<repo>/.danxbot/issues/{open,closed}/<id>.yml`. Poller dispatches off local YAML. Danxbot agent path reads + writes YAML.
+**Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only. Poller dispatches off worker's local YAML mirror (Phase 3 scope; agents never read YAML directly).
 
 **Backend tracker (Trello) is one-way mirror with two narrow inbound exceptions:**
 
-Outbound (every tick): every YAML field pushed to tracker so humans see current state. Tracker view is *projection* of YAML; nothing tracker shows is authoritative.
+Outbound (every tick): every DB field pushed to tracker so humans see current state. Tracker view is *projection* of DB; nothing tracker shows is authoritative.
 
 Inbound (narrow):
-1. **New cards:** tracker card with no local YAML → hydrated to fresh YAML next tick. After, YAML is source forever.
+1. **New cards:** tracker card with no DB record → hydrated to fresh record next tick. After, DB is source forever.
 2. **New comments:** human-authored tracker comments pulled into `comments[]` so agent sees them. Author detection avoids echo loops.
 
-**Everything else from tracker ignored.** Human dragging card between lists, editing title, ticking AC has zero effect on YAML. Next tick re-asserts YAML state. Want status change → edit YAML via `Edit` / `Write`; chokidar mirrors to DB on file event; worker's per-tick mirror pushes to tracker.
+**Everything else from tracker ignored.** Human dragging card between lists, editing title, ticking AC has zero effect on DB. Next tick re-asserts DB state. Want status change → call `mcp__danx_dashboard__issue_transition` or `mcp__danx_dashboard__issue_edit`; worker's per-tick mirror pushes to tracker.
 
 One-way + narrow inbound = unambiguous semantics. Two-way sync would create merge conflicts.
 
-**Agent path is YAML + `mcp__danx-issue__*` MCP tools only.** Agent never calls tracker SDK directly. Worker is sole tracker writer (~60s cycle).
+**Agent path is MCP tools only.** Agent never calls tracker SDK directly; never reads/writes YAML. Worker is sole tracker writer (~60s cycle).
 
-## YAML Schema
+## DB Schema
 
-Full schema at references/yaml-schema.md. Key fields:
+Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
 
-- **`status`** — **DERIVED from lifecycle triggers, agents NEVER write.** Computed by `deriveStatus()` from timestamps + gates. Pickup → `dispatch != null` (rule 4 → `In Progress`). Approve → `ready_at` (rule 5 → `ToDo`). Complete → worker stamps `completed_at` (rule 2 → `Done`). Cancel → `cancelled_at` (rule 1 → `Cancelled`). Block → `blocked.at` (rule 3 → `Blocked`). Direct write FORBIDDEN.
-- **`dispatch`** — poller-managed, don't touch.
-- **`children[]`** — ordered list of child ids. On Epic = phase cards (UI "Phases"). On non-epic = sub-cards (UI "Children"). Phases MUST be cards, no in-card checklist.
-- **`ac[]`** — Acceptance Criteria. New items have `check_item_id: ""` (worker assigns).
-- **`retro`** — fill on Done/Cancelled/Blocked. Worker auto-renders `## Retro` comment. `commits[]` owned-repo ONLY (DX-559 gate). `action_item_ids[]` = LAST RESORT.
-- **`blocked`** — self-block trigger. `null` = card proceeds. Non-null = `{at, reason}` = card stuck, human acts. Agents never write `status: "Blocked"` — stamp trigger, derivation projects.
-- **`waiting_on`** — dep-chain gate, status-independent. Card queued behind OTHER in-flight work (phase sibling, Action Items, separate task). `null` = nothing queues. `{reason, timestamp, by[]}` = by[] is IMMEDIATE blocker(s) only (never transitive). Picker skips while any blocker non-terminal; auto-unblocks on terminal. **Waiting On ≠ Blocked** — Blocked is THIS card stuck (human), Waiting On is queued behind OTHER work.
-- **`requires_human`** — orthogonal gate, status-independent. `null` = no human needed. Non-null = `{reason, steps[], set_by, set_at}` = card needs human on system with zero agent reach (3rd-party token, vendor portal, external infra). Cleared by human via dashboard only.
+- **`status` / `status_derived`** — **DERIVED from lifecycle triggers, agents NEVER write.** Computed by server from timestamps + gates. Pickup → via `issue_transition({action: 'pickup'})` (rule 4 → `In Progress`). Approve → `issue_transition({action: 'ready'})` (rule 5 → `ToDo`). Complete → `issue_transition({action: 'complete', summary})` (rule 2 → `Done`). Cancel → `issue_transition({action: 'cancel'})` (rule 1 → `Cancelled`). Block → `issue_transition({action: 'block', reason})` (rule 3 → `Blocked`). Direct write FORBIDDEN.
+- **`dispatch`** — worker-managed, agents don't touch.
+- **`children[]`** — ordered list of child ids. On Epic = phase cards (UI "Phases"). On non-epic = sub-cards (UI "Children"). Phases MUST be cards, no in-card checklist. Set via `issue_edit({parent_id})` on child cards.
+- **`ac[]`** — Acceptance Criteria. Server assigns `check_item_id` on create. Agents populate via `issue_edit({ac})`.
+- **`retro`** — fill on Done/Cancelled/Blocked via `issue_retro({good, bad, action_item_ids[], commits[]})`. Server auto-renders `## Retro` comment. `commits[]` owned-repo ONLY (DX-559 gate). `action_item_ids[]` = LAST RESORT.
+- **`blocked`** — self-block trigger. Null = card proceeds. Non-null = `{at, reason}` = card stuck, human acts. Set via `issue_transition({action: 'block', reason})`. Agents never write `status: "Blocked"` — call transition, server projects.
+- **`waiting_on`** — dep-chain gate, status-independent. Card queued behind OTHER in-flight work (phase sibling, Action Items, separate task). Null = nothing queues. `{reason, timestamp, by[]}` = by[] is IMMEDIATE blocker(s) only (never transitive). Picker skips while any blocker non-terminal; auto-unblocks on terminal. Set via `issue_dependency({action: 'add', kind: 'depends_on'})`. **Waiting On ≠ Blocked** — Blocked is THIS card stuck (human), Waiting On is queued behind OTHER work.
+- **`requires_human`** — orthogonal gate, status-independent. Null = no human needed. Non-null = `{reason, steps[], set_by, set_at}` = card needs human on system with zero agent reach (3rd-party token, vendor portal, external infra). Set via `issue_requires_human({id, set: true, reason, steps[]})`. Cleared by human via dashboard only.
 
-## MCP Tools
+## MCP Tools Reference
 
 | Tool | Purpose |
 |---|---|
-| `danx_issue_create({type, title, description, parent_id?, ac?, ...})` | Allocate next `<PREFIX>-N`, build canonical YAML, write `open/<id>.yml`. Returns `{created: true, id, ...}` or `{created: false, errors[]}`. Only mutation tool agents need (beyond Edit/Write). |
-| `danx_issue_list({status?, type?, parent_id?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns `[{id, title, status, type, parent_id}]`. Use BEFORE hand-globbing dir. |
-| `danx_issue_close({id})` | Explicit terminal close — sets `status: Cancelled` if not terminal, fills retro, moves to `closed/`. |
+| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically. Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
+| `mcp__danx_dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
+| `mcp__danx_dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
+| `mcp__danx_dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
+| `mcp__danx_dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. |
+| `mcp__danx_dashboard__issue_triage({id, verdict: 'approve'\|'cancel'\|'keep'\|'defer', ice?: {i,c,e}, reason, ttl_seconds?})` | Single atomic triage call. Server routes per verdict. |
+| `mcp__danx_dashboard__issue_comment({id, action: 'add'\|'edit'\|'delete', comment_id?, text?})` | Comment lifecycle (add/edit/delete). Server stamps author + timestamp. |
+| `mcp__danx_dashboard__issue_dependency({id, action: 'add'\|'remove', kind?: 'depends_on'\|'conflict_on', target_id?, reason?, dependency_id?})` | Manage card dependencies. |
+| `mcp__danx_dashboard__issue_requires_human({id, set: true, reason, steps[]} \| {id, set: false})` | Set/clear the `requires_human` gate. Server stamps `set_by`/`set_at`. |
+| `mcp__danx_dashboard__issue_retro({id, good, bad, action_item_ids[], commits[]})` | Populate retro on terminal. |
 
-**Single-card read:** `Read .danxbot/issues/open/<id>.yml` directly (fall back to `closed/` if not found). YAML is source of truth; path deterministic.
+### MCP Error Handling
 
-**Edit semantics:** Edit YAML directly via `Edit` (preferred — preserves other agents' edits) or `Write` (full rewrite). Chokidar mirrors to Postgres on file event; post-completion auto-sync pushes to tracker on `danxbot_complete` fire. Worker's per-tick mirror (~60s) is steady-state safety net. **No agent-facing save verb** — agents edit in place, worker mirrors.
+All tools return `{ok: true|false, status, body}`. On error, `body` contains structured error:
+- `{error: "<reason>", failed_gate?, non_terminal_phases?, offending_keys?}`
 
-**Terminal file moves:** worker stamps `completed_at` or `cancelled_at` on `danxbot_complete` calls, then moves file `open/` → `closed/` on next poll as part of auto-sync. `blocked.at` populated keeps YAML in `open/` (non-terminal). **Never move file yourself.**
+Agents read `result.body.error` (NOT `result.errors[]`) and route per the message. Each tool's own MCP description names the invariant it encodes (e.g., `issue_transition` rejects non-terminal phases on `complete`). Reference that mechanism, not paraphrases.
 
 ## Lifecycle & Status Derivation
 
@@ -63,14 +71,14 @@ See references/phases-epics.md for split criteria, epic mechanics, phase creatio
 ## General Rules
 
 - One card at a time; no orchestrator, no subagents
-- Don't block on tracker sync — worker retries next poll; YAML is canonical
+- Call MCP tools — never read/write YAML
 - `type: Bug` or `type: Feature` or `Epic` — required
-- Comments = markdown with `##` headers
-- AC lives in `ac[]` — never inline. Phases/sub-cards in `children[]` as `<PREFIX>-N`; each child has own YAML.
-- `retro.action_item_ids[]` = only valid `<PREFIX>-N` format. Create card first, push id.
+- Comments = markdown with `##` headers (set via `issue_comment`)
+- AC lives in `ac[]` (set via `issue_edit`) — never inline. Phases/sub-cards in `children[]` as `<PREFIX>-N`; each child has own DB record.
+- `retro.action_item_ids[]` = only valid `<PREFIX>-N` format. Create card first, push id (via `issue_retro`).
 - Connected repo cards reference that repo's architecture (not danxbot paths).
 - NEVER call `mcp__trello__*` from agent.
-- NEVER manually move YAML files `open/` ↔ `closed/` — terminal trigger fires worker move.
-- NEVER write `status:` literals — field is derived from triggers.
-- NEVER append `## Retro` to `comments[]` — worker auto-renders.
+- NEVER call `Edit`/`Write`/`Read` against YAML paths.
+- NEVER write `status:` literals via `issue_edit` — use `issue_transition` for lifecycle changes.
+- NEVER manually append `## Retro` to comments — use `issue_retro` tool.
 - NEVER escape markdown — use formatting (`##`, fenced blocks, tables).

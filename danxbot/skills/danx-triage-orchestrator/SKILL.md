@@ -15,7 +15,7 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
 
 ## Steps
 
-1. **List candidates.** `mcp__danx-issue__danx_issue_list({status: "Review"})` — or the operator-directed scope. Capture the array of ids.
+1. **List candidates.** call `mcp__danx_dashboard__issue_list({status_derived: "Review"})` — or the operator-directed scope. Capture the array of ids.
    - Operator notes may say "only Blocked", "Review + Waiting On", "only DX-3xx", "skip epics", etc. Adjust the list call (or filter the result) accordingly. No card picker — you decide.
    - Empty list → `danxbot_complete({status: "complete", summary: "No triage candidates in scope."})` and exit.
 
@@ -24,7 +24,7 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
    ```
    Invoke the `danxbot:danx-triage-card` skill via the Skill tool to triage card <ID>.
 
-   Follow the skill exactly: Read the YAML at `.danxbot/issues/open/<ID>.yml` (fall back to `closed/<ID>.yml`), apply the per-status decision tree, Edit the YAML's `triage{}` block (and `status` / `blocked` if the decision is terminal), confirm with Read.
+   Follow the skill exactly: call mcp__danx_dashboard__issue_get to load the card, apply the per-status decision tree, call mcp__danx_dashboard__issue_triage to apply the verdict, append a comment via mcp__danx_dashboard__issue_comment.
 
    DO NOT call `danxbot_complete` — this is a subagent inside an orchestrator. Return a one-line summary instead: `<ID>: <decision>` (e.g. `DX-515: kept Review, ICE 64 → 72`).
 
@@ -41,13 +41,13 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
 ## Hard rules
 
 - **Concurrency cap = 3.** Never more than 3 `Agent` tool calls in a single message. Wait for the batch to return before sending the next.
-- **You do not Edit YAMLs.** Subagents do. The orchestrator's only writes are the final `danxbot_complete` call.
+- **You do not call MCP tools.** Subagents do via the skill. The orchestrator's only writes are the final `danxbot_complete` call.
 - **No `/loop`, no `ScheduleWakeup`.** This is single-shot. The same forbidden/allowed contract from `danxbot:danx-triage-card` applies — read its `/loop and ScheduleWakeup — narrow contract` section if uncertain.
-- **No card in-progress flip.** Triage is read-and-decide. Subagents only Edit `triage{}` (and `status`/`blocked` on terminal decisions per the per-card skill's decision tree). They never flip `status: "ToDo" → "In Progress"`.
+- **No card in-progress flip.** Triage is read-and-decide. Subagents only call `issue_triage` (and `issue_transition` on terminal decisions per the per-card skill's decision tree). They never flip `status` directly.
 - **No staged-files writes, no `/api/launch` fan-out.** Parallelism is in-session (Task tool), not via worker dispatches. The dispatch row that started you is the only worker row for this triage pass.
 
 ## Failure handling
 
 - Subagent throws / returns no decision → log `<ID>: failed (<reason>)` in the roster and continue. Do not retry within this orchestrator pass.
-- `mcp__danx-issue__danx_issue_list` errors → `danxbot_complete({status: "failed", summary: "Could not list triage candidates: <reason>"})`.
+- `mcp__danx_dashboard__issue_list` returns `{ok: false, body: {error}}` → `danxbot_complete({status: "failed", summary: "Could not list triage candidates: <error>"})`.
 - Operator notes parse-ambiguous (e.g. ask for a scope the list call cannot express) → make the best literal interpretation and proceed; surface the interpretation in the final summary so the operator can re-run with sharper notes if needed.

@@ -26,9 +26,9 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
 ## Procedure
 
-1. **Load the card.** `Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`). If user gave a vague ask ("unstick the urgent one"), call `mcp__danx-issue__danx_issue_list` filtered by `status: Blocked`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest `updated_at` first if priority ties.
+1. **Load the card.** Call `mcp__danx_dashboard__issue_get({id})`. If user gave a vague ask ("unstick the urgent one"), call `mcp__danx_dashboard__issue_list({status_derived: 'Blocked'})`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest timestamp first if priority ties.
 
-2. **Find the authoritative blocker comment.** Scan `comments[]` from newest to oldest. The last `author: danxbot` comment containing a "Blocked" / "Operator action" / "What's still needed" section is the contract. If absent, fall back to card description + `blocked.reason` + open AC items.
+2. **Find the authoritative blocker comment.** Scan `comments[]` from newest to oldest. The last comment containing a "Blocked" / "Operator action" / "What's still needed" section is the contract. If absent, fall back to card description + `blocked.reason` + open AC items.
 
 3. **MISCLASSIFICATION AUDIT — run before writing the report.** Inspect every "operator must do" step. If EVERY step is locally executable, the card was wrongly punted. Demote it + execute yourself, do NOT produce a playbook.
 
@@ -49,10 +49,10 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
    Mixed (some local, some human-only) → write the playbook only for the human-only steps; execute the local steps yourself first, then surface only what remains.
 
    **Demote procedure:**
-   - Clear `blocked: null`. Worker derives status away from `Blocked` once `blocked.at` is null; the next dispatch start re-stamps `ready_at` + populates the dispatch sidecar (auto-flips derived status to `In Progress`). Never write `ready_at` from this skill — `ready_at` is set by triage Approve OR by the dispatch auto-flip.
-   - Append a comment naming the misclassification: which steps were local-runnable, what you ran, what the outcome was.
+   - Call `issue_transition({id, action: 'unblock'})` to clear the block. The server derives status away from `Blocked` once `blocked.at` is null.
+   - Append a comment via `issue_comment` naming the misclassification: which steps were local-runnable, what you ran, what the outcome was.
    - Do the work.
-   - Update AC + close per normal `issue-card-workflow`.
+   - Update AC + close per normal `issue-card-workflow` via appropriate MCP calls.
    - Skip steps 4–5 of this skill.
 
 4. **Extract four fields:**
@@ -90,11 +90,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
 ## Overlap detection (rule #2)
 
-Before picking up any new card, run:
-
-```
-mcp__danx-issue__danx_issue_list  status="Blocked"
-```
+Before picking up any new card, call `mcp__danx_dashboard__issue_list({status_derived: 'Blocked'})`.
 
 For each Blocked card, check whether your target card shares any of:
 - `parent_id` (same epic)
@@ -121,6 +117,6 @@ Overlap found → invoke `unblock` on the upstream card FIRST and surface the de
 
 ## Blocked Gate (Pre-Write Check)
 
-Before stamping `blocked: {at, reason}` on any issue card (which derives the card to `Blocked` via `deriveStatus`): walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation.
+Before calling `issue_transition({id, action: 'block', reason})` on any card: walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation.
 
 This is the symmetric write-side check: `unblock` (above) catches misclassified cards on the read side. The Blocked gate catches them on the write side. A card that fails this check should never have been marked `Blocked` in the first place — fix the work, not the status.

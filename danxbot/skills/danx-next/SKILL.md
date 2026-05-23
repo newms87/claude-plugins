@@ -25,13 +25,13 @@ You process ONE card: **read YAML → plan → implement → quality gates → v
 
 Config references: `.claude/rules/danx-repo-config.md` for repo commands. Never hardcode IDs.
 
-## YAML Schema
+## DB Schema
 
-See references/yaml-schema.md for the complete schema table. Quick points:
+All cards are in the DB, accessed via MCP tools (`mcp__danx_dashboard__issue_*`). Quick points:
 
-- **`status`** is **DERIVED** from lifecycle triggers — agents NEVER write. Pickup auto-flipped via `dispatch != null` → rule 4 → `In Progress`. Approve → `ready_at` (rule 5 → `ToDo`). Complete → worker stamps `completed_at` (rule 2 → `Done`). Cancel → `cancelled_at` (rule 1 → `Cancelled`). Block → `blocked.at` (rule 3 → `Blocked`). Direct `status:` write FORBIDDEN.
-- **No save verb.** Edit/Write the YAML; chokidar mirrors to Postgres + tracker.
-- **`retro`** filled on terminal save; worker auto-renders `## Retro` comment. `commits[]` is owned-repo only (DX-559 gate). `action_item_ids[]` is LAST RESORT.
+- **`status` / `status_derived`** is **DERIVED** from lifecycle triggers — agents NEVER write via `issue_edit`. Pickup → `issue_transition({action: 'pickup'})` → rule 4 → `In Progress`. Approve → `issue_transition({action: 'ready'})` → rule 5 → `ToDo`. Complete → `issue_transition({action: 'complete', summary})` → rule 2 → `Done`. Cancel → `issue_transition({action: 'cancel'})` → rule 1 → `Cancelled`. Block → `issue_transition({action: 'block', reason})` → rule 3 → `Blocked`. Direct `status:` write FORBIDDEN.
+- **Use MCP tools for all mutations.** Call `issue_edit` for prose, `issue_transition` for lifecycle, `issue_comment` for comments, `issue_retro` for terminal retro.
+- **`retro`** filled on terminal via `issue_retro({good, bad, action_item_ids[], commits[]})`. Server auto-renders `## Retro` comment. `commits[]` is owned-repo only (DX-559 gate). `action_item_ids[]` is LAST RESORT.
 - **`blocked`** vs **`waiting_on`** — blocked = THIS card stuck (human needed); waiting_on = queued behind OTHER work (no human). Both dispatch gates; status-independent. `conflict_on[]` + `requires_human` are two more independent gates.
 
 ## Detailed Steps
