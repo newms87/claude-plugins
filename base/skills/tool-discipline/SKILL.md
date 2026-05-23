@@ -36,7 +36,13 @@ Long-running (deploys, test suites, workers, dev servers) → Bash with `run_in_
 
 **FORBIDDEN:** double-background (`&` + flag). The `&` detaches from Bash → harness tracks wrapper only → real process orphans → kill fails.
 
-**Per-command gate.** Every long-running Bash: scan for trailing `&` / `nohup` / `setsid` — if ANY, strip. Check BEFORE send.
+**Mechanical pre-write check — before EVERY Bash invocation, regardless of complexity:**
+
+1. Does the command contain trailing `&`, `nohup`, `setsid`, `disown`, OR `> /tmp/*.log 2>&1 &` (output-redirect-then-background)? → REWRITE. Strip the backgrounding chars. Add `run_in_background: true` to the Bash tool params.
+2. Does the command launch ANY of: `make launch-*`, `make deploy*`, `make dev*`, `docker run`, `docker compose up` (without `-d`), `npm run dev`, `yarn dev`, `vite`, `tsx ... --watch`, a worker / dashboard / poller startup script? → MUST use `run_in_background: true`. Foreground would block the turn.
+3. Tempted to capture output via `> /tmp/<name>.log 2>&1` so you can `tail -f` it later? → That's the smell of shell-backgrounding instinct. Harness already streams stdout per call + retains the background task's transcript at the harness-managed `output_file`. Use that, not your own tmpfile.
+
+"I'll just background it real quick to keep moving" / "the user authorized the worker launch so the mechanism doesn't matter" / "I'll redirect to a logfile so I can read it" are rationalizations, not reasoning. The mechanism is what gets enforced; user authorization scopes WHAT runs, not HOW it runs.
 
 ## Browser automation
 
