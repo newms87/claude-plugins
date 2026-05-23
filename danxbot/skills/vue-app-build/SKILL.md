@@ -1,12 +1,12 @@
 ---
 name: vue-app-build
-description: 'Vue SPA template build-and-preview contract: edit at templates/{id}/source/, template_save bundles, consumer auto-runs vite build, Playwright preview.'
+description: 'Vue SPA template build-and-preview contract: edit `App.vue` / `style.css` / `sample-data.json` under `templates/<templateId>/source/`, call `danxbot_template_save({templateId})` once, danxbot worker runs `vite build` + ships the tarball via async callback. HMR live preview auto-spawned per template.'
 argument-hint: optional — `/vue-build` to force-load when the trigger heuristics miss
 ---
 
 # Vue App Build
 
-You are working on a Vue SPA template inside a danxbot workspace. The consumer repo (gpt-manager and friends) owns the template source on S3; danxbot owns the build host (Node + Vite + shared deps + Playwright). SG-187 unified the agent flow: source files are pre-staged on disk before you spawn, `template_save({id})` walks the staged dir + pushes + auto-rebuilds in one round-trip, and `template_rebuild` is reserved for explicit cache-bust on unchanged source.
+You are working on a Vue SPA template inside a danxbot `vue-app` workspace. Danxbot owns the entire build flow: scaffold, Vite build host, shared deps, tarball pack, async callback to the consumer's `callback_url`, HMR live preview. The agent owns three editable source files (`App.vue` / `style.css` / `sample-data.json`); everything else (scaffold infra, `vite build` invocation, dist upload) is danxbot infrastructure.
 
 This skill is the standing contract for that loop. Load it once at the start of any Vue-template card; the TodoWrite checklist guides every iteration.
 
@@ -14,146 +14,168 @@ This skill is the standing contract for that loop. Load it once at the start of 
 
 Mandatory load when ANY of the following holds:
 
-- The workspace cwd or any `templates/{id}/source/` subtree contains `App.vue` AND `package.json` declares `vue` (`"vue": "..."` in `dependencies` / `peerDependencies` / `devDependencies`).
+- The workspace cwd contains `templates/<id>/source/App.vue` AND `package.json` declares `vue` (`"vue": "..."` in `dependencies` / `peerDependencies` / `devDependencies`).
 - The operator typed `/vue-build` explicitly.
-- You are about to call the consumer repo's `template_save` or `template_rebuild` MCP tools.
-- You are about to shell out `vite build`, `npx vite`, `pnpm vite`, `yarn vite`, or any equivalent Vite invocation from the workspace.
+- You are about to call the `mcp__danxbot__danxbot_template_save` MCP tool.
+- You are about to shell out `vite build`, `npx vite`, `pnpm vite`, `yarn vite`, or any equivalent Vite invocation from the workspace (forbidden — see Anti-patterns).
 - The card's `description` / `ac[]` names a Vue SPA template, a `shell_version`, or `/srv/sfc-deps/`.
 
-Do NOT load this skill when the work is purely backend (no Vue source touched), or when the card is the danxbot-side infrastructure that BUILDS Vue apps (DX-539 endpoint, DX-540 deps, DX-542 Playwright preview tool). Those cards edit danxbot itself; this skill is for the agent CONSUMING that infrastructure.
+Do NOT load this skill when the work is purely backend (no Vue source touched), or when the card is the danxbot-side infrastructure that BUILDS Vue apps (`src/template-build/*`, `src/worker/template-save-route.ts`, `src/template-hmr/*`). Those cards edit danxbot itself; this skill is for the agent CONSUMING that infrastructure.
 
 ## The canonical loop
 
 Four steps, one direction. Do not reorder; do not skip.
 
 ```
-┌───────────────────────────────────────────────────────────────────────┐
-│  1. Read pre-staged source       → /tmp/schemas/{sid}/templates/{tid}/│
-│                                    source/{App.vue, main.ts, style.css│
-│                                    , package.json, sample_data.json}  │
-│  2. Edit / Write source          → in-place edits, native tools       │
-│  3. template_save({id})          → MCP walks dir, POSTs bundle;       │
-│                                    backend computes source hash; runs │
-│                                    SfcTemplateBuilder synchronously   │
-│                                    when hash diverges from            │
-│                                    last_build_hash. Envelope carries  │
-│                                    {build_was_dirty, build_hash,      │
-│                                    build_errors[], build_duration_ms} │
-│  4. Playwright preview at URL    → screenshot, DOM-snapshot, iterate  │
-└───────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│  1. Read scaffold source         → <cwd>/templates/<templateId>/source/│
+│                                    {App.vue, style.css, sample-data   │
+│                                    .json, main.ts, package.json,      │
+│                                    index.html}                         │
+│  2. Edit / Write source          → only App.vue / style.css /         │
+│                                    sample-data.json (the other three  │
+│                                    are scaffold infra — see Forbidden)│
+│  3. danxbot_template_save        → MCP envelope POSTs to danxbot     │
+│        ({templateId})              worker; worker runs `vite build`   │
+│                                    against shared shell deps, packs   │
+│                                    dist/ into a gzipped tarball at    │
+│                                    /tmp/danxbot-app/<dispatchId>.tgz, │
+│                                    fires async callback to consumer  │
+│                                    with bundle download URL. Returns │
+│                                    synchronous {ok, build_hash,      │
+│                                    source_hash, build_duration_ms}.  │
+│  4. HMR preview (optional)       → Vite HMR child auto-spawned at    │
+│                                    dispatch boot; every Edit hot-    │
+│                                    reloads. Live URL via             │
+│                                    /api/template-hmr/active.         │
+└────────────────────────────────────────────────────────────────────────┘
          ↑                                                ↓
          └────── iterate until visual fidelity matches ───┘
 ```
 
-`template_workdir` is retired — staging happens in the Laravel dispatch pipeline before you spawn. `template_rebuild` is still available but unnecessary in the typical loop; call it only to force a fresh build on unchanged source (cache-bust after a shell upgrade, for example).
+Single-call save: `danxbot_template_save` walks the full source tree once, builds, packs, and ships. There is no separate sample-data save call — `sample-data.json` lives in the source tree as a normal file and ships with every save.
 
-### Step 1 — Read pre-staged source
+### Step 1 — Read scaffold source
 
-The dispatch infrastructure already wrote the SFC source files to disk before you started. Find them at the path layout your consumer-repo prompt lists (typically `templates/{tid}/source/App.vue`, `main.ts`, `style.css`, `package.json`, `sample_data.json`). `Glob` + `Read` to build a mental model of every SFC, every composable, every store. Do not edit yet; do not shell `vite` to "see what builds." The first edit must be intentional.
+Danxbot's dispatch infrastructure scaffolded the six-file Vue project before you spawned. Find the files at `templates/$ACTIVE_TEMPLATE_ID/source/`:
 
-If the staged dir is empty (newly-created template, never built before), the agent owns scaffolding: `Write` the initial `App.vue` / `main.ts` / `style.css` / `package.json` / `sample_data.json` before Step 3.
+| File | Role | Editable |
+|---|---|---|
+| `App.vue` | Top-level component; canonical prop contract (`data`, `theme`) | ✅ yes |
+| `style.css` | App-wide stylesheet | ✅ yes |
+| `sample-data.json` | Default fixture when no `data` prop supplied | ✅ yes |
+| `main.ts` | Self-mount + `__settings` query-param parser | ❌ NO — scaffold infra |
+| `package.json` | Vendor pins | ❌ NO — scaffold infra |
+| `index.html` | Vite entry + importmap baked at scaffold time | ❌ NO — scaffold infra |
+
+`Glob` + `Read` to build a mental model of every editable file. Do not edit yet. The first edit must be intentional.
+
+If the source dir is empty or `App.vue` is missing → scaffold boot failed. Call `danxbot_complete({status: "failed", summary: "scaffold absent — template source directory empty"})` so the consumer knows the build never started.
 
 ### Step 2 — Edit source
 
-Use `Edit` / `Write` directly against the staged files. Forbidden:
+Use `Edit` / `Write` directly against `App.vue` / `style.css` / `sample-data.json`. Every save is hot-reloaded into the live preview iframe automatically by the auto-spawned Vite HMR child.
 
+Forbidden:
+
+- Editing `main.ts`, `package.json`, or `index.html` (scaffold infra).
 - `vite build` / `npx vite` / `vite dev` / `vite preview` invoked from the agent workspace (see Anti-patterns).
-- Spawning a Node process to "test the build locally" — the consumer backend + danxbot's build endpoint (DX-539) is the test path.
+- Adding new npm dependencies — `package.json` is pinned against the baked importmap; new deps would not resolve.
 - Editing files outside the template's `source/` subtree — only files there are part of the SFC bundle.
 
-### Step 3 — `template_save({id})`
+### Step 3 — `danxbot_template_save({templateId})`
 
-Call the consumer repo's `template_save` MCP tool with just the template id. It walks `templates/{id}/source/`, builds the `files[]` payload, POSTs the bundle to the consumer backend. The backend:
+Call exactly once when satisfied (or multiple times during iteration if you want each save to produce a callback). Pass `templateId: "$ACTIVE_TEMPLATE_ID"` verbatim — passing a different id walks the wrong source directory.
 
-1. Validates every path against the SFC allowlist (`App.vue` / `*.vue` / `*.ts` / `*.css` / `package.json` / `sample_data.json`). Disallowed paths abort the whole save with 422 — no torn source trees.
-2. Writes every file to `template-definitions/<id>/<path>` on the Storage disk.
-3. Computes the SHA-256 source-bundle hash and compares to `TemplateDefinition.last_build_hash`.
-4. **If the hash diverged** (or the template never built before): invokes `SfcTemplateBuilder` synchronously — runs `vite build` on the danxbot host with the matching `shell_version` deps, uploads the dist, persists the new `last_build_hash`. The call returns once the build settles.
-5. **If the hash matches**: returns immediately with `build_was_dirty: false`.
+The worker:
 
-Response envelope:
-
-```
-{
-  status: "ok" | "error",
-  written: [{path, size}],
-  source_hash: "<sha256>",
-  build_was_dirty: true | false,
-  build_hash: "<sha256 of dist on disk>",
-  build_errors: [{type, message}],
-  build_duration_ms: <int>
-}
-```
+1. Walks `<cwd>/templates/<templateId>/source/`.
+2. Computes `source_hash` (SHA-256 over the source bundle).
+3. Spawns `vite build` against `/srv/sfc-deps/<shell_version>/node_modules/`.
+4. On `vite build` failure → returns synchronous `{ok: false, error, source_hash, build_duration_ms}`. Fix source, call save again.
+5. On success → packs `dist/` into a gzipped tarball at `/tmp/danxbot-app/<dispatchId>.tgz`.
+6. Returns synchronous `{ok: true, build_hash, source_hash, file_count, build_duration_ms}`.
+7. Fires async callback POST to the consumer's `callback_url` (set on the original `/api/launch` body) with body `{ok: true, bundle_url: "<worker>/api/get-app/<dispatchId>", build_hash, source_hash, build_duration_ms}` + Bearer `callback_token`.
+8. Consumer GETs `/api/get-app/<dispatchId>` to retrieve the `.tgz`.
 
 Failure handling:
 
-- 422 with `errors[].type: "path_not_allowed"` → fix the offending path locally and re-save.
-- 422 with `errors[].type: "no_staged_source"` → the source dir on disk is empty. You skipped Step 2 (or wrote files outside the staged dir). Fix the file location and re-save.
-- 502 with `build_errors[].type: "build_failed"` → `vite build` returned non-zero. The `message` carries the compiler stderr. Read it, edit the offending source file, re-save (the next save's hash compare will still trigger a build).
-- Network / S3 errors during the build push → retry once; second failure → `## Operator action required` comment with the `build_id` (when present) + error verbatim.
+- `ok: false` with `error` mentioning a compiler / SFC parse failure → read the message, edit the offending source file, re-save. Compiler errors are the agent's job.
+- `ok: false` with `deps_missing` style error → escalate (`/srv/sfc-deps/<shell_version>/` not provisioned on the host; DX-540 / provisioner-side problem).
+- Network / S3 errors during the async callback → danxbot retries with exponential backoff. The synchronous verdict is still authoritative for your `ok: true` decision.
 
-### Step 4 — Playwright preview
+### Step 4 — HMR preview (optional)
 
-Open the template's preview URL via the Playwright MCP server's `navigate` tool. Take a screenshot; read the DOM snapshot. Verify the rendered output matches the card's visual-fidelity AC.
+When you want to verify HMR is up before saving, fetch:
 
-Iterate Steps 2 → 4 until the result is correct.
+```bash
+curl "http://localhost:$DANXBOT_WORKER_PORT/api/template-hmr/active?templateId=$ACTIVE_TEMPLATE_ID"
+```
 
-## When to fall back to `template_rebuild`
+Response `{url, ...}` carries the live preview URL. The consumer's UI is the real renderer; your job is correctness of the source, not the preview.
 
-`template_rebuild({id})` stays on the tool surface for two narrow cases:
+### Step 5 — Signal completion
 
-1. **Force a cache-bust** — the source hasn't changed but the underlying shell_version / shared deps were rebuilt on the host and the existing dist is stale.
-2. **Diagnose a "saved but no build" report** — call `template_rebuild` to re-run the build pipeline against the current source bundle and read the returned envelope as a clean baseline.
+After the final `danxbot_template_save` returns `ok: true`:
 
-Do NOT use `template_rebuild` after every `template_save` — that doubles the cold-build cost. The save endpoint's auto-build is the primary path.
+```
+danxbot_complete({status: "complete", summary: "<one-line of what shipped>"})
+```
+
+Do NOT emit any output text after `danxbot_complete` — the worker discards the conversation stream within 5s of the terminal call.
 
 ## Failure modes
 
 | Symptom | Meaning | Action |
 |---|---|---|
-| `build_errors[].type: "build_failed"` w/ `vite build` stderr | Compiler error in the saved source bundle. | Read `message`, identify the offending source file, `Edit` to fix, re-save. Compiler errors are the agent's job — never escalate to "needs operator." |
-| `build_errors[].type: "deps_missing"` | `/srv/sfc-deps/<shell_version>/node_modules/` does not exist on the host. | DO NOT install deps yourself. Escalate: append `## Operator action required` comment naming the missing `shell_version`. The danxbot deploy hook (DX-540) is responsible for provisioning; missing dir means DX-540 has not run for this version yet, OR the consumer repo's `shared_deps_lock.json` was never published. Follow Step 10b (Waiting On) on the deploy-side card or file an Action Item against danxbot infra. |
-| `source_download_failed` / `dist_upload_failed` | Danxbot transport error mid-build. | Retry `template_save` once (likely transient S3). Second failure → `## Operator action required` with the build_id + error verbatim. |
-| `build_was_dirty: true` but Step 4 preview is wrong | Build succeeded; bug is in YOUR source. | Restart at Step 1 with a careful re-read of every staged file. |
+| `ok: false` with vite stderr in `error` | Compiler error in saved source. | Read error, edit source, re-save. Compiler errors are the agent's job — never escalate as "needs operator." |
+| `ok: false` with `deps_missing` / `/srv/sfc-deps/<v>/` missing | Host did not provision SFC deps for this `shell_version`. | DO NOT install deps yourself. Escalate via `danxbot_complete({status: "failed", summary: "deps_missing for shell_version=<v> — host provisioner did not run"})`. Danxbot's `provision-sfc-deps` (DX-746) owns provisioning. |
+| Source dir empty / `App.vue` absent at Step 1 | Scaffold boot failed. | `danxbot_complete({status: "failed", summary: "scaffold absent"})`. |
+| 3 consecutive `ok: false` with the same error | Persistent compiler failure you can't resolve. | `danxbot_complete({status: "failed", summary: "<last error verbatim>"})`. |
+| `danxbot_template_save` not in your tools list | Dispatch was launched without `callback_url` / `callback_token`. | `danxbot_complete({status: "failed", summary: "danxbot_template_save unavailable — launch was missing callback channel"})`. |
 
 ### Shell version drift
 
-If the card's `description` references one `shell_version` but the build envelope returns a different one (visible in the consumer's preview / metadata response), the consumer repo's template registry has moved underneath the card. Append a `## Shell version drift` comment naming both versions, then proceed against the saved version (it is authoritative — the consumer repo's storage is the source of truth for active versions). Mention the drift in retro so a follow-up can audit whether the card was scoped against a now-deprecated shell.
+If the card's `description` references one `shell_version` but the build envelope's `error` references a different one, the host has moved underneath the card. Append a `## Shell version drift` comment naming both versions and proceed against the host-resolved version (the host's deps tree is the source of truth for active versions). Mention the drift in retro so a follow-up can audit.
 
 ## Anti-patterns
 
 | Forbidden | Why |
 |---|---|
-| Shell `vite build` / `npx vite` / `pnpm vite` directly from the agent workspace | The agent workspace has no shared `node_modules` (those live at `/srv/sfc-deps/<v>/`, mounted only at build time inside the danxbot endpoint's scratch dir). Direct invocation fails for the wrong reason ("module not found") or — worse — partially succeeds against a stale local install and ships a divergent dist. The `template_save` path's auto-build is the ONLY supported build. |
-| Editing in-workspace and assuming consumer repo picks it up | Edits don't auto-propagate — `template_save({id})` is the only push primitive. Skipping it strands changes; the next dispatch re-stages from S3 and your edits vanish. |
-| Bypassing `template_save` by uploading to S3 directly | The consumer repo owns the path allowlist + `last_build_hash` bookkeeping + the build trigger. Direct S3 upload skips all three, leaves the DB in a wrong state, and the next build will operate on whichever bytes raced last. |
-| `npm install` in the agent workspace | Shared deps live in `/srv/sfc-deps/<v>/` (DX-540). The workspace has no `package-lock.json` and no install budget. If you think you need a new dep, you need a new `shell_version` published from the consumer repo — escalate to operator. |
-| Polling `template_save` / `template_rebuild` with `/loop` or `ScheduleWakeup` | Both calls are synchronous — the MCP tool holds the connection open until the build returns. You await the call; no manual polling. |
-| Treating `build_errors[].type: "build_failed"` as "needs operator" | Compiler errors are the agent's job to fix in-session. Step 1.5 of `danxbot:danx-next` applies. Read the stderr in `message`, edit source, re-save. |
-| Calling `template_rebuild` after every `template_save` | The save endpoint already runs the build when the source hash diverges. Re-running adds a full cold-build cost for zero new behavior. Use `template_rebuild` only for the two narrow cache-bust / diagnostic cases listed above. |
-| Calling `template_workdir` | Retired by SG-187. Source is pre-staged on disk; reach for `Read` directly. The tool no longer exists on the MCP surface. |
+| Shell `vite build` / `npx vite` / `pnpm vite` directly from the agent workspace | The workspace has no shared `node_modules` (those live at `/srv/sfc-deps/<v>/`, mounted only by the worker at build time). Direct invocation fails for the wrong reason ("module not found") or — worse — partially succeeds against a stale install and ships a divergent dist. `danxbot_template_save`'s auto-build is the ONLY supported build. |
+| Editing in-workspace and assuming the consumer picks it up | Edits don't auto-propagate — `danxbot_template_save({templateId})` is the only push primitive. Skipping it strands changes; the next dispatch re-scaffolds and your edits vanish. |
+| Bypassing `danxbot_template_save` by writing the tarball yourself | Danxbot owns the path allowlist + hash computation + the async callback wiring. Direct writes skip all three and the consumer never gets a usable `bundle_url`. |
+| Editing `main.ts` / `package.json` / `index.html` | Scaffold infra. Downstream tooling (importmap, settings parser, mount path) keys on their exact shape. |
+| `npm install` in the agent workspace | Shared deps live in `/srv/sfc-deps/<v>/` (DX-746). The workspace has no `package-lock.json` and no install budget. If you think you need a new dep, you need a new `shell_version` provisioned on the host — escalate via `danxbot_complete`. |
+| Polling `danxbot_template_save` with `/loop` or `ScheduleWakeup` | The call is synchronous — the MCP tool holds the connection open until the build returns. You await the call; no manual polling. |
+| Treating compiler errors as "needs operator" | Compiler errors are the agent's job to fix in-session. Read stderr in `error`, edit source, re-save. |
+| Calling `danxbot_template_save` with a templateId other than `$ACTIVE_TEMPLATE_ID` | The tool walks `templates/<templateId>/source/`; passing a different id walks the wrong directory and produces an empty or wrong bundle. |
+| Calling `danxbot_complete` before the final `danxbot_template_save` returns `ok: true` | The receiver only gets a usable bundle when save runs to completion. |
 
 ## TodoWrite checklist (auto-populate on load)
 
 Drop these into TodoWrite at skill load and tick as you go:
 
-1. `Read pre-staged source under templates/{id}/source/ with Glob + Read`
-2. `Edit / Write source files in place (no shell vite, no editing outside source/)`
-3. `Call template_save({id}); inspect {status, build_was_dirty, build_errors[]}`
-4. `If build_errors[]: read message, fix source file, re-save`
-5. `Open preview URL in Playwright; screenshot + DOM-snapshot`
-6. `Iterate Steps 2-5 until visual fidelity AC holds`
+1. `Read scaffold source under templates/$ACTIVE_TEMPLATE_ID/source/ with Glob + Read`
+2. `Edit App.vue / style.css / sample-data.json in place (no shell vite, no editing infra files)`
+3. `Call danxbot_template_save({templateId: $ACTIVE_TEMPLATE_ID}); inspect {ok, error, build_hash}`
+4. `If ok: false: read error, fix source file, re-save`
+5. `Verify HMR preview URL via /api/template-hmr/active (optional sanity check)`
+6. `Iterate Steps 2-5 until source is correct`
+7. `Final save returns ok: true → danxbot_complete({status: "complete", summary: "..."})`
 
 ## Cross-card coordination
 
-This skill assumes the following danxbot infrastructure cards have shipped:
+This skill assumes the following danxbot infrastructure is shipping:
 
-- **DX-539** — `POST /api/template-build` endpoint registered on the danxbot worker. The synchronous build invoked by Step 3's auto-build path lives here.
-- **DX-540** — `/srv/sfc-deps/<shell_version>/node_modules/` provisioned per active shell version. The symlink Step 3 depends on lives here.
-- **DX-542** — Playwright MCP `playwright_host_static` + `playwright_host_static_stop` + `vue_build_and_preview` orchestrator. Hosts the dist on `127.0.0.1:<ephemeral>` so Step 4's preview works without depending on a consumer-repo proxy. **Minimum required**: `@thehammer/danxbot-playwright-mcp-server@0.2.0` — earlier versions (0.1.x) shipped only `playwright_screenshot` + `playwright_html` and Step 4 falls back to consumer-proxy preview when those tools are absent.
+- **`danxbot_template_save` MCP tool** — registered in `src/mcp/danxbot-server.ts`. Advertised iff the launch body set `callback_url` + `callback_token`.
+- **`/api/template-save/<dispatchId>` worker route** — `src/worker/template-save-route.ts`. The HTTP endpoint the MCP envelope POSTs to.
+- **`/srv/sfc-deps/<shell_version>/node_modules/`** — provisioned per active shell version (DX-746 `provision-sfc-deps`). The build's deps tree.
+- **`hmr_callback_url`** — optional explicit launch-body field; when set, danxbot POSTs the live HMR URL to that consumer-owned receiver as soon as Vite binds.
+- **`/api/get-app/<dispatchId>`** — consumer download URL; Bearer-auth via `callback_token`.
 
-If any of those are missing on the host, this loop breaks at the named step — escalate to a Waiting-On card pointing at the unshipped phase.
+If any of those are missing on the host, this loop breaks at the named step — escalate via `danxbot_complete({status: "failed", summary: "<which surface is missing>"})`.
 
 ## Rollout
 
-Single source of truth: `~/web/claude-plugins/danxbot/skills/vue-app-build/SKILL.md`. Push to `github:newms87/claude-plugins`; the marketplace consumer settings (every danxbot workspace's `.claude/settings.json` enables `danxbot@newms-plugins` with `autoUpdate: true`) pulls the new revision automatically. `/reload-plugins` in any active session picks it up immediately. NO inject-pipeline edits required — DX-269 retired that path.
+Single source of truth: `~/web/claude-plugins/danxbot/skills/vue-app-build/SKILL.md`. Push to `github:newms87/claude-plugins`; the marketplace consumer settings (every danxbot workspace's `.claude/settings.json` enables `danxbot@newms-plugins` with `autoUpdate: true`) pull the new revision automatically. `/reload-plugins` in any active session picks it up immediately. NO inject-pipeline edits required — DX-269 retired that path.
