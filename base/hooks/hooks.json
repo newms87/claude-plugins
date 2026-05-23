@@ -1,5 +1,5 @@
 {
-  "description": "Plugin skill load mandate + convey high-yield-communication mandate (SessionStart) and destructive-DB-operation deny guard (PreToolUse Bash).",
+  "description": "Plugin skill load mandate + convey + tool-discipline always-on mandates (SessionStart + UserPromptSubmit) and destructive-DB-operation deny guard (PreToolUse Bash).",
   "hooks": {
     "SessionStart": [
       {
@@ -11,6 +11,20 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/convey-mandate.sh SessionStart"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/tool-discipline-mandate.sh SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/tool-discipline-mandate.sh UserPromptSubmit"
           }
         ]
       }
