@@ -7,6 +7,18 @@ description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issu
 
 Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`); worker mirrors to backend tracker (Trello) for human visibility (~60s).
 
+## DX-835 — two-step termination is MANDATORY
+
+Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's explicit responsibility, written via `mcp__danx_dashboard__issue_transition`. `mcp__danxbot__danxbot_complete` finalizes the dispatch row ONLY; it does NOT move cards. Every issue-bound terminal flow is two calls in order:
+
+| Outcome | Step A (card) | Step B (dispatch) |
+|---|---|---|
+| Done | `issue_transition({id, action:'complete', summary})` | `danxbot_complete({status:'complete', summary})` |
+| Cancelled | `issue_transition({id, action:'cancel'})` | `danxbot_complete({status:'complete', summary})` |
+| Blocked | `issue_transition({id, action:'block', reason})` | `danxbot_complete({status:'failed', summary})` |
+
+Skipping Step A leaves the card stuck mid-state — `dispatch_id` cleared (worker side), but no lifecycle stamp. Verify via `issue_get` after Step A: `completed_at` / `cancelled_at` / `blocked_at` non-null + `status_derived` matches expected, BEFORE Step B.
+
 ## Source of Truth & Tracker Contract
 
 **Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only. Poller dispatches off worker's local YAML mirror (Phase 3 scope; agents never read YAML directly).

@@ -44,11 +44,18 @@ All step procedures (0–11) live in **references/step-procedures.md**. Each ste
 - **Step 8:** Definition-of-Done (zero unchecked ACs).
 - **Step 11:** Pre-call gate (all six prereqs before `danxbot_complete`).
 
-**Terminal statuses (Step 11):**
-- `complete` → worker stamps `completed_at` → rule 2 → `Done`.
-- `failed` → worker stamps `blocked: {at, reason}` → rule 3 → `Blocked`.
-- `cancelled` → worker stamps `cancelled_at` → rule 1 → `Cancelled`.
-- `critical_failure` → halts poller via CRITICAL_FAILURE flag.
+**Step 11 — two-step termination (DX-835):**
+
+`danxbot_complete` no longer moves the card. It only finalizes the dispatch row. Call `issue_transition` FIRST with the appropriate action, THEN `danxbot_complete`.
+
+| Outcome | Step A — card move | Step B — dispatch end |
+|---|---|---|
+| Done | `issue_transition({action:'complete', summary})` → stamps `completed_at` → `Done` | `danxbot_complete({status:'complete', summary})` |
+| Cancelled (card abandoned) | `issue_transition({action:'cancel'})` → stamps `cancelled_at` → `Cancelled` | `danxbot_complete({status:'complete', summary})` |
+| Blocked (card needs human) | `issue_transition({action:'block', reason})` → stamps `blocked_at` → `Blocked` | `danxbot_complete({status:'failed', summary})` (env-fault tracking) |
+| Env-broken | n/a (card stays In Progress) | `danxbot_complete({status:'critical_failure', summary})` — halts poller |
+
+Verify before Step B: re-fetch via `issue_get` and confirm `completed_at`/`cancelled_at`/`blocked_at` is non-null AND `status_derived` matches.
 
 Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; conversation stream discarded within 5s.
 
