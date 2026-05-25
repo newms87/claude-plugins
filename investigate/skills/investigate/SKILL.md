@@ -123,6 +123,7 @@ User picks code-change option → switch to `debugging` skill.
 - **Hedging.** Zero numbers, useless.
 - **Scope drift.** "Why one dispatch failed" → auditing the week. STOP, answer original.
 - **Suspect lists.** "Suspect X, OR Y, OR Z" on vibes. Forbidden: "Suspect:" / "Likely:" unverified. Required: one candidate verified with code, or "still unknown — next probe is N."
+- **One-to-all extrapolation.** Read 1 instance → asserted the whole set ("all 5 cards are X", "every caller does Y"). Mechanical rule: a claim quantified over N items requires reading N items. Verified the sample, not the set → scope the claim to exactly what you read ("DX-872 is `dani`; others unchecked") or read the rest before asserting. Plural/"all"/"every"/"none" in a draft with single-item evidence → STOP, widen the read.
 
 ## Investigate vs Debug
 
