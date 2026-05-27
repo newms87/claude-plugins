@@ -51,7 +51,18 @@ When any holds:
 - Prose only — zero code blocks.
 - Zero-context test: write as amnesic — exact file paths, method names, reasoning.
 
-**Mechanical gate — no card yet AND plan is a danxbot feature (≥2 phases, OR references a `DX-`/`ISS-` id):** the durable artifact is TRACKER CARDS, not the plan file. File the Epic + phase children via `mcp__danx_dashboard__issue_create` (reopen the id via `issue_transition` if it already exists) BEFORE `ExitPlanMode`. The `~/.claude/plans/*.md` file is scratch for the approval round-trip ONLY — a multi-phase breakdown that lives only there is the forbidden parallel-spec failure (issue-card-workflow “NEVER write plans as a standalone `.md` substitute”). Deferring card creation to a "Phase 0" inside the plan file is the same failure.
+## EVERY plan lives in a card — all repos, always
+
+Whenever you plan work — `EnterPlanMode` or not — the durable artifact is a TRACKER CARD, never a plan file or standalone `.md`. This holds for **every repo, not just danxbot**. The `~/.claude/plans/*.md` file is scratch for the approval round-trip ONLY; a plan that lives only there (or a breakdown deferred to an in-plan "Phase 0") is the forbidden parallel-spec failure (issue-card-workflow "NEVER write plans as a standalone `.md` substitute").
+
+**ONLY exception:** the user explicitly says we are NOT using cards this time — "just implement", "plan inline", "no card", "don't make a card". Absent that explicit opt-out, file the card(s).
+
+**Which repo (dynamic — resolve, don't assume):**
+1. Default = the repo this session is instantiated in (~99% of the time).
+2. Plan touches a DIFFERENT or additional repo? List danxbot's connected repos (`mcp__danx_dashboard__issue_list` accepts `repo`; the connected set = `REPOS`/dashboard repo selector) and pick the one the work belongs in — file the card THERE (`mcp__danx_dashboard__issue_create({repo})`).
+3. Genuinely spans repos → a card per involved repo (or an Epic in the primary repo with a cross-repo note + sibling cards).
+
+**Mechanical gate before `ExitPlanMode`:** card(s) filed (Epic + phase children for ≥2 phases; reopen an existing id via `issue_transition` rather than re-create). Not filed → not done.
 
 ## Card instructions are not suggestions
 
