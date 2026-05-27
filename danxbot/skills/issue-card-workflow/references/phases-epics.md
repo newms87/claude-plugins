@@ -2,20 +2,17 @@
 
 **One concept: `children[]`** (ISS-81). On `type: Epic` cards, `children[]` is ordered list of phase cards (UI label "Phases"). On non-epic, `children[]` is sub-cards (UI label "Children"). **Phases MUST be cards** — no in-card phase checklist.
 
-## When to Split
+## When to Split — count vertical slices, not hours
 
-**Split into epic when:**
-- 3+ implementation phases.
-- Scope spans different domains.
-- Expected implementation exceeds ~500 LOC.
-- Each phase looks substantial (multiple files, own tests, full session).
+The axis is **decomposability, not elapsed time** (see the Card Taxonomy gate in SKILL.md). A "slice" = one independently-shippable, fully-testable vertical increment that lands as a single functional commit. Count the slices, then:
 
-**Keep as single card when:**
-- Work is sequential but small.
-- Everything fits one commit-able session.
-- Phases would all touch same module/interface.
+- **1 slice → Story.** One functional commit, kept as small as still-testable. No phase children.
+- **A few slices → Feature.** Each child Story ships on its own green commit; the Feature is the capability they add up to.
+- **A lot of slices, or multiple Features → Epic.** Decompose into phase children (Feature | Story | Bug | Chore).
 
-**Combine adjacent phases (DX-512).** Three good phases beat seven mediocre ones. Every phase costs dispatch: fresh worker, fresh context, fresh review, fresh commit. Before adding phase, ask "does combined unit still fit one TDD pass + one commit?" — if yes, combine + keep single phase. Phase fan-out is cost multiplier; treat like adding dependency, not checklist item.
+**Interlock test (decides where decomposition STOPS).** If two pieces *cannot each ship as their own green functional commit* — landing one alone leaves the system broken/half-done — they are NOT separate slices. Collapse them into ONE Story and carry the size in `effort_level`. Interlock NEVER justifies an Epic; a "decide X" / "review Y" step is a Chore, not a phase.
+
+**Combine adjacent phases (DX-512).** Three good phases beat seven mediocre ones. Every phase costs a dispatch: fresh worker, fresh context, fresh review, fresh commit. Before adding a phase, ask "does the combined unit still ship as one green functional commit?" — if yes, combine. Phase fan-out is a cost multiplier; treat it like adding a dependency, not ticking a checklist.
 
 ## CRITICAL: Epic Without Phase Cards is INVALID
 

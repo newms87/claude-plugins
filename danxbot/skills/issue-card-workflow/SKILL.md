@@ -76,17 +76,31 @@ Agents read `result.body.error` (NOT `result.errors[]`) and route per the messag
 
 See references/lifecycle-states.md for complete state machine, derivation rules, triage cadence, and gate contracts.
 
-## Phases vs Epics
+## Card Taxonomy — Epic / Feature / Story / Bug / Chore
 
-**Epic-vs-Feature mechanical gate — answer BEFORE `issue_create type:Epic`:** Epic ONLY when the children are **independently dispatchable** — each lands as its own PR leaving the system green. If the parts **interlock** (must land together, or the system is broken/half-done between them) → it is ONE Feature with `effort_level`, NOT an epic. Size / part-count is what `effort_level` is for; it is NEVER the epic trigger. A "decide X" / "review Y" step is not a phase. When unsure, default to Feature.
+**Primary axis = scope / decomposability, NEVER elapsed time.** Measure scope by *how many independently-shippable, fully-testable vertical slices the work splits into* — each slice = one functional commit. Perceived scope (# files / classes / methods + complexity) sets the count; the clock never does.
 
-See references/phases-epics.md for split criteria, epic mechanics, phase creation, and completion contract.
+| Type | Definition |
+|---|---|
+| **Story** | One vertical, fully-testable slice that ships as a **single functional commit**. Kept as small as possible while still a working, testable increment. The atomic unit. |
+| **Feature** | A **few** related Stories that together deliver one stakeholder-facing capability. |
+| **Epic** | **A lot** of Stories, or **multiple Features** — a large initiative decomposed into many independently-shippable slices. |
+| **Bug** | A defect; restores intended behavior (no new value). Sized like a Story (one functional commit). |
+| **Chore** | Necessary work with no direct user-facing value — deps, docs, tooling, refactor, a "decide X" / "review Y" call. Sized like a Story. |
+
+**Mechanical gate — count the slices BEFORE you pick a type:**
+
+> Count the independently-shippable, fully-testable vertical slices the work splits into — each slice = one functional commit. **1 slice → Story** (make it as small as still-testable). **A few slices → Feature. Many slices, or multiple Features → Epic.** Interlocking pieces that *cannot each ship as their own green functional commit* are NOT separate slices — they collapse into ONE Story (carry the size in `effort_level`, never by promoting to Epic). The trigger is slice-count / decomposability, measured by perceived scope — **never elapsed time.**
+
+**Allowed parent→child type matrix:** Epic → Feature | Story | Bug | Chore (never Epic). Feature → Story | Bug | Chore. Story / Bug / Chore are atomic — no type-children. (Epic-child types are enforced mechanically by `phase_children[]`; the rest is this gate.)
+
+See references/phases-epics.md for the split walkthrough, epic mechanics, phase creation, and completion contract.
 
 ## General Rules
 
 - One card at a time; no orchestrator, no subagents
 - Call MCP tools only for all card operations
-- `type: Bug` or `type: Feature` or `Epic` — required
+- `type:` ∈ `Epic` | `Feature` | `Story` | `Bug` | `Chore` — required (pick via the Card Taxonomy gate above)
 - Comments = markdown with `##` headers (set via `issue_comment`)
 - AC lives in `ac[]` (set via `issue_edit`) — never inline. Phases/sub-cards in `children[]` as `<PREFIX>-N`; each child has own DB record.
 - `retro.action_item_ids[]` = only valid `<PREFIX>-N` format. Create card first, push id (via `issue_retro`).
