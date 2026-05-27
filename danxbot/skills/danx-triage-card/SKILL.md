@@ -1,6 +1,6 @@
 ---
 name: danx-triage-card
-description: 'Per-card triage agent: reads ONE card YAML, decides per status (Review/Blocked/Waiting On), writes TTL-stamped triage{} block.'
+description: 'Per-card triage agent: reads ONE card, decides per status (Review/Blocked/Waiting On), writes triage verdict via MCP.'
 argument-hint: <PREFIX>-N card id
 ---
 

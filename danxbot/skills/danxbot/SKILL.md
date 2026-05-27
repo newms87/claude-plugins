@@ -81,7 +81,6 @@ Inside each connected repo:
 | `<repo>/.danxbot/config/overview.md` + `workflow.md` + `tools.md` | Repo context for dispatched agents | yes |
 | `<repo>/.danxbot/.env` | Secrets + per-repo toggles, `DANX_*` prefix, `DANXBOT_WORKER_PORT` | gitignored |
 | `<repo>/.danxbot/.env.<target>` | Per-deploy-target overlay | gitignored |
-| `<repo>/.danxbot/issues/{open,closed}/<id>.yml` | Issue cards (`ISS-N`) | yes (open + closed both committed) |
 | `<repo>/.danxbot/workspaces/<name>/` | Generated dispatch workspaces | gitignored |
 | `<repo>/.danxbot/settings.json` | Per-repo three-valued runtime toggles (Slack, Trello, Dispatch) + per-repo `agents{}` roster (each repo owns its own set of named agents — `sage` in gpt-manager and `sage` in danxbot are different agents) | yes |
 | `<repo>/.danxbot/worktrees/<agent>/` | Per-agent git worktree + per-agent `docker-compose.yml` w/ worktree-unique port allocation (consumer-repo stack — pgsql/redis/etc — runs once per agent, isolated from primary) | gitignored |
@@ -105,7 +104,7 @@ Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical)
                               backend tracker (Trello, inbound: new cards + human comments only)
 ```
 
-- The DB is canonical (via MCP tools). Workers maintain a local YAML mirror for poller dispatch logic and sync to the backend asynchronously.
+- The dashboard Postgres DB is the authoritative source for all issue state, accessed by agents via `mcp__danx_dashboard__issue_*` MCP tools and by the worker via its internal HTTP client for dispatch picker logic.
 - The backend write surface (`mcp__trello__*`) is loaded ONLY by the trello-worker dispatch on Machine B, NOT by the main session. Never call `mcp__trello__*` from main session.
 - Agents NEVER refer to issues by tracker-native ids. Internal id `ISS-N` is the only stable handle.
 
@@ -117,8 +116,8 @@ Universal workflow: invoke `danxbot:issue-card-workflow` skill.
 
 The worker process on Machine B runs a poller per connected repo (`src/poller/index.ts`). Each tick is **single-dispatch-per-tick** with this decision tree:
 
-1. Lists Trello cards on the configured board and reconciles them against `<repo>/.danxbot/issues/{open,closed}/*.yml` via `external_id` (inbound mirror — new cards + human comments only).
-2. Pushes any local YAML edits to Trello (status moves, AC checks, comments, retro rendering).
+1. Lists Trello cards on the configured board and reconciles new cards + human comments against the dashboard DB via `external_id` (inbound mirror — new cards + human comments only).
+2. Pushes DB state changes to Trello (status moves, AC checks, comments, retro rendering) for operator visibility.
 3. **Active-dispatch check** — reattaches via the structured `dispatch{}` block (PID + host + kind + TTL) so a worker restart does not redispatch a card whose original session is still alive.
 4. **Work-ready dispatch** — picks one ToDo card with `waiting_on: null`, sorted **untriaged first** (`triage.expires_at === ""`) then by `triage.ice.total` DESC. Spawns the Claude Code CLI on the chosen card.
 5. **Triage dispatch** — if no work-ready card was dispatched, picks one card with `status` ∈ {Review, Blocked} OR `waiting_on != null` whose `triage.expires_at <= now` and dispatches `/danx-triage-card <ISS-N>` (per-card direct triage agent). Default TTLs: Review 24h, Blocked 3h, Waiting On 1h.
@@ -126,7 +125,7 @@ The worker process on Machine B runs a poller per connected repo (`src/poller/in
 
 The Trello "Action Items" list is **not** a separate status — cards on that list hydrate as `status: "Review"` so the per-card triage agent picks them up alongside the Review list. The list itself stays on the board as a UX bucket.
 
-The poller is the ONLY thing that calls Trello. Do not invent agent-path Trello calls. Do not edit YAML expecting an immediate Trello write — wait one poll tick.
+The poller is the ONLY thing that calls Trello. Do not invent agent-path Trello calls. Agents write card state via `mcp__danx_dashboard__issue_*` tools; the worker's outbound Trello sync fires on each poller tick (~60s).
 
 ## Pre-dispatch prep step (DX-291 / DX-297)
 
@@ -135,8 +134,8 @@ Every multi-agent dispatch begins with the `danx-prep` skill running on the agen
 | Verdict | Worker route side-effect |
 |---|---|
 | `ok` | Combined-mode → dispatch keeps running, agent proceeds into `/danx-next`. Separate-mode → stop; poller re-picks next tick for the work pass. |
-| `conflict_on` | Append `{id, reason}` entries to the candidate YAML's `conflict_on[]` for each partner. The poller's `isAnyKindBlocked` filter skips dispatch while any partner is non-terminal; auto-resolves on the partner reaching terminal status. |
-| `blocked` | Stamp `blocked: {at: <now ISO>, reason}` on the candidate YAML; `deriveStatus` rule 3 projects the card to `Blocked`. |
+| `conflict_on` | Call `issue_dependency({id, action: 'add', kind: 'conflicts_with', target_id, reason})` for each partner. The poller's `isAnyKindBlocked` filter skips dispatch while any partner is non-terminal; auto-resolves on the partner reaching terminal status. |
+| `blocked` | Call `issue_transition({id, action: 'block', reason})` to set the card's `blocked` timestamp; `deriveStatus` rule 3 projects the card to `Blocked`. |
 | `abort` | Stamp `agents.<name>.broken = {reason, suggested_steps, set_at}` on `<repo>/.danxbot/settings.json`. The picker filters this agent out on every subsequent tick until the operator clears the field via the dashboard Agents tab. |
 
 Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json` (`combined` default). DX-297 retired the separate `runConflictCheck` precursor dispatch + the `dispatchInRecoveryMode` recovery prompt; the prep agent now owns file-overlap reasoning + branch state inspection directly on the agent's worktree.
@@ -196,7 +195,7 @@ Each MCP server consumed by a danxbot workspace has an owner repo with a `make p
 | Symptom | Likely cause | Pointer |
 |---|---|---|
 | New MCP tool not available in dispatched agent | Forgot to publish after editing source | `make publish-mcp` (or relevant publish target), then re-dispatch |
-| YAML edited, Trello unchanged | Worker hasn't polled yet (~60s tick) OR sync failure (check worker logs) | YAML is canonical; don't worry unless tick > a few minutes |
+| Card edited, Trello unchanged | Worker hasn't synced yet (~60s tick) OR sync failure (check worker logs) | DB is canonical; Trello is outbound mirror; don't worry unless tick > a few minutes |
 | Dispatch fails with "Timed out after 2000ms waiting for PID file" | WSL → Windows interop stall on host-mode launcher | check the operator's WSL-interop runbook (host-mode only) |
 | `mcp__trello__*` not found in main session | Correct — it's not loaded there. Worker handles Trello sync. | This skill |
 | Editing `mcp-server/` doesn't change agent behavior | Source change ≠ runtime change. Must publish to npm + clear npx cache. | This skill — Repo Location ≠ Runtime Location |
@@ -204,7 +203,7 @@ Each MCP server consumed by a danxbot workspace has an owner repo with a `make p
 
 ## Cross-References
 
-- `danxbot:issue-card-workflow` skill — universal issue YAML lifecycle
+- `danxbot:issue-card-workflow` skill — universal issue card DB schema + MCP tools
 - `danxbot:prod-access` skill — proxy / SSH / `docker exec` recipes for deployed targets
 - `danxbot:dispatch-deep` skill — resume protocol, staged_files, multi-block usage dedup, claude-auth diagnostic
 - `danxbot:docker-deep` skill — root `.mcp.json` inject, `.env.<target>` overlays, Laravel `.env.{APP_ENV}` trap

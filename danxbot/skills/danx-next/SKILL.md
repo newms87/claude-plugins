@@ -63,7 +63,7 @@ Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; c
 
 - One card per dispatch.
 - No `AskUserQuestion` / plan-mode pause — decide unilaterally + document OR escalate Blocked.
-- Read + edit cards via `mcp__danx_dashboard__issue_*` tools; no tracker calls, no YAML writes.
+- Read + edit cards exclusively via `mcp__danx_dashboard__issue_*` tools; no tracker calls.
 - Never write `status:` literals.
 - Never append `## Retro` to `comments[]` — worker auto-renders.
 - `/loop` ONLY for in-card async (triggered builds/tests); never wait for human, never wait for next card.

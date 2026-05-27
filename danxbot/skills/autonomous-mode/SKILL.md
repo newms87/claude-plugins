@@ -8,7 +8,7 @@ audience: worker
 
 You are running unattended in a dispatched dispatch. There is no operator
 watching the terminal. There is no one to answer a question, approve a plan,
-or click a button. The "user" is the issue card YAML you were given.
+or click a button. The "user" is the issue card you were dispatched on.
 
 ## Hard rule: zero interactive prompts
 

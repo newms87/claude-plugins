@@ -19,17 +19,17 @@
 
 ## CRITICAL: Epic Without Phase Cards is INVALID
 
-A `type: Epic` YAML with empty `children[]` is **never acceptable end-state**. Instant creation → create EVERY phase card in SAME response. No "phases sketched in description, will split later," no "wait for user to confirm," no "user only asked for epic."
+An Epic card with empty `children[]` is **never acceptable end-state**. Instant creation → create EVERY phase card in SAME response. No "phases sketched in description, will split later," no "wait for user to confirm," no "user only asked for epic."
 
 If user prompt looks like it asks for "just an epic," it does NOT. Read as "epic + every phase card" — that's the unit of work. Asking user "want me split phases now?" after writing epic is the violation; do NOT do that.
 
 ## Epic Mechanics
 
-1. Set epic's `type: Epic` (no `status:` literal — creation defaults derive to `Review`; worker leaves `ready_at`/`completed_at`/`cancelled_at`/`blocked` all null so rule 7 falls through to raw `status: Review` field which `danx_issue_create` writes as `Review`).
+1. Set epic's `type: Epic` (no `status:` literal — creation defaults derive to `Review`; server leaves `ready_at`/`completed_at`/`cancelled_at`/`blocked` all null so rule 7 falls through to raw `status: Review` field on creation).
 
-2. In SAME turn spawn all phase YAMLs (`Epic Title > Phase N: Description`), each with own description/`ac[]`/`type` and same creation default (all derive `Review`). Set each phase's `parent_id` to epic's `id`. Append each phase's `id` to epic's `children[]`.
+2. In SAME turn create all phase child cards via `issue_create` (set `parent_id` to epic's `id`), each with own description/`ac[]`/`type` and same creation default (all derive `Review`). Append each phase's `id` to epic's `children[]` (or use atomic `phase_children[]` on epic creation).
 
-3. Sequential-phase `waiting_on` chains may land at creation — `waiting_on` is status-independent, so phase may carry derived `Review` + `waiting_on: {by: [<prior-phase>]}` together. Creating agent stamps `by[]` chain same pass it writes phase YAMLs; no second-pass edit. Picker holds each phase off dispatch until BOTH triage approves (stamps `ready_at` → `ToDo`) AND every `by[]` blocker terminal. Planning agent has full context — capture NOW, not later.
+3. Sequential-phase `waiting_on` chains may land at creation — `waiting_on` is status-independent, so phase may carry derived `Review` + `waiting_on: {by: [<prior-phase>]}` together. Creating agent stamps `by[]` chain same pass it creates the phase cards; no second-pass edit. Picker holds each phase off dispatch until BOTH triage approves (stamps `ready_at` → `ToDo`) AND every `by[]` blocker terminal. Planning agent has full context — capture NOW, not later.
 
 ## Where Phase Cards Go
 
@@ -37,7 +37,7 @@ Same derived status as parent epic at creation. Epic derives Review → phase ca
 
 ## After Completing Each Phase Card
 
-Fill `retro.{good, bad, action_item_ids, commits}`, call `danxbot_complete({status: "complete"})`. Worker stamps `completed_at`, clears `dispatch: null`, renders `## Retro` comment, spawns action-item cards, moves file `open/` → `closed/`. Do NOT edit epic — poller propagates parent's triggers from children's derived statuses on next tick. Next phase card's notes go in `comments[]` per rule below; once all phases derive Done, poller stamps epic's `completed_at` automatically.
+Fill `retro.{good, bad, action_item_ids, commits}`, call `danxbot_complete({status: "complete"})`. Server stamps `completed_at`, clears `dispatch: null`, renders `## Retro` comment, spawns action-item cards. Do NOT edit epic — server propagates parent's triggers from children's derived statuses automatically. Next phase card's notes go in `comments[]` per rule below; once all phases derive Done, server stamps epic's `completed_at` automatically.
 
 ## CRITICAL: Update Next Phase Card Before Ending Session
 
@@ -60,6 +60,6 @@ If either fails, three options — all keep this dispatch's terminal signal hone
 
 - Confirm every phase card exists with `parent_id` linked + own AC + `waiting_on` chain stamped.
 - Leave epic at derived `In Progress` state (or whatever rollup resolves).
-- Call `danxbot_complete({status: "complete"})` — worker's write-side guard (`stampTerminal` in `src/issue/stamp-terminal.ts`) refuses `completed_at` stamp on `type: Epic` YAML + surfaces `stamp-terminal-epic-refused` system error if you bypass. Dispatch row finalizes normally; only YAML mutation suppressed.
+- Call `danxbot_complete({status: "complete"})` — server's write-side guard rejects direct terminal transitions on Epic cards. The DB contract ensures Epic status flows ONLY from children's derived states. Dispatch row finalizes normally; Epic card status remains server-derived.
 
-Guard is defense-in-depth — rule above is contract you uphold. If you reach guard, you tripped the rule.
+This guard is defense-in-depth — rule above is contract you uphold. If you reach guard, you tripped the rule.

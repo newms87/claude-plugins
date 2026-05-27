@@ -9,7 +9,7 @@ Purpose: turn a `Blocked` card (or one with non-null `waiting_on`) into a one-sc
 
 ## v4 vocabulary primer
 
-- **`blocked: {at, reason}`** — **self-block.** Stamping `blocked.at` derives the card's status to `Blocked` via `deriveStatus` (rule 3). The card itself cannot proceed (formerly `Needs Help`). A human or next dispatch must clear it. Invariant: `blocked.at !== null` → derived status is `Blocked`.
+- **`blocked: {at, reason}`** — **self-block.** Setting `blocked` via `issue_transition({action: 'block', reason})` derives the card's status to `Blocked` via `deriveStatus` (rule 3). The card itself cannot proceed (formerly `Needs Help`). A human or next dispatch must clear it. Invariant: `blocked.at !== null` → derived status is `Blocked`.
 - **`waiting_on: {reason, timestamp, by[]}`** — **dep-chain dispatch gate, independent of `status`.** The card is fine; it's waiting for the issues in `by[]` to terminal-finish. Picker skips dispatch while any dep is non-terminal; the record itself is durable (never auto-cleared by the system).
 
 This skill applies to BOTH — derived `Blocked` (because a human likely needs to act) and `waiting_on` (because the operator may want to know what the card is queued behind).
@@ -18,7 +18,7 @@ This skill applies to BOTH — derived `Blocked` (because a human likely needs t
 
 Auto-trigger any of:
 
-1. About to read/work a card whose YAML has `status: Blocked` OR `waiting_on != null`.
+1. About to read/work a card whose record has `status: Blocked` OR `waiting_on != null`.
 2. About to start a card that **overlaps** a `Blocked` card (same parent epic, same files in `key files`, same AC scope, same domain). Block on the upstream card first — your work may be invalidated by its resolution.
 3. User explicitly types `/unblock <ISS-N>` or asks "what's needed to unblock X", "get X unstuck", "operator action on X".
 
@@ -86,7 +86,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
    Unblock budget under convey: **≤20 lines.** Convey owns the structure (headline + goal + tables); this skill owns the unblock-specific section names (Status / Blocker / What you do / Outcomes).
 
-6. **Stop.** Do not start fixing. Do not edit the card's YAML. Do not change AC checks. The skill ends with the report. Operator runs the steps and reports back; only then does the agent resume work on the card (re-invoking `issue-card-workflow` for the AC update).
+6. **Stop.** Do not start fixing. Do not edit the card. Do not change AC checks. The skill ends with the report. Operator runs the steps and reports back; only then does the agent resume work on the card (re-invoking `issue-card-workflow` for the AC update).
 
 ## Overlap detection (rule #2)
 

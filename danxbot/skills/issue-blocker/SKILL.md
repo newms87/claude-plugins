@@ -7,7 +7,7 @@ audience: worker
 # Issue Blocker — MANDATORY Pre-Block Gate
 
 You are about to stamp the `blocked` dispatch gate on a card. STOP. Blocked
-is a dispatch gate (`blocked: {at, reason}` on the YAML, which
+is a dispatch gate (`blocked: {at, reason}` on the card record, which
 `deriveStatus` rule 3 projects to status `Blocked` on every read) — NOT a
 column to drag the card into, and NOT a literal `status: "Blocked"` write
 (direct status writes are FORBIDDEN). The card stays in whatever column
@@ -39,7 +39,7 @@ Blocked move > the cost of running this 8-item checklist.
 |---|---|---|
 | Human must supply *information / a decision* the agent cannot derive (ambiguous spec, design call, write-only repo, missing input the agent could use if it had it) | `blocked: {at, reason}` (derives status → `Blocked` via `deriveStatus` rule 3) | Human (writes comment / opens card / next dispatch clears `blocked: null` — worker re-stamps `ready_at` + populates dispatch sidecar) |
 | Human must take *external action on a system the agent has zero programmatic reach into* (3rd-party token rotation, vendor dashboard click-through, manual deploy of external infra, restart of infrastructure the agent cannot launch) | `requires_human: {reason, steps[], set_by, set_at}` | Human via dashboard "Mark Resolved" affordance (PATCHes field to `null`) |
-| This card waits for ONE+ specific other card(s) to terminate (semantic dep declared up-front on the YAML — phase sibling, action-item card, separately-scoped task) | `waiting_on: {reason, by: [ISS-N, ...], timestamp}` | Picker auto-dispatches the moment every id in `by[]` reaches Done/Cancelled. The `waiting_on` record itself stays as durable dep-history note. |
+| This card waits for ONE+ specific other card(s) to terminate (semantic dep declared up-front on the card — phase sibling, action-item card, separately-scoped task) | `waiting_on: {reason, by: [ISS-N, ...], timestamp}` | Picker auto-dispatches the moment every id in `by[]` reaches Done/Cancelled. The `waiting_on` record itself stays as durable dep-history note. |
 | File-overlap / in-flight race with sibling card(s) discovered at dispatch time by `/danx-prep` | `conflict_on: [{id, reason}, ...]` | Prep verdict re-stamps the field next dispatch attempt; partner card termination clears it |
 
 ### Coexistence is the normal case, not the rare case

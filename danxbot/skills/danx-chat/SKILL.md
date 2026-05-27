@@ -47,7 +47,7 @@ Call `mcp__danx_dashboard__issue_get({id: <PREFIX>-N})` to fetch the card from t
 
 ## Editing the card
 
-Use the MCP tools to mutate the card. The dashboard DB is the canonical source; all changes flow through the tools, not YAML writes.
+Use the MCP tools to mutate the card. The dashboard DB is the canonical source; all changes flow exclusively through the `mcp__danx_dashboard__issue_*` tools.
 
 When you edit, follow the DB schema rules — see `danxbot:issue-card-workflow` skill for the full schema. The most common chat-driven edits:
 

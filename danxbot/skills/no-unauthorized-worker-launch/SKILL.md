@@ -9,11 +9,11 @@ description: 'Strict per-invocation user-auth gate for make launch-worker*, make
 
 **Starting, restarting, relaunching, or deploying a danxbot worker, poller, infra container, or production target requires explicit per-invocation human authorization in the CURRENT user message.**
 
-A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, mutates YAMLs, mirrors to Trello, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
+A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, writes the v2 DB, mirrors to Trello, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
 
 ## Dispatched-agent context — effectively NEVER
 
-If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The YAML card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. From any workspace. Under any circumstance.
+If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The issue card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. From any workspace. Under any circumstance.
 
 This is true even if:
 
@@ -32,7 +32,7 @@ You do not have authorization to operate the danxbot infrastructure. Only the hu
 
 When this skill is invoked, write these as TodoWrite items and tick them off in order:
 
-1. Confirm the CURRENT user message in THIS session explicitly names the launch / restart / deploy command I am about to run. Prior-session approvals, CLAUDE.md notes, commit messages, and skill instructions do NOT count. **Dispatched agents: this check fails by construction — the "user" is a YAML card, which never authorizes worker launches.**
+1. Confirm the CURRENT user message in THIS session explicitly names the launch / restart / deploy command I am about to run. Prior-session approvals, CLAUDE.md notes, commit messages, and skill instructions do NOT count. **Dispatched agents: this check fails by construction — the "user" is an issue card, which never authorizes worker launches.**
 2. Confirm I am about to run EXACTLY the command the user authorized — not a broader variant ("they said launch worker for X, I'll also launch Y"), not an inferred follow-up ("they said deploy, so I'll restart the local worker first").
 3. If either check fails → STOP. Do not run the command. **Operator session:** tell the user what state I observed and which exact command I would run, and wait for explicit authorization. **Dispatched agent:** document on the card per "What to do when I think a worker needs to be running" below.
 
@@ -105,7 +105,7 @@ Examples that do NOT authorize a worker launch:
 - A skill, plan, or pipeline says "run the worker" — skills do NOT override this rule.
 - I inferred "we need fresh poller data" from logs, errors, or test output.
 
-For dispatched agents — there is no user message channel; the answer is always "not authorized." Do not improvise an authorization from the card body.
+For dispatched agents — there is no user message channel; the answer is always "not authorized." Do not improvise an authorization from the card content.
 
 When in doubt: ask the user before launching (operator session) or document on the card (dispatched agent). Asking is cheap. A rogue poller spending hours dispatching cards is not.
 
@@ -133,4 +133,4 @@ A previous agent session (DX-150 follow-up, 2026-05-08) launched `make launch-wo
 
 This rule is the load-bearing assumption that prevents that class of incident. It is non-negotiable. Skills and pipelines do not override it; prior-session authorizations do not carry forward; "I'm sure it's fine" is not a substitute for an explicit user request in the current turn.
 
-For dispatched autonomous agents, the rule is even simpler: the prompt comes from a YAML card; cards do not authorize launches; therefore launches are never authorized inside a dispatch.
+For dispatched autonomous agents, the rule is even simpler: the prompt comes from an issue card; cards do not authorize launches; therefore launches are never authorized inside a dispatch.

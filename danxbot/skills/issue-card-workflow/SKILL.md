@@ -21,7 +21,7 @@ Skipping Step A leaves the card stuck mid-state — `dispatch_id` cleared (worke
 
 ## Source of Truth & Tracker Contract
 
-**Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only. Poller dispatches off worker's local YAML mirror (Phase 3 scope; agents never read YAML directly).
+**Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only. Poller dispatches off the v2 dashboard DB via the dashboard HTTP API; agents read + write exclusively via MCP tools.
 
 **Backend tracker (Trello) is one-way mirror with two narrow inbound exceptions:**
 
@@ -35,7 +35,7 @@ Inbound (narrow):
 
 One-way + narrow inbound = unambiguous semantics. Two-way sync would create merge conflicts.
 
-**Agent path is MCP tools only.** Agent never calls tracker SDK directly; never reads/writes YAML. Worker is sole tracker writer (~60s cycle).
+**Agent path is MCP tools only.** All card reads + writes go through `mcp__danx_dashboard__issue_*` MCP tools. Worker mirrors DB state to tracker for human visibility (~60s cycle).
 
 ## DB Schema
 
@@ -83,14 +83,14 @@ See references/phases-epics.md for split criteria, epic mechanics, phase creatio
 ## General Rules
 
 - One card at a time; no orchestrator, no subagents
-- Call MCP tools — never read/write YAML
+- Call MCP tools only for all card operations
 - `type: Bug` or `type: Feature` or `Epic` — required
 - Comments = markdown with `##` headers (set via `issue_comment`)
 - AC lives in `ac[]` (set via `issue_edit`) — never inline. Phases/sub-cards in `children[]` as `<PREFIX>-N`; each child has own DB record.
 - `retro.action_item_ids[]` = only valid `<PREFIX>-N` format. Create card first, push id (via `issue_retro`).
 - Connected repo cards reference that repo's architecture (not danxbot paths).
 - NEVER call `mcp__trello__*` from agent.
-- NEVER call `Edit`/`Write`/`Read` against YAML paths.
+- NEVER read/write card state via file operations — use MCP tools exclusively.
 - NEVER write `status:` literals via `issue_edit` — use `issue_transition` for lifecycle changes.
 - NEVER manually append `## Retro` to comments — use `issue_retro` tool.
 - NEVER escape markdown — use formatting (`##`, fenced blocks, tables).

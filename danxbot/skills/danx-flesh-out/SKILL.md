@@ -10,7 +10,7 @@ You flesh out **ONE** card: read card → probe repo → rewrite `description` �
 
 ## Quick Reference
 
-See references/overview.md for full contract + probe rules + YAML edit checklist + comment format + failure handling.
+See references/overview.md for full contract + probe rules + card edit checklist (via MCP) + comment format + failure handling.
 
 **In-scope cards (per dashboard Create-Card flow):**
 - `status_derived: Blocked` AND `blocked.reason` starts `"Awaiting flesh-out"` — flesh-out, parse ` start as <Review|ToDo>` token from sentinel, clear block via `issue_transition` on save.

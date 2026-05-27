@@ -10,9 +10,9 @@ Flesh-out is invoked when operator creates half-baked card via dashboard Create-
 - `waiting_on != null` OR `requires_human != null` → parked cards out of scope.
 - `children[]` non-empty → epic already split, refuse to orphan phases.
 
-**Probe phase (5–10 min):** Read-only exploration via `Read` / `Grep` / `Glob` / git-only bash. No code execution, no edits outside YAML, no `mcp__trello__*`, no subagents.
+**Probe phase (5–10 min):** Read-only exploration via `Read` / `Grep` / `Glob` / git-only bash. No code execution, no edits outside your worktree, no `mcp__trello__*`, no subagents.
 
-**YAML edits (atomic save):**
+**Card edits (via MCP):**
 1. `description` — rewritten per zero-context-test (Goal / Context / Solution / Key Files).
 2. `ac[]` — 3–8 verifiable items (imperative-verb prefix, no "operator verifies" / "manual UI smoke" / "post-dispatch auto-flip" shapes).
 3. If split: `type: Epic`, `children[]` populated, phase cards created via `danx_issue_create`, `waiting_on` chain stamped phase 2..N.
@@ -20,7 +20,7 @@ Flesh-out is invoked when operator creates half-baked card via dashboard Create-
 5. `comments[]` — ONE `## Flesh-out` entry summarizing action (rewrite, AC count, split count).
 6. DX-544 sentinel-block clear: parse ` start as <Review|ToDo>` token; emit `danxbot_complete({status: "ready"})` (default) or `"review"` (sentinel target).
 
-After save, re-read to confirm YAML parses. Chokidar mirrors; malformed → `{_malformed: true, raw: <text>}` in dashboard.
+After saving via MCP, re-read via `issue_get` to confirm the edits persisted.
 
 **Terminal calls:** only `ready` (default) or `review` (sentinel). Never `complete` (DX-734 / DX-735 bug class — half-baked lands Done).
 

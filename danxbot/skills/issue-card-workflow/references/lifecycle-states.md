@@ -39,7 +39,7 @@ This applies to:
 
 ## Triage Lifecycle
 
-The `triage{}` block on each YAML is owned by the **per-card triage agent** dispatched by poller. Poller picks one card per tick whose `triage.expires_at <= now` and dispatches `/danx-triage-card <PREFIX>-N`. One card per dispatch — bulk-orchestrator retired.
+The triage block on each card is owned by the **per-card triage agent** dispatched by poller. Poller picks one card per tick whose `triage.expires_at <= now` and dispatches `/danx-triage-card <PREFIX>-N`. One card per dispatch — bulk-orchestrator retired.
 
 **Cadence per status (TTL the agent stamps on `triage.expires_at`):**
 
@@ -53,7 +53,7 @@ The `triage{}` block on each YAML is owned by the **per-card triage agent** disp
 
 **ToDo dispatch sort:** untriaged first (`triage.expires_at === ""` — never scored) then triaged by `triage.ice.total` DESC. ICE = Impact × Confidence × Ease, each axis 1–5, total 1–125. Within each tier, FIFO by mtime. Poller's `listDispatchableYamls` enforces; agents don't rank — write good description, triage agent's ICE governs priority.
 
-**`Action Items` is not a status.** Cards on Trello "Action Items" list hydrate as `status: Review` so triage picks them up. List stays on board as UX bucket; YAML stores `status: Review`.
+**`Action Items` is not a status.** Cards on Trello "Action Items" list hydrate as `status: Review` so triage picks them up. List stays on board as UX bucket; DB record stores `status: Review`.
 
 ## Blocked vs Waiting On vs Requires Human
 
@@ -95,11 +95,11 @@ Reverse the terminal trigger. NEVER touch `status:`. NEVER touch `list_name`. On
 | Reopen Cancelled | `cancelled_at: null` + `ready_at: <now ISO>` |
 | Reopen back to Review | clear terminal trigger + leave `ready_at: null` (rule 7 falls through to raw `status: Review`) |
 
-Forbidden in reopen edits (and every other): writing `status:` field, writing `list_name` field, `mv`-ing YAML file by hand. Worker owns derived status + display list + file location — computed from trigger fields on next chokidar event. Touch ONLY triggers; everything else is worker's job.
+Forbidden in reopen edits (and every other): writing `status:` field directly via `issue_edit`. Use `issue_transition` to drive lifecycle. Status and display list are server-derived from trigger fields; agents touch only trigger timestamps. Use MCP tools only.
 
 ## Epic Status is Computed, Not Edited
 
-Parent's derived status (Epic OR any non-epic with non-empty `children[]`) is **derivation-owned by poller**. Every tick poller walks every YAML with non-empty `children[]` + writes parent's lifecycle triggers so union of children's derived statuses propagates correctly. Manual edits to parent's triggers are **overwritten on next tick** — no manual override.
+Parent's derived status (Epic OR any non-epic with non-empty `children[]`) is **derivation-owned by server**. The DB engine computes parent status from children's derived statuses — union of child states propagates correctly. Agents NEVER manually stamp epic's triggers; call `issue_transition` on child cards instead; server recomputes parent status automatically.
 
 **Priority rules (first match wins):**
 
@@ -121,8 +121,8 @@ Parent rollup ignores orthogonal `requires_human` — checked only at dispatch, 
 - Parents with `waiting_on != null` skipped by parent-status derivation — parent's own dep-chain note takes precedence. Set parent's `waiting_on` explicitly when needed.
 
 **Forbidden end-states for any turn creating epic:**
-- Epic written, `children: []`, no phase YAMLs on disk.
-- Epic written, phase split listed only in description prose, no YAMLs.
+- Epic written, `children: []`, no phase child cards created.
+- Epic written, phase split listed only in description prose, no phase child cards created.
 - Epic written, "phases TBD" / "left for triage" / "will split next session" anywhere.
 
 If about to end turn in any — STOP, write phase cards first. CRITICAL: epic without phase cards is INVALID + workflow violation.

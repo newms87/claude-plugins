@@ -6,7 +6,7 @@ audience: worker
 
 # `requires_human` — Rare 3rd-Party Blockers Only
 
-`requires_human` is an orthogonal field on every issue YAML that signals
+`requires_human` is an orthogonal field on every issue card that signals
 "this card cannot make progress until a human acts." It is **separate**
 from `status` — the card stays at whatever open status it was at, and
 the poller's dispatch filter (`src/poller/local-issues.ts`) skips any
@@ -159,14 +159,14 @@ requires_human:
 The reason is information-supplying ("need someone to look at"), not an
 external action; the step is not executable by a non-engineer; the gate
 is `blocked: {at, reason}` (which derives the card to `Blocked`), not
-`requires_human`.
+`requires_human`. Set the `blocked` field via `issue_transition({action: 'block', reason})` instead.
 
 ## Termination contract
 
 When an agent **sets** `requires_human` mid-dispatch (the field flips
 from `null` to populated during this session), the dispatch ends:
 
-1. Save the YAML with the populated `requires_human` block.
+1. Set the field via `issue_requires_human({id, set: true, reason, steps[]})`.
 2. Call `danxbot_complete({status: "complete", summary: "Set requires_human — see field"})` and stop.
 3. Do NOT stamp any terminal lifecycle trigger (`completed_at`,
    `cancelled_at`, `blocked.at`), do NOT write `status` directly, do NOT
@@ -177,13 +177,13 @@ from `null` to populated during this session), the dispatch ends:
    while the human gate holds.
 
 The human is the next actor. The poller will skip the card on every
-subsequent tick until the human clears the field. When they do, the
-poller dispatches the card again — at that point a fresh agent picks
-it up at whatever status it was at and continues.
+subsequent tick until the human clears the field via the dashboard.
+When they do, the poller dispatches the card again — at that point a
+fresh agent picks it up at whatever status it was at and continues.
 
 The worker's `isDispatchSessionTerminal` clause (in
 `src/worker/issue-route.ts`) recognizes the `requires_human != null`
-save as a terminal dispatch state and releases the slot — so a fresh
+state as a terminal dispatch condition and releases the slot — so a fresh
 dispatch can be scheduled the moment the human clears the field
 without colliding with this just-ended dispatch.
 

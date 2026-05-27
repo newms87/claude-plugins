@@ -66,7 +66,7 @@ investigate first, then act on the result.
    transient mid-write rows")? If yes, the diff is likely a real fix
    and the test is what's stale.
 3. Search open issue cards / active dispatches for any peer agent
-   mid-flight on this file (`grep` open YAMLs for the path; check
+   mid-flight on this file (query open cards via `issue_list` for the path; check
    `dispatches` table for in-flight jobs touching the file). If a
    peer is iterating, leave it alone — your "fix" cascades into
    their work.
@@ -156,7 +156,7 @@ action requirement. Rewrite or substitute.
 
 **Symptom:** AC says "after this card moves to Done, the parent epic
 auto-flips to Done" or "the worker post-completion auto-sync renders the
-retro comment" or "the chokidar watcher mirrors the YAML to Postgres."
+retro comment" or "the DB is updated by the server after the agent saves."
 The behavior fires AFTER the agent calls `danxbot_complete` — there is no
 moment inside the dispatch when it can be observed end-to-end.
 
@@ -168,7 +168,7 @@ runtime side-effect.
 **In-session resolution:**
 1. Identify the function / module that produces the derived state. Examples:
    `src/poller/index.ts#deriveEpicStatus`, `src/worker/auto-sync.ts`,
-   `src/db/issues-mirror.ts` chokidar handler.
+   `src/dashboard/server.ts` post-save handlers.
 2. Confirm a unit test exists that exercises that function directly with
    fixture inputs. If absent, write one (Step 1.5 — fix in-session).
 3. Rewrite the AC to point at the unit test:
