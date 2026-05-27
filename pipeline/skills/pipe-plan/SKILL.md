@@ -44,16 +44,11 @@ When any holds:
 
 **Move B NOT for:** "too complex," "I'm unsure," "card is short," "I have a better way." Bar is high.
 
-## Plan files
-
-- Location: `~/.claude/plans/` only. Create only via `EnterPlanMode`.
-- Edit with `Edit` (Write overwrites).
-- Prose only — zero code blocks.
-- Zero-context test: write as amnesic — exact file paths, method names, reasoning.
-
 ## EVERY plan lives in a card — all repos, always
 
-Whenever you plan work — `EnterPlanMode` or not — the durable artifact is a TRACKER CARD, never a plan file or standalone `.md`. This holds for **every repo, not just danxbot**. The `~/.claude/plans/*.md` file is scratch for the approval round-trip ONLY; a plan that lives only there (or a breakdown deferred to an in-plan "Phase 0") is the forbidden parallel-spec failure (issue-card-workflow "NEVER write plans as a standalone `.md` substitute").
+Whenever you plan work — `EnterPlanMode` or not — the durable artifact is a TRACKER CARD, never a plan file or standalone `.md`. This holds for **every repo, not just danxbot**.
+
+**All durable task content lives on the card.** Anything another agent or a human might read, or that you will reference later — design notes, decisions, fix plans, AC, phase handoffs — goes on the card: its `description`/`ac[]`, a `comments[]` note, or a child/new card as fits the scope. A throwaway inline checklist for your own momentary execution is fine; the instant content needs to persist or be seen by anyone else, it belongs on a card.
 
 **ONLY exception:** the user explicitly says we are NOT using cards this time — "just implement", "plan inline", "no card", "don't make a card". Absent that explicit opt-out, file the card(s).
 
@@ -63,6 +58,15 @@ Whenever you plan work — `EnterPlanMode` or not — the durable artifact is a 
 3. Genuinely spans repos → a card per involved repo (or an Epic in the primary repo with a cross-repo note + sibling cards).
 
 **Mechanical gate before `ExitPlanMode`:** card(s) filed (Epic + phase children for ≥2 phases; reopen an existing id via `issue_transition` rather than re-create). Not filed → not done.
+
+## Plan files
+
+`~/.claude/plans/*.md` is APPROVAL-ROUND-TRIP SCRATCH ONLY — cards are the durable artifact (see the card rule above). A plan that lives only in the file, or a breakdown deferred to an in-plan "Phase 0", is the forbidden parallel-spec failure (issue-card-workflow "NEVER write plans as a standalone `.md` substitute"). When you do use the `EnterPlanMode` file for the approval round-trip:
+
+- Location: `~/.claude/plans/` only. Create only via `EnterPlanMode`.
+- Edit with `Edit` (Write overwrites).
+- Prose only — zero code blocks.
+- Zero-context test: write as amnesic — exact file paths, method names, reasoning.
 
 ## Card instructions are not suggestions
 

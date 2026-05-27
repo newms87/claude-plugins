@@ -29,49 +29,36 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 2. **code-reviewer** — Per-file quality: size limits, per-file DRY, dead code, documentation, per-file anti-patterns
 3. **architecture-reviewer** — Cross-file patterns: component interfaces (>4 props, emit chains, prop threading), composable-first enforcement, cross-file DRY, domain placement
 
-## Step 3: Create a Revisions Plan
+## Step 3: Record Findings + Fix Plan ON THE CARD
 
-**Every code review produces a temporary revisions plan file.** This keeps review findings and fix tracking separate from the main plan file.
+**The durable record of review findings + the fix plan lives on the CARD, never a file** (card-first rule — see `pipe-plan` "EVERY plan lives in a card"). A `/tmp/*.md` revisions file is forbidden: the next agent and the human read the card, not your scratch dir.
 
-1. **Create a revisions plan file** at `/tmp/claude-code-reviews/<project-basename>/revisions-<timestamp>.md` (e.g., `/tmp/claude-code-reviews/<your-repo>/revisions-2026-02-24-1430.md`). Create the directory if it doesn't exist. This lives in `/tmp` because it's ephemeral and should never be committed.
-2. **Copy ALL findings** from every reviewer agent into the file verbatim — organized by reviewer (test-reviewer, code-reviewer, architecture-reviewer)
-3. **Write an implementation plan below the findings** — concrete phases detailing how you will address each finding, with specific files and changes described
-4. **If trivial** (all findings are simple renames, missing docs, small fixes): a single phase is fine
-5. **If extensive** (many files, cross-domain refactors, significant restructuring): break into multiple phases ordered by dependency
+1. **Append a `## Code Review Revisions` comment to the active card** via `mcp__danx_dashboard__issue_comment`: paste ALL findings verbatim grouped by reviewer (test / code / architecture), then a concrete fix plan below them (phases with specific file paths + changes).
+2. **Findings that are substantial work outside this card's scope** → file a child or new card (`mcp__danx_dashboard__issue_create`) instead of cramming them in; link via `parent_id`/dependency as fits.
+3. **Trivial** (renames, docs, small fixes) → one short phase. **Extensive** (many files, cross-domain) → multiple phases ordered by dependency.
+4. You MAY keep a throwaway inline checklist for your own momentary fix-loop tracking, but anything another agent or a human needs — or that you will reference later — MUST be on the card, not a file.
 
-**CRITICAL:** Never add review findings to the main plan file. The revisions plan is a separate, temporary document that lives only for the duration of the fix cycle.
-### Revisions Plan Format
+### Revisions comment body shape
 
 ```markdown
-# Code Review Revisions
+## Code Review Revisions
 
-## Findings
+### Findings
+**Test Reviewer** — [verbatim]
+**Code Reviewer** — [verbatim]
+**Architecture Reviewer** — [verbatim]
 
-### Test Reviewer
-[paste findings verbatim]
-
-### Code Reviewer
-[paste findings verbatim]
-
-### Architecture Reviewer
-[paste findings verbatim]
-
-## Revisions Plan
-
-### Phase 1: [title]
-- [specific changes with file paths]
-
-### Phase 2: [title]
-- [specific changes with file paths]
+### Fix plan
+- Phase 1: [title] — [changes + file paths]
+- Phase 2: [title] — [changes + file paths]
 ```
 
-## Step 4: Execute the Revisions Plan
+## Step 4: Execute the Fix Plan
 
-**Fix ALL findings following the revisions plan. No exceptions.**
+**Fix ALL findings following the recorded plan. No exceptions.**
 
 - Work through each phase sequentially
-- Mark each phase complete in the revisions plan as you finish it (append ` ✅` to the phase heading)
-- Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/pipe-quality` for the 3 valid skip reasons)
+- Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/pipe-quality` for the 3 valid skip reasons); record the disposition in the card comment, not a file
 
 ### Highest Priority: Fallbacks, Legacy, Backwards-Compatible, Obsolete, and Dead Code
 
@@ -81,7 +68,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 ## Step 5: Create Action Items for Pattern-Worthy Findings
 
-If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx-issue__danx_issue_create` (or append to the active card's `retro.action_items[]`). Don't defer to session end.
+If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx_dashboard__issue_create` (or append to the active card's `retro.action_items[]`). Don't defer to session end.
 
 ## Step 6: Run `/pipe-quality`
 
@@ -93,6 +80,5 @@ If any finding reveals a pattern that could prevent future mistakes (a missing r
 
 - **You are the author — agents are the reviewers.** Never skip this step because you're confident in your code.
 - **Fix every finding in the review-fixes commit.** All findings ship as a separate `/pipe-commit` AFTER this skill runs. No deferring, no "flagging for later" — the review-fixes commit closes the cycle.
-- **Always create a revisions plan.** Never fix findings ad-hoc without a plan. The plan ensures nothing gets lost and provides a clear record of what was done.
-- **Never pollute the main plan file.** Review findings and revision tracking belong in the temp revisions plan only.
+- **Always record findings + plan on the card before fixing.** Never fix ad-hoc without the recorded plan — the card comment ensures nothing gets lost and gives the next agent + human a clear record. No `/tmp` revisions file.
 - **Always run `/pipe-quality` after fixing.** This is what catches rationalizations and skipped findings.
