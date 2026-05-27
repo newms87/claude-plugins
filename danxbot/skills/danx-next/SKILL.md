@@ -5,12 +5,12 @@ description: 'Pull top ToDo card and run full autonomous card-processing workflo
 
 # Danx Next Card
 
-You process ONE card: **read YAML → plan → implement → quality gates → verify → commit → terminal state → `danxbot_complete`**.
+You process ONE card: **read card (`issue_get`) → plan → implement → quality gates → verify → commit → terminal state → `danxbot_complete`**.
 
 ## Top-Level Flow
 
 0. Verify on latest `origin/main` (references/step-procedures.md § Step 0).
-1. Read the YAML the dispatch prompt named.
+1. Read the card via `mcp__danx_dashboard__issue_get` for the id the dispatch prompt named.
 1.1. **Resume self-check** — terminal state + checked ACs + filled retro → call `danxbot_complete`, stop. Don't redo.
 1.5. **You Fix What You Find** rule — internalize before proceeding (references/step-procedures.md § Step 1.5).
 2. Plan (references/step-procedures.md § Step 2).
@@ -36,7 +36,7 @@ All cards are in the DB, accessed via MCP tools (`mcp__danx_dashboard__issue_*`)
 
 ## Detailed Steps
 
-All step procedures (0–11) live in **references/step-procedures.md**. Each step reads the YAML, makes decisions, edits the YAML, and advances. Step 11 terminal call gates on all six prereqs holding.
+All step procedures (0–11) live in **references/step-procedures.md**. Each step reads the card (`issue_get`), makes decisions, mutates via the `mcp__danx_dashboard__issue_*` tools, and advances. Step 11 terminal call gates on all six prereqs holding.
 
 **Key gates:**
 - **Step 1.1:** Resume detection + validation (never trust prior claims).
@@ -63,7 +63,7 @@ Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; c
 
 - One card per dispatch.
 - No `AskUserQuestion` / plan-mode pause — decide unilaterally + document OR escalate Blocked.
-- Read + edit YAML in place; no tracker calls.
+- Read + edit cards via `mcp__danx_dashboard__issue_*` tools; no tracker calls, no YAML writes.
 - Never write `status:` literals.
 - Never append `## Retro` to `comments[]` — worker auto-renders.
 - `/loop` ONLY for in-card async (triggered builds/tests); never wait for human, never wait for next card.

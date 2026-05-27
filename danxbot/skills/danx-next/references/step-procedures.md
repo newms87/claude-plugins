@@ -20,33 +20,33 @@ This step is read-only — if `git status` shows uncommitted changes BEFORE you 
 
 ## Step 1 — Read the Issue and Set Effort Level
 
-Query the v2 DB via `mcp__danx_dashboard__issue_get({issue_id})` to fetch the card. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
+Query the DB via `mcp__danx_dashboard__issue_get({id})` to fetch the card. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
 
-**Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy carries operator-tunable assignment prompt + 7-rung level ladder. If YAML's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set `effort_level: "<level>"`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
+**Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy carries operator-tunable assignment prompt + 7-rung level ladder. If the card's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set it via `mcp__danx_dashboard__issue_edit({id, effort_level: "<level>"})`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
 
-**Resume detection:** if `deriveStatus(yaml)` returns `In Progress` (i.e. `dispatch != null` AND no terminal trigger) AND prior session state exists (checked ACs, comments from earlier, `retro.commits[]`), treat as resumption → proceed to Step 1.1. Raw `status:` field is advisory; trust derived value.
+**Resume detection:** if the card's `status_derived` is `In Progress` (i.e. `dispatch != null` AND no terminal trigger) AND prior session state exists (checked ACs, comments from earlier, `retro.commits[]`), treat as resumption → proceed to Step 1.1. Trust `status_derived`.
 
-Missing/unparseable YAML → signal `critical_failure` per `danx-halt-flag.md` — poller is broken.
+`issue_get` returns `{ok: false}` / card not found → signal `critical_failure` per `danx-halt-flag.md` — poller is broken.
 
 ## Step 1.1 — Validate, Never Trust Prior State
 
-A card's YAML may carry stale claims from prior dead dispatches. **NEVER skip work because prior agent claimed done.** Always verify actual code state.
+A card may carry stale claims from prior dead dispatches. **NEVER skip work because prior agent claimed done.** Always verify actual code state.
 
 **Mechanical procedure (every dispatch, no exceptions):**
 
-1. **Read the YAML.**
+1. **Read the card via `issue_get`.**
 2. **For each `ac[i]` where `checked: true`:** verify against real evidence:
    - Read files the AC names. Confirm asserted code/behavior present.
    - Run test the AC requires. Confirm passes.
    - If `retro.commits[]` references change, find matching sha in `git log origin/main` (or agent branch). Confirm sha exists AND its diff lands the AC's claim.
-   - **Any mismatch** (file missing, test fails, commit not in log, diff doesn't deliver) → flip `ac[i].checked: false`, save, treat as work to do.
+   - **Any mismatch** (file missing, test fails, commit not in log, diff doesn't deliver) → flip the item to `checked: false` via `issue_edit({id, ac})`, treat as work to do.
 3. **For each sha in `retro.commits[]`:** run `git cat-file -t <sha>` in THIS repo. Output not `commit` (or `git log origin/main` doesn't show it) → sha is:
-   - **Stale** (rebased away / typo / never pushed) → drop from `retro.commits[]`, save.
-   - **Cross-repo** (`git cat-file -t <sha>` resolves in `~/web/claude-plugins/` or sibling repo but not THIS repo) → drop from `retro.commits[]` AND append `comments[]` entry titled `## External repo work` naming repo + sha + what shipped. Save.
+   - **Stale** (rebased away / typo / never pushed) → drop from `retro.commits[]` via `issue_retro`.
+   - **Cross-repo** (`git cat-file -t <sha>` resolves in `~/web/claude-plugins/` or sibling repo but not THIS repo) → drop from `retro.commits[]` via `issue_retro` AND add a comment via `issue_comment` titled `## External repo work` naming repo + sha + what shipped.
 
-   If card is Blocked with reason starting `DX-559 enforcement:`, this self-heal unblocks it: walk each missing sha, route to stale-drop or cross-repo-comment, save, then clear `blocked: null` + stamp `ready_at: <now>` and call `danxbot_complete({status: "complete", summary: "Reconciled retro.commits[] after DX-559 block — <one-line summary>"})`.
+   If card is Blocked with reason starting `DX-559 enforcement:`, this self-heal unblocks it: walk each missing sha, route to stale-drop or cross-repo-comment, then `issue_transition({id, action: 'unblock'})` followed by `issue_transition({id, action: 'ready'})` and call `danxbot_complete({status: "complete", summary: "Reconciled retro.commits[] after DX-559 block — <one-line summary>"})`.
 
-4. **If `status: "Done"` or `"Cancelled"`** AND every AC verifies AND every commit verifies AND `retro.good` + `retro.bad` non-empty: prior session finished. Call `danxbot_complete({status: "complete", summary: "Verified prior dispatch's terminal state on resume — no work to redo."})` and stop. **Do not redo work.**
+4. **If `status_derived` is `Done` or `Cancelled`** AND every AC verifies AND every commit verifies AND `retro.good` + `retro.bad` non-empty: prior session finished. Call `danxbot_complete({status: "complete", summary: "Verified prior dispatch's terminal state on resume — no work to redo."})` and stop. **Do not redo work.**
 5. **Otherwise:** card is yours — resume from first failing AC.
 
 ## Step 1.5 — You Fix What You Find
@@ -73,7 +73,7 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 
 ## Step 2 — Plan
 
-1. Read full `description`, all `comments[]`, all `ac[]` titles, existing `children[]` (look up each child YAML to see what's built).
+1. Read full `description`, all `comments[]`, all `ac[]` titles, existing `children[]` (call `issue_get` on each child id to see what's built).
 2. **Bug cards (`type: Bug`):** investigate root cause via `Read` / `Grep` / `Bash` before designing fix.
 3. **Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly. Step 10 (Blocked) ONLY for true human-action blockers (credentials, secret rotation, ambiguous spec, architectural ambiguity). **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required. Anything else → apply Step 1.5, fix yourself.
 4. Design approach in head. No code yet.
@@ -81,11 +81,11 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 
 ## Step 3.0 — Pre-flight: Is this card already an epic with linked children?
 
-Check card's existing state. ANY condition = epic already split — DO NOT re-split, DO NOT call `danx_issue_create`:
+Check card's existing state. ANY condition = epic already split — DO NOT re-split, DO NOT call `issue_create`:
 
-1. **Card's `children: []` is non-empty.** Epic fully linked. Read each child YAML, identify first with `status: ToDo` (or `In Progress` if resuming), treat THAT phase as work. Re-read phase YAML, restart workflow at Step 1 using phase card.
-2. **Card's `type: Epic` AND `children: []` empty.** Epic created without `danx_issue_create` (or by human on tracker) — phase cards may exist in `open/` but lack `parent_id` linkage. **Invoke `danx-epic-link` skill via Skill tool.** It scans open issues, identifies epic's phase children, sets `parent_id` on each phase, sets `children[]` on epic. After return, re-read epic YAML — `children[]` now populated — jump back to Step 3.0 (first condition now matches).
-3. **Card's `type` is NOT Epic but other YAMLs reference it as parent.** Run `Grep` for `parent_id: "<this.id>"` across `open/`. Any matches = card is actually epic that lost `Epic` label. Promote: set `type: Epic`, populate `children[]` from matched YAMLs (sorted like `danx-epic-link`), save. Jump back to Step 3.0.
+1. **Card's `children: []` is non-empty.** Epic fully linked. `issue_get` each child id, identify first with `status_derived: ToDo` (or `In Progress` if resuming), treat THAT phase as work. Re-fetch that phase card, restart workflow at Step 1 using phase card.
+2. **Card's `type: Epic` AND `children: []` empty.** Epic created without children linked (or by human on tracker) — phase cards may exist but lack `parent_id` linkage. **Invoke `danx-epic-link` skill via Skill tool.** It scans open issues, identifies epic's phase children, sets `parent_id` on each phase, sets `children[]` on epic. After return, re-fetch epic via `issue_get` — `children[]` now populated — jump back to Step 3.0 (first condition now matches).
+3. **Card's `type` is NOT Epic but other cards reference it as parent.** Call `mcp__danx_dashboard__issue_list({parent_id: "<this.id>"})`. Any matches = card is actually epic that lost `Epic` label. Promote via `issue_edit({id, type: "Epic", ...})`, set `children[]` from matched cards (sorted like `danx-epic-link`). Jump back to Step 3.0.
 
 Only if NONE match proceed to Step 3.1.
 
@@ -97,33 +97,23 @@ If NOT splitting, skip to Step 4.
 
 ## Step 3.2 — Perform the Split
 
-1. Call `mcp__danx_dashboard__issue_edit({issue_id, ...})` to update parent: set `type: Epic`. Keep `status: In Progress`. Append comment summarizing split. Don't fill `children[]` yet — don't have phase ids until `danx_issue_create` returns.
-2. For each phase, prepare required fields:
-   - `schema_version: 10`
-   - `tracker: <same as parent>`
-   - `id: ""` (worker assigns next `<PREFIX>-N`)
-   - `parent_id: "<epic id>"` (epic's `id`, e.g. `ISS-12`)
-   - `children: []`
-   - `dispatch: null`
-   - `status: "ToDo"`
-   - `type: "Bug"` or `"Feature"` (phase kind, not `Epic`)
-   - `title: "<Epic Title> > Phase N: Description"`
-   - `description: "<full body>"`
-   - `triage: {expires_at: "", reassess_hint: "", last_status: "", last_explain: "", ice: {total: 0, i: 0, c: 0, e: 0}, history: []}`
-   - `ac: [{check_item_id: "", title: "...", checked: false}, ...]` (every field present, `check_item_id: ""` until worker assigns)
-   - `comments: []`
-   - `retro: {good: "", bad: "", action_item_ids: [], commits: []}`
-3. For each phase YAML, call `danx_issue_create({filename: "<slug>"})`. Worker validates, creates issue, stamps assigned `id` back, renames to `<id>.yml`. Capture returned `id`. `{created: false, errors}` → fix draft, retry.
-4. After all phases exist, edit epic YAML once more: set `children: ["<phase-1-id>", "<phase-2-id>", ...]` in phase order. Save.
-5. **Stamp `waiting_on` on phase 2..N for serial ordering.** For each phase whose index ≥ 1, edit phase YAML:
-   - Set `waiting_on: {reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete.", timestamp: "<current ISO>", by: ["<prev-phase-id>"]}`. `<prev-phase-id>` is `children[i-1]`.
-   - Phase 1 stays `waiting_on: null` — dispatches first.
-   - Save each phase YAML. Watcher mirrors. Picker skips dispatch while any blocker non-terminal; dispatches phase N+1 once phase N derives `Done` / `Cancelled`. `waiting_on` record stays as durable dep-history note.
+1. Call `mcp__danx_dashboard__issue_edit({id, type: "Epic"})` to promote the parent. Keep it `In Progress`. Add a comment via `issue_comment` summarizing the split. Don't worry about `children[]` yet — you don't have phase ids until each `issue_create` returns.
+2. For each phase, call `mcp__danx_dashboard__issue_create({type, title, description, parent_id, ac?, effort_level?})`:
+   - `type` — `"Bug"` or `"Feature"` (phase kind, not `Epic`).
+   - `title` — `"<Epic Title> > Phase N: Description"`.
+   - `description` — full markdown body.
+   - `parent_id` — the epic's `id` (e.g. `ISS-12`).
+   - `ac` — `[{title: "...", checked: false}, ...]` if known; the server allocates `check_item_id`.
+   - The server allocates the next `<PREFIX>-N` and returns it in `body.id`. There is NO filename, NO slug, NO rename step. Capture the returned `id`. `{ok: false, body: {error}}` → fix the args, retry.
+3. Create the phases in intended phase order; the `parent_id` you passed links each to the epic, and the epic's `children[]` reflects creation order automatically (server-maintained from each child's `parent_id`).
+4. **Set `waiting_on` on phase 2..N for serial ordering.** For each phase whose index ≥ 1, call `mcp__danx_dashboard__issue_dependency({id: <phase-i>, action: 'add', kind: 'depends_on', target_id: <children[i-1]>, reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete."})`:
+   - Phase 1 takes no dependency — it dispatches first.
+   - Picker skips dispatch while any blocker non-terminal; dispatches phase N+1 once phase N derives `Done` / `Cancelled`. The `waiting_on` record stays as a durable dep-history note.
    - **Use `waiting_on` for sequential phase chains — NOT `blocked`.** `blocked` is self-block (human required); `waiting_on` is dep-chain gate (other in-flight work).
-   - **Skip stamping ONLY when phases genuinely independent** (different domains, no shared state, any order). Default is sequential — explain in comment on epic if skipped.
-6. Restart workflow at Step 1 using first phase card's YAML.
+   - **Skip the dependency ONLY when phases are genuinely independent** (different domains, no shared state, any order). Default is sequential — explain in a comment on the epic if skipped.
+5. Restart workflow at Step 1 using the first phase card.
 
-Epic stays `In Progress` until ALL phase cards are Done — then final phase agent (or you) flips epic to `Done` + saves.
+Epic stays `In Progress` until ALL phase cards are Done — then its terminal state derives from child rollup (never a direct write).
 
 ## Step 4 — Implement (TDD)
 
@@ -138,7 +128,7 @@ Epic stays `In Progress` until ALL phase cards are Done — then final phase age
 
 For large repetitive edits, dispatch `batch-editor` subagent via `Agent` / `Task`.
 
-After implementation, edit YAML to record progress (update `comments[]` with build/test summary). Watcher mirrors automatically.
+After implementation, record progress via `issue_comment({id, action: 'add', text: "<build/test summary>"})`.
 
 ## Step 5 — Quality Gates
 
@@ -146,15 +136,13 @@ Launch in parallel via `Agent` / `Task` with `mode: "bypassPermissions"`:
 - `test-reviewer` — audit coverage.
 - `code-reviewer` — review quality.
 
-Append each result as new comment to `comments[]`. Set `author` to `"test-reviewer"` / `"code-reviewer"`, `timestamp` to current ISO, `text` to markdown body starting with `## Test Review` or `## Code Review` + subagent output. No `id`.
+Append each result as a new comment via `issue_comment({id, action: 'add', text: "..."})`. The `text` is a markdown body starting with `## Test Review` or `## Code Review` + subagent output. The server stamps `author` + `timestamp`.
 
-If critical issues found, fix, re-run failed gate, append `## Review Fixes` comment summarizing fixes.
-
-Watcher mirrors every YAML edit — no save verb.
+If critical issues found, fix, re-run failed gate, add a `## Review Fixes` comment summarizing fixes.
 
 ## Step 6 — Check Off Acceptance Criteria
 
-For each `ac[i]`, verify it holds (test evidence, command output, direct code read). Set `ac[i].checked: true` only with direct evidence.
+For each `ac[i]`, verify it holds (test evidence, command output, direct code read). Flip the item to `checked: true` via `issue_edit({id, ac})` only with direct evidence.
 
 **Never check off unverified item.** "By construction" / "obviously correct" are not evidence. State must reflect passing test, captured command output, or quoted code line demonstrably satisfying criterion.
 
@@ -245,26 +233,26 @@ Card in Done means: every AC item `checked: true` with direct evidence. No other
 
 ## Step 9 — Move to Done
 
-Agent does NOT write `status: Done`. Worker stamps `completed_at = <now ISO>` (clears `dispatch: null`) on `danxbot_complete({status: "complete"})` via `stampIssueCompleted`; `deriveStatus` rule 2 projects card to `Done`. Direct `status:` literal write FORBIDDEN.
+Agent does NOT write `status: Done`. The worker stamps `completed_at` (and clears `dispatch`) on `danxbot_complete({status: "complete"})`; `deriveStatus` rule 2 projects the card to `Done`. Direct `status:` literal write FORBIDDEN.
 
-**Edit YAML:**
+**Mutate the card via MCP:**
 
-1. **Bug cards:** prepend Bug Diagnosis section to `description` OR append comment:
+1. **Bug cards:** record a Bug Diagnosis section via `issue_edit({id, description})` (prepend to `description`) OR `issue_comment({id, action: 'add', text})`:
    ```
    ## Bug Diagnosis
    **Problem:** ...
    **Root Cause:** ...
    **Solution:** ...
    ```
-2. Fill `retro.good`, `retro.bad`, `retro.action_item_ids[]`, `retro.commits[]`. Worker auto-renders `## Retro` comment on post-completion auto-sync. Do NOT append `## Retro` comment yourself. **Action items are LAST RESORT** — re-apply Step 1.5 filter. If required for THIS card's ACs (already done, at Done), not an action item. If small + you could do now, do it, re-commit instead of filing. Only large separate scoped follow-ups belong. Create action item card first via `danx_issue_create({type, title, description, ac, ...})`, push returned `<PREFIX>-N` here. Empty `action_item_ids[]` is right answer most times.
+2. Fill the retro via `issue_retro({id, good, bad, action_item_ids[], commits[]})`. The server auto-renders the `## Retro` comment on completion — do NOT add a `## Retro` comment yourself. **Action items are LAST RESORT** — re-apply Step 1.5 filter. If required for THIS card's ACs (already done, at Done), not an action item. If small + you could do now, do it, re-commit instead of filing. Only large separate scoped follow-ups belong. Create the action item card first via `issue_create({type, title, description, ac, ...})`, push the returned `<PREFIX>-N` into `action_item_ids[]`. Empty `action_item_ids[]` is the right answer most times.
 
-Edit YAML with `Edit` / `Write` (only retro fields + bug-diagnosis — no status write). Watcher mirrors. On `danxbot_complete` call in Step 11, worker stamps `completed_at`, renders `## Retro` comment, spawns Action Items cards, moves file `open/` → `closed/`, pushes tracker move.
+On the `danxbot_complete` call in Step 11, the worker stamps `completed_at`, renders the `## Retro` comment, spawns Action Items cards, and pushes the tracker move.
 
 Skip to Step 11.
 
 ## Step 10 — Move to Blocked
 
-**MANDATORY:** Before stamping `blocked: {at, reason}` (which derives status to `Blocked` via rule 3), appending `## Blocked` comment, OR calling `danxbot_complete({status: "failed", ...})` with operator-must-X framing — INVOKE `issue-blocker` skill via Skill tool. The 8-item gating checklist there is authoritative. If any item fails you are NOT authorized to mark Blocked; return to in-session work. Failing to invoke before Blocked move is rule violation. Direct `status: "Blocked"` write FORBIDDEN — stamp trigger only, read path derives.
+**MANDATORY:** Before calling `issue_transition({action: 'block', reason})` (which derives status to `Blocked` via rule 3), adding a `## Blocked` comment, OR calling `danxbot_complete({status: "failed", ...})` with operator-must-X framing — INVOKE `issue-blocker` skill via Skill tool. The 8-item gating checklist there is authoritative. If any item fails you are NOT authorized to mark Blocked; return to in-session work. Failing to invoke before Blocked move is rule violation. Direct `status: "Blocked"` write FORBIDDEN — stamp trigger only, read path derives.
 
 Blocked is **LAST RESORT** AND **EXCLUSIVELY for cards needing human acting**. If card is waiting on other in-flight work — that's **Waiting On** (Step 10b), not Blocked.
 
@@ -272,9 +260,9 @@ Use Step 10 ONLY when blocker is genuinely one of:
 
 - **Credentials / secrets** human must rotate / push to SSM.
   - **NOT Blocker:** "needs deploy" / "needs prod smoke" / "needs Layer 3 system test". Layer 3 (`make test-system`) runs locally — you can run. Prod deploy ships code already accepted Done; NEVER completion gate. Card with only remaining ACs "deploy + smoke prod" is **already Done** — rewrite ACs to local-verify, run them, mark Done.
-  - **NOT Blocker:** pre-existing flaky/failing test in unrelated file. File Action Item via `danx_issue_create`, push id to `retro.action_item_ids[]`, check AC off (your card's tests pass), proceed.
+  - **NOT Blocker:** pre-existing flaky/failing test in unrelated file. File Action Item via `issue_create`, push id to `retro.action_item_ids[]`, check AC off (your card's tests pass), proceed.
   - **NOT Blocker:** AC says "manual UI smoke" / "operator clicks X." Agent has dashboard token + playwright MCP + dashboard component-test runner. Verify programmatically (component test → playwright → rewrite AC), check off, proceed.
-  - **NOT Blocker:** AC verifies behavior firing AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, watcher mirror, self-derived state). Rewrite AC to unit test for derivation function, run it, check off.
+  - **NOT Blocker:** AC verifies behavior firing AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, tracker mirror, self-derived state). Rewrite AC to unit test for derivation function, run it, check off.
 - **External repo / file worker has no write access** AND no other agent fixes it.
 - **Genuine human design decision** (ambiguous spec, missing requirement, conflicting direction). Specifically: answer changes goal / implementation plan in way ONLY human decides.
 - **Architectural ambiguity** — multiple valid implementations, different tradeoffs, human call.
@@ -293,24 +281,18 @@ Use Step 10 ONLY when blocker is genuinely one of:
 
 One more time: **"Does a human *action* unblock this, or am I just waiting on other work?"** If waiting, use Step 10b. If 10–30 minutes to fix, cancel Blocked, do it.
 
-**Edit YAML:**
+**Mutate the card via MCP:**
 
-1. Stamp `blocked: {at: "<current ISO>", reason: "<one sentence>"}`. Derived status becomes `Blocked` via rule 3; worker auto-applies Blocked label. Do NOT write `status: "Blocked"` — field is derived.
-2. Append Blocked comment to `comments[]`. Shape:
-   - `author: "danxbot"`
-   - `timestamp: <current ISO>`
-   - `text:` markdown body with sections:
-     - `## Blocked — <one-line summary>`
-     - `**What's done:** <bullet list of what landed, with commit shas>`
-     - `**What's still needed:** <numbered list — file paths, repo names, exact edits, verification commands>`
-     - `**Why this needs human/host help:** <one paragraph>`
-     - `**Incomplete ACs:** <bullet list of every unchecked AC item, verbatim>`
-     - `**Final AC check:** Before Done, every AC must be checked: true.`
-   - No `id` field
-3. **Bug cards** with partial progress: also append `## Bug Diagnosis` block.
-4. Fill `retro.{good, bad, action_item_ids, commits}` honestly — AC gap is primary "what went wrong." Worker auto-renders `## Retro` comment when next pickup moves card to Done / Cancelled (Blocked is non-terminal; rendering on eventual terminal save). Filling `retro` now helps: next agent inherits through YAML. **Re-apply Step 1.5 filter to every action item candidate.** Fix next agent will need → describe in Blocked comment, not action item card. Only large unrelated separately-scopeable follow-ups belong. Create action item first via `danx_issue_create({type, title, description, ac, ...})`, push returned `<PREFIX>-N`. Empty `action_item_ids[]` right answer most times.
-
-Edit YAML with `Edit` / `Write`; watcher mirrors.
+1. Call `issue_transition({id, action: 'block', reason: "<one sentence>"})`. The server stamps `blocked.at` + `reason`; derived status becomes `Blocked` via rule 3; worker auto-applies the Blocked label. Do NOT write `status: "Blocked"` — the field is derived.
+2. Add a Blocked comment via `issue_comment({id, action: 'add', text})`. The server stamps `author` + `timestamp`. `text` is a markdown body with sections:
+   - `## Blocked — <one-line summary>`
+   - `**What's done:** <bullet list of what landed, with commit shas>`
+   - `**What's still needed:** <numbered list — file paths, repo names, exact edits, verification commands>`
+   - `**Why this needs human/host help:** <one paragraph>`
+   - `**Incomplete ACs:** <bullet list of every unchecked AC item, verbatim>`
+   - `**Final AC check:** Before Done, every AC must be checked: true.`
+3. **Bug cards** with partial progress: also add a `## Bug Diagnosis` block (comment or description).
+4. Fill the retro via `issue_retro({id, good, bad, action_item_ids[], commits[]})` honestly — the AC gap is the primary "what went wrong." The server auto-renders the `## Retro` comment when the next pickup moves the card to Done / Cancelled (Blocked is non-terminal). Filling `retro` now helps: the next agent inherits it from the DB. **Re-apply Step 1.5 filter to every action item candidate.** Fix the next agent will need → describe in the Blocked comment, not an action item card. Only large unrelated separately-scopeable follow-ups belong. Create the action item first via `issue_create({type, title, description, ac, ...})`, push the returned `<PREFIX>-N`. Empty `action_item_ids[]` is the right answer most times.
 
 Skip to Step 11.
 
@@ -331,26 +313,26 @@ If only thing blocking is human action → use Step 10 (Blocked).
    1. **Phase siblings via parent epic.** If card has `parent_id`, read epic's `children[]`, check each phase card via `mcp__danx_dashboard__issue_get`. Blocker usually phase shipping first.
    2. **Open issues by topic.** Use `mcp__danx_dashboard__issue_list` to find cards covering prerequisite — ToDo, In Progress, Blocked, Action Items all qualify.
    3. **In Progress queue.** Cards being worked on may be blocker.
-2. **No existing card describes unblock work?** You MUST create one. Prepare the card data describing exactly what needs to happen. Call `danx_issue_create({type, title, description, ac, ...})`. Pick status:
+2. **No existing card describes unblock work?** You MUST create one. Prepare the card data describing exactly what needs to happen. Call `mcp__danx_dashboard__issue_create({type, title, description, ac, ...})`. Pick status:
    - Autonomous agent work → call `mcp__danx_dashboard__issue_transition({action: 'ready'})` so the poller dispatches.
    - Human work → call `mcp__danx_dashboard__issue_transition({action: 'block', reason: "<one sentence>"})` (derived `Blocked` via rule 3). Include all evidence human needs in description.
    Capture new card's returned `id`.
 3. **Set this card's dependency:**
-   - Call `mcp__danx_dashboard__issue_dependency({id: <this-card>, action: 'add', kind: 'depends_on', blocker_ids: [<PREFIX>-N of each IMMEDIATE blocker]})`.
-   - **`blocker_ids[]` is IMMEDIATE blocker(s) only.** If A→B→C, A's blocker is `["B"]` — NOT `["B", "C"]`. Chain computed auto by dashboard from each card's direct blocker; restating upstream is redundant + drifts. Same for phase chains (Phase 3 depends on Phase 2 only, never both Phase 2 and Phase 1).
+   - Call `mcp__danx_dashboard__issue_dependency({id: <this-card>, action: 'add', kind: 'depends_on', target_id: "<PREFIX>-N"})` once per IMMEDIATE blocker.
+   - **Each `target_id` is an IMMEDIATE blocker only.** If A→B→C, A depends on `B` — NOT `C`. The chain is computed auto by the dashboard from each card's direct blocker; restating upstream is redundant + drifts. Same for phase chains (Phase 3 depends on Phase 2 only, never both Phase 2 and Phase 1).
    - Do NOT change `status` directly. The `waiting_on` gate is independent — setting it via dependency call only. Picker uses `waiting_on` alone as dispatch gate.
    - Call `mcp__danx_dashboard__issue_comment({id: <this-card>, text: "<summary of blockers found/created and state once they ship>"})` to add a comment record.
 4. Call `mcp__danx_dashboard__issue_retro({id: <this-card>, good: "...", bad: "...", action_item_ids: [...], commits: [...]})` — gap between shipped + needed is "what went wrong." Same action-items rule: only large separately-scopeable follow-ups. Create action item first via `mcp__danx_dashboard__issue_create`, push `<PREFIX>-N`. Small in-scope work belongs in THIS dispatch or blocker card, not retro action item.
 
-### Save and exit
+### Exit
 
-Edit YAML with `Edit` / `Write`. Watcher mirrors; post-completion auto-sync (when `danxbot_complete` fires) applies Waiting On label via tracker, returns. Picker skips dispatch while any blocker non-terminal. When every blocker terminal, picker dispatches card same tick — `waiting_on` record stays as durable dep-history note.
+All mutations land via the `issue_*` MCP tools. Post-completion auto-sync (when `danxbot_complete` fires) applies the Waiting On label via the tracker, then returns. Picker skips dispatch while any blocker non-terminal. When every blocker terminal, picker dispatches the card the same tick — the `waiting_on` record stays as a durable dep-history note.
 
 Skip to Step 11.
 
 ## Step 11 — Signal Completion
 
-`danxbot_complete` is agent's terminal signal. Worker treats as proof full pipeline ran. **Do not call until every prereq below holds.** Calling with prereqs unmet is **workflow violation** — worker writes dispatch row completed, file moves `open/` → `closed/`, work appears shipped without ever landing main. DX-203 + DX-210 burned the budget.
+`danxbot_complete` is agent's terminal signal. Worker treats as proof full pipeline ran. **Do not call until every prereq below holds.** Calling with prereqs unmet is **workflow violation** — worker writes the dispatch row completed, the card derives terminal, work appears shipped without ever landing main. DX-203 + DX-210 burned the budget.
 
 ### Pre-call gate (mechanical, every status: complete)
 
@@ -378,7 +360,7 @@ If either fails, three options:
 - **Split into fresh sibling card** for genuinely separate scope; narrow THIS card's AC set; document in `comments[]`.
 - **Route to Blocked / Waiting On** (Step 10 / 10b) when real human action / external dep gates remainder.
 
-**`danxbot_complete({status: "complete"})` on `type: Epic` is FORBIDDEN.** Epic terminal state derives from child rollup, never direct write. Planning dispatch whose candidate IS epic (split-into-phases pattern) calls `danxbot_complete({status: "complete"})` ONLY when every phase child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses `completed_at` / `cancelled_at` stamp on Epic YAML, surfaces `stamp-terminal-epic-refused` system error. Dispatch row finalizes; YAML mutation suppressed. Guard is defense-in-depth — rule above is what you uphold. If you reach guard, you tripped the rule.
+**`danxbot_complete({status: "complete"})` on `type: Epic` is FORBIDDEN.** Epic terminal state derives from child rollup, never direct write. Planning dispatch whose candidate IS epic (split-into-phases pattern) calls `danxbot_complete({status: "complete"})` ONLY when every phase child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses the `completed_at` / `cancelled_at` stamp on an Epic card, surfaces `stamp-terminal-epic-refused` system error. Dispatch row finalizes; the card stamp is suppressed. Guard is defense-in-depth — rule above is what you uphold. If you reach guard, you tripped the rule.
 
 ### Sha-less completion rejected
 
@@ -386,7 +368,7 @@ If either fails, three options:
 
 ### Per-status table
 
-| `danxbot_complete({status, …})` | YAML side-effect | Derived status | When to use |
+| `danxbot_complete({status, …})` | DB side-effect | Derived status | When to use |
 |---|---|---|---|
 | `complete` | worker stamps `completed_at` + clears `dispatch` | `Done` | Work shipped on `origin/main`; every AC checked; retro filled. |
 | `failed` | worker stamps `blocked: {at, reason: summary}` (summary ≥ 30 chars; shorter → silent cancel + strike) | gated `Blocked` dispatch | Card cannot proceed without human acting (ambiguous spec, missing credentials, external blocker). Load `issue-blocker` skill first — its gate is authority. |
@@ -399,18 +381,18 @@ DX-770 hard-cut pre-existing `completed` / `agent_blocked` aliases. MCP tool rej
 
 ### Allowed final states
 
-- `status: "complete"` — finished; worker stamps `completed_at`, renders `## Retro`, moves `open/` → `closed/`. `summary` MUST contain commit sha (or `"docs-only — no commit"` if explicitly docs-only).
+- `status: "complete"` — finished; worker stamps `completed_at`, renders `## Retro`, card derives `Done`. `summary` MUST contain commit sha (or `"docs-only — no commit"` if explicitly docs-only).
 - `status: "failed"` — cannot proceed without human; worker stamps `blocked: {at, reason: summary}`. `summary` MUST be ≥ 30 chars (shorter → silent downgrade to cancel + strike).
 - `status: "cancelled"` — abandoned; worker stamps `cancelled_at`. `summary` describes abandonment reason.
-- `status: "critical_failure"` — environment-level blocker (see `danx-halt-flag.md`). `summary` describes env issue for operator. No YAML stamp; poller halts via per-repo `CRITICAL_FAILURE` flag.
+- `status: "critical_failure"` — environment-level blocker (see `danx-halt-flag.md`). `summary` describes env issue for operator. No card stamp; poller halts via per-repo `CRITICAL_FAILURE` flag.
 
 ### What worker does on signal
 
-1. Auto-syncs YAML one final time (safety net).
+1. Stamps the terminal trigger in the DB (`completed_at` / `cancelled_at`).
 2. Finalizes dispatch row.
 3. Renders `## Retro` comment from `retro.{good, bad, action_item_ids, commits}`.
 4. Spawns Action Items cards from `retro.action_item_ids[]`.
-5. Moves file `open/` → `closed/` (Done / Cancelled).
+5. Card derives terminal (`Done` / `Cancelled`) via `deriveStatus`.
 6. Pushes tracker move.
 7. SIGTERMs claude.
 8. Resumes polling.
@@ -419,7 +401,7 @@ Never exit without `danxbot_complete`. Never call with prereqs unmet.
 
 ### Terminal token — emit NO text after call
 
-`danxbot_complete` IS the report. `summary` arg + `retro.{good, bad, commits, action_item_ids}` in YAML are what operator + dashboard + next dispatch read. Conversation stream NOT read after tool returns — worker SIGTERMs claude within 5s; tokens during grace window discarded.
+`danxbot_complete` IS the report. `summary` arg + `retro.{good, bad, commits, action_item_ids}` on the card are what operator + dashboard + next dispatch read. Conversation stream NOT read after tool returns — worker SIGTERMs claude within 5s; tokens during grace window discarded.
 
 **Forbidden after `danxbot_complete`:**
 - convey-format report (`## <headline>`, behavior diff table, verify line)
@@ -429,6 +411,6 @@ Never exit without `danxbot_complete`. Never call with prereqs unmet.
 
 `base:convey` self-trigger gate has explicit carve-out — see "Hard carve-out — terminal MCP calls" section. If you reach for report reflex after tool result, that is the rule the carve-out exists to block.
 
-## If YAML Says Empty / Wrong State
+## If the Card Is Empty / In a Wrong State
 
-Missing/unparseable YAML → signal `critical_failure` — poller broken. If YAML's `status` already `Done` / `Cancelled` (file should be in `closed/`), something upstream is wrong — signal `failed` with summary explaining inconsistency.
+`issue_get` returns `{ok: false}` / card not found → signal `critical_failure` — poller broken. If the card's `status_derived` is already `Done` / `Cancelled`, something upstream is wrong — signal `failed` with summary explaining the inconsistency.

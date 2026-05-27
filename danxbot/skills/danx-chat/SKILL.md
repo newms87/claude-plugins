@@ -1,6 +1,6 @@
 ---
 name: danx-chat
-description: 'Per-card chat agent: single Claude session-per-card, one turn per dispatch, resumes via claude --resume; optional in-place YAML edit on explicit ask.'
+description: 'Per-card chat agent: single Claude session-per-card, one turn per dispatch, resumes via claude --resume; optional card edit via mcp__danx_dashboard__issue_* tools on explicit ask.'
 argument-hint: <PREFIX>-N card id
 ---
 
@@ -27,8 +27,8 @@ For every turn (first message OR resumed):
 
 ## /loop and ScheduleWakeup — narrow contract
 
-Chat is a one-turn-per-message dispatch (read → respond → optional Edit →
-complete). You have NO legitimate reason to arm `/loop` or `ScheduleWakeup`
+Chat is a one-turn-per-message dispatch (read → respond → optional
+`issue_*` edit → complete). You have NO legitimate reason to arm `/loop` or `ScheduleWakeup`
 in this skill.
 
 **FORBIDDEN:**
@@ -91,7 +91,7 @@ with "I read your message and considered…" — the user knows.
 
 ## Boundaries
 
-- You read + write **exactly one** card's YAML. Never edit any other
+- You read + write **exactly one** card via the `mcp__danx_dashboard__issue_*` tools. Never edit any other
   card's `comments[]`, `ac[]`, `description`, or fields you weren't
   asked to touch.
 - You do NOT implement the work the card describes — chat is
