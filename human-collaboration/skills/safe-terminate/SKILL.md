@@ -41,17 +41,23 @@ Then:
 
 **Closed this session.** Bulleted list — one line per item, format `- <ID or name> — <≤8 word title>`. No description, no rationale. The user already knows what closed; this is just the audit trail.
 
-**Open / outstanding.** A table. **Every row must stand alone to a reader with ZERO session context** — they understand what the item is, where it lives, why it matters, and what to do next, WITHOUT asking a follow-up question. A bare label or ID is never the explanation.
+**Open / outstanding.** One section per item, each separated by a `---` rule — NOT a table. A table cramps the text; every item needs room to be understood. **Each section must stand alone to a reader with ZERO session context** — they understand what the item is, where it lives, why it matters, and what to do next, WITHOUT asking a follow-up. A bare label or ID is never the explanation.
 
-| Item | What it is (plain language) | Why it matters | Recommended action |
-|---|---|---|---|
+Format each open item exactly like this:
 
-- **Item** = a short handle for the row (`SG-N`, `octane:reload`, `commit pending`). This is just a name — NOT the explanation.
-- **What it is** = a plain-language sentence a newcomer understands. Name the thing, where it lives (file path / card id / system / command), and its current state. Spell out any acronym or internal label the first time it appears (write "the unpushed-commits check in `src/worker/x.ts`", not "Audit P0"). Use as many words as clarity needs.
-- **Why it matters** = the concrete consequence of terminating without it. If it's "a future agent won't know X", say so explicitly.
-- **Recommended action** = the specific next step that closes it — an exact command, a card to file, a decision the user must make, or who must do it. Never "investigate" or "look into" — name the action.
+---
 
-If Open list is empty, write `_None._` instead of the table.
+### `<short handle>` — e.g. `SG-N`, `octane:reload`, `commit pending`
+
+**What it is:** A plain-language sentence (or two) a newcomer understands. Name the thing, where it lives (file path / card id / system / command), and its current state. Spell out any acronym or internal label the first time it appears — write "the unpushed-commits check in `src/worker/x.ts`", not "Audit P0". Use as many words as clarity needs.
+
+**Why it matters:** The concrete consequence of terminating without it. If it's "a future agent won't know X", say so explicitly.
+
+**Recommended action:** The specific next step that closes it — an exact command, a card to file, a decision the user must make, or who must do it. Never "investigate" or "look into" — name the action.
+
+---
+
+If there are no open items, write `_None._` in place of the sections.
 
 **Verify.** One terminal command the user can run NOW to spot-check the recap (e.g. `git status`, `mcp__danx-issue__danx_issue_list`, `docker ps`). Skip if no verification command applies.
 
@@ -97,11 +103,37 @@ If Open list is empty, write `_None._` instead of the table.
 
 **Open / outstanding.**
 
-| Item | What it is (plain language) | Why it matters | Recommended action |
-|---|---|---|---|
-| TO-55 findings | The root-cause analysis of the provider-variation bug — delivered only in this chat, never saved to a card, doc, or commit | A future agent hits the same bug and re-investigates from scratch | File a Bug card with the findings, or paste them into SD-14's description |
-| SG-142 schema split | Phase 1 card to split the `src/db/schema/*` tables — edits were planned but never executed | Phases 2 and 3 are gated on it; nothing downstream can start | Dispatch SG-142, or tell me to defer it |
-| `octane:reload` | A `/api/foo` route was added this session, but the running PHP server still holds the old route table | `/api/foo` returns 404 in the live app until the server reloads | Run `php artisan octane:reload` |
+---
+
+### `TO-55 findings`
+
+**What it is:** The root-cause analysis of the provider-variation bug, worked out and delivered only in this chat session. It was never saved to a card, doc, or commit message.
+
+**Why it matters:** A future agent hitting the same bug re-investigates it from scratch — the analysis is lost when this session ends.
+
+**Recommended action:** File a Bug card capturing the findings, or paste them into SD-14's description.
+
+---
+
+### `SG-142 schema split`
+
+**What it is:** Phase 1 card to split the `src/db/schema/*` tables. The edits were planned this session but never executed.
+
+**Why it matters:** Phases 2 and 3 are gated on it — nothing downstream can start until it lands.
+
+**Recommended action:** Dispatch SG-142, or tell me to defer it.
+
+---
+
+### `octane:reload`
+
+**What it is:** A `/api/foo` route was added this session, but the running PHP (Octane) server still holds the old route table in memory.
+
+**Why it matters:** `/api/foo` returns 404 in the live app until the server reloads.
+
+**Recommended action:** Run `php artisan octane:reload`.
+
+---
 
 **Verify.** `mcp__danx-issue__danx_issue_list({status: "Review"})` → 4 new SG-N cards.
 ```
@@ -109,5 +141,5 @@ If Open list is empty, write `_None._` instead of the table.
 ## Composition
 
 - `base:convey` owns format (already auto-loaded).
-- Caveman mode is respected — if active, prose tightens; tables still apply; technical terms unchanged.
+- Caveman mode is respected — if active, prose tightens; the per-item section format + `---` separators still apply; technical terms unchanged.
 - This skill does NOT mutate state. It is a read-only audit. Do not file new cards, run commits, or push during the recap. If items are Open, the user picks what to do next.
