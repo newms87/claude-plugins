@@ -78,6 +78,8 @@ See references/lifecycle-states.md for complete state machine, derivation rules,
 
 ## Phases vs Epics
 
+**Epic-vs-Feature mechanical gate — answer BEFORE `issue_create type:Epic`:** Epic ONLY when the children are **independently dispatchable** — each lands as its own PR leaving the system green. If the parts **interlock** (must land together, or the system is broken/half-done between them) → it is ONE Feature with `effort_level`, NOT an epic. Size / part-count is what `effort_level` is for; it is NEVER the epic trigger. A "decide X" / "review Y" step is not a phase. When unsure, default to Feature.
+
 See references/phases-epics.md for split criteria, epic mechanics, phase creation, and completion contract.
 
 ## General Rules
