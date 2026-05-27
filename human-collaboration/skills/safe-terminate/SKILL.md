@@ -28,7 +28,7 @@ Walk the full session transcript top-to-bottom. For EACH item below, mentally an
 
 ## Output format
 
-Single response, ≤30 lines total. Apply `base:convey`. Caveman-mode-aware (full caveman → tighter prose; no caveman → normal prose, still no filler).
+Single response. Keep the headline + closed list tight (~30 lines is the target for those). The **open-items section is exempt from the line budget** — each open item must be fully clear to a first-time reader, even if that costs extra lines. Clarity of open items always wins over brevity. Apply `base:convey`. Caveman-mode-aware (full caveman → tighter prose; no caveman → normal prose, still no filler).
 
 Headline: one of two shapes. Pick mechanically based on whether the Open list below is empty.
 
@@ -41,14 +41,15 @@ Then:
 
 **Closed this session.** Bulleted list — one line per item, format `- <ID or name> — <≤8 word title>`. No description, no rationale. The user already knows what closed; this is just the audit trail.
 
-**Open / outstanding.** ONE-LINE table:
+**Open / outstanding.** A table. **Every row must stand alone to a reader with ZERO session context** — they understand what the item is, where it lives, why it matters, and what to do next, WITHOUT asking a follow-up question. A bare label or ID is never the explanation.
 
-| Item | What | Why it matters |
-|---|---|---|
+| Item | What it is (plain language) | Why it matters | Recommended action |
+|---|---|---|---|
 
-- "Item" = ID (`SG-N`) or short name (`octane:reload`, `commit pending`, `findings not captured`).
-- "What" = the concrete unfinished action in ≤10 words.
-- "Why it matters" = the consequence of terminating without it in ≤12 words. If the consequence is "future agent will not know X", say so explicitly.
+- **Item** = a short handle for the row (`SG-N`, `octane:reload`, `commit pending`). This is just a name — NOT the explanation.
+- **What it is** = a plain-language sentence a newcomer understands. Name the thing, where it lives (file path / card id / system / command), and its current state. Spell out any acronym or internal label the first time it appears (write "the unpushed-commits check in `src/worker/x.ts`", not "Audit P0"). Use as many words as clarity needs.
+- **Why it matters** = the concrete consequence of terminating without it. If it's "a future agent won't know X", say so explicitly.
+- **Recommended action** = the specific next step that closes it — an exact command, a card to file, a decision the user must make, or who must do it. Never "investigate" or "look into" — name the action.
 
 If Open list is empty, write `_None._` instead of the table.
 
@@ -57,7 +58,8 @@ If Open list is empty, write `_None._` instead of the table.
 ## Anti-patterns
 
 - **Restating the chat transcript.** The user just lived through the session. Recap items the user might forget — not items the user just confirmed.
-- **Long descriptions per item.** If "what" needs more than 10 words, file an issue card and reference it instead.
+- **Bare jargon labels as the explanation.** An item shown only as `Audit P0` / `SG-142 dispatch` / `that swallow thing` with no plain-language "what it is" forces the reader to ask "what's that?" — the exact failure this format exists to prevent. Every row stands alone to a newcomer.
+- **Over-compression that destroys clarity.** The line budget covers the headline + closed list, NOT open-item explanations. An open item too terse to understand is worse than one that runs three extra lines. Spell it out — including the file path or location.
 - **Padding with closed-item rationale.** Closed items get a title only — no "this was important because..." prose.
 - **Hedging on Open vs Closed.** If you cannot tell, mark Open. The cost of one false-positive Open is a 5-second user response; the cost of a false-positive Closed is silent loss.
 - **Inventing items to look thorough.** Items must come from the actual transcript. No "maybe we should have done X."
@@ -95,11 +97,11 @@ If Open list is empty, write `_None._` instead of the table.
 
 **Open / outstanding.**
 
-| Item | What | Why it matters |
-|---|---|---|
-| TO-55 findings | Not persisted to any card / doc | Future agent re-investigates same provider variations |
-| SG-142 dispatch | Schema edits not yet executed | Phase 2 + 3 cannot start until Phase 1 lands |
-| `octane:reload` | Skipped after route edit | New `/api/foo` route returns 404 until reload |
+| Item | What it is (plain language) | Why it matters | Recommended action |
+|---|---|---|---|
+| TO-55 findings | The root-cause analysis of the provider-variation bug — delivered only in this chat, never saved to a card, doc, or commit | A future agent hits the same bug and re-investigates from scratch | File a Bug card with the findings, or paste them into SD-14's description |
+| SG-142 schema split | Phase 1 card to split the `src/db/schema/*` tables — edits were planned but never executed | Phases 2 and 3 are gated on it; nothing downstream can start | Dispatch SG-142, or tell me to defer it |
+| `octane:reload` | A `/api/foo` route was added this session, but the running PHP server still holds the old route table | `/api/foo` returns 404 in the live app until the server reloads | Run `php artisan octane:reload` |
 
 **Verify.** `mcp__danx-issue__danx_issue_list({status: "Review"})` → 4 new SG-N cards.
 ```
