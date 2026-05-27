@@ -51,6 +51,8 @@ When any holds:
 - Prose only — zero code blocks.
 - Zero-context test: write as amnesic — exact file paths, method names, reasoning.
 
+**Mechanical gate — no card yet AND plan is a danxbot feature (≥2 phases, OR references a `DX-`/`ISS-` id):** the durable artifact is TRACKER CARDS, not the plan file. File the Epic + phase children via `mcp__danx_dashboard__issue_create` (reopen the id via `issue_transition` if it already exists) BEFORE `ExitPlanMode`. The `~/.claude/plans/*.md` file is scratch for the approval round-trip ONLY — a multi-phase breakdown that lives only there is the forbidden parallel-spec failure (issue-card-workflow “NEVER write plans as a standalone `.md` substitute”). Deferring card creation to a "Phase 0" inside the plan file is the same failure.
+
 ## Card instructions are not suggestions
 
 Card specifies endpoint/component/data → requirement. Genuine blocker → STOP, report + propose alternative. Never silently substitute placeholder + mark complete. "Too complex"/"too coupled" are engineering problems to solve, not blockers.
