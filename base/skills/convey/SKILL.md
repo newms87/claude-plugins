@@ -18,6 +18,33 @@ Default agent output is code-first: file paths, symbols, prose. Reader reverse-e
 
 Finished artifact someone reads to decide → convey applies.
 
+## Where the artifact lives — NEVER in the consumer repo
+
+Agent-authored long-form transient artifacts — handoff docs, plans, scratch
+specs, investigation reports, multi-step working notes — go under `/tmp/`,
+**NEVER into the consumer repo's `docs/` tree** (or any other in-repo path).
+The repo is production source; agents dropping handoffs into `docs/handoffs/`
+clutters git, forces every future contributor's `git status` to ignore-list
+dance over the path, and leaves stale prose nobody owns the moment the
+receiving agent finishes.
+
+| Artifact | Path |
+|---|---|
+| Handoff for the next agent | `/tmp/handoffs/<TITLE>.md` |
+| Multi-file scratch / plan / investigation notes | `/tmp/<topic>/` |
+| One-shot inline report (the convey scaffold above) | emit in chat — no file |
+
+Only commit a doc to the consumer repo when the user **explicitly** asks for
+something durable in vc (canonical guides under `docs/guides/`, runbooks,
+contracts the team co-owns). "It's a long output" is not a reason to write to
+the repo — `/tmp/` is the default home for everything an agent writes that
+isn't code or a user-requested-durable doc.
+
+Mechanical pre-Write check: about to `Write` a `.md` under `<repo>/docs/` (or
+anywhere in the consumer tree) that wasn't on the user's explicit request
+list → STOP, retarget to `/tmp/`. The same rule blocks an agent from making a
+mess in `<repo>/scratch/`, `<repo>/notes/`, or any other ad-hoc dump dir.
+
 ## The scaffold
 
 ```
