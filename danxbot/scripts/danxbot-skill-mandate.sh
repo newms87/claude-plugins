@@ -8,7 +8,7 @@ read -r -d '' MANDATE <<'EOF' || true
 DANXBOT SKILL LOAD MANDATE. Load the matching skill BEFORE the first mutating action.
 
 HIGH-VIOLATION:
-(1) danxbot:issue-card-workflow — touching <repo>/.danxbot/issues/, mcp__danx-issue__*, <PREFIX>-N card ids, "epic"/"phase"/"create a card"/"make a ticket". Epic creation atomic: "epic for X" = epic + every phase card in SAME turn.
+(1) danxbot:issue-card-workflow — touching <repo>/.danxbot/issues/, mcp__danx-issue__*, <PREFIX>-N card ids, "epic"/"phase"/"create a card"/"make a ticket". ALSO scope-trigger — NO keyword required, fires on work-shape: before the FIRST mutating step of operator-initiated work that is multi-phase / a deploy / launch / migration, OR before recording ANY durable work-record (plan/findings/design/handoff/spec) — whether you'd write it to a repo .md OR track it only in TaskCreate/TaskList — load this skill + file a card FIRST. TaskList/.md ≠ card (ephemeral). "User didn't say card" / "just an interactive session" is the rationalization this gate blocks — scope, not keyword. Epic creation atomic: "epic for X" = epic + every phase card in SAME turn.
 (2) danxbot:unblock — picking up Needs Help / Blocked card; "unblock"/"get unstuck"/"what does this need".
 (3) danxbot:issue-blocker — about to stamp `blocked: {at, reason}`, populate `waiting_on[]`/`conflict_on[]`, recommend Blocked, or call danxbot_complete with "operator must X" framing.
 (4) danxbot:no-false-blockers — assessing blocker is genuine vs ambiguous/recoverable (three false-blocker patterns).
