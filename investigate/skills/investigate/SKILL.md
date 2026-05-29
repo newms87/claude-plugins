@@ -42,6 +42,8 @@ Write: "I expect X because Y. If right, evidence Z appears. If wrong, evidence W
 
 Cheapest, most direct first. No fanout before commit.
 
+**Definition-before-history gate (mechanical).** If the question is "what does X do / does X handle Y" where X is a NAMED artifact — a `make` target, script, function, route, config key — READ X's CURRENT definition FIRST: grep the literal name in the working tree and read the whole match (e.g. `grep -nE '^X:' Makefile`, the full target incl. prerequisites). Only AFTER that may you reach for `git log`/`git blame`. History answers "how did X change"; it NEVER answers "what does X do now" — substituting one for the other is the failure. Already formed a verdict ("it's API-only") and now searching history to confirm it? STOP — that's confirmation bias; re-read the current definition in full before asserting.
+
 ### 4. Gather evidence
 
 Capture verbatim — file contents (cite line numbers), command output (exit code per `bash-exit-capture`), HTTP shape, DB row shape.
