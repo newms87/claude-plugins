@@ -19,6 +19,17 @@ Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's e
 
 Skipping Step A leaves the card stuck mid-state — `dispatch_id` cleared (worker side), but no lifecycle stamp. Verify via `issue_get` after Step A: `completed_at` / `cancelled_at` / `blocked_at` non-null + `status_derived` matches expected, BEFORE Step B.
 
+## In-session work = self-pickup IMMEDIATELY (a ToDo card is an open dispatch request)
+
+A card in `ToDo` (`dispatchable_derived: true`) is NOT a passive note — it is an **open dispatch request the poller will fulfill with a worker on its next tick.** If you create/ready a card for work YOU are doing in THIS session (not delegating), and you leave it in `ToDo` while you work, the poller dispatches a SECOND agent against the same card → two checkouts, duplicate commits, push conflict.
+
+**Mechanical gate — when you create or `ready` a card you intend to work yourself, BEFORE the first work action:**
+1. `issue_transition({id, action: 'pickup'})` → `In Progress` (`dispatchable_derived: false`). This REMOVES the card from the poller's dispatch pool. Do it FIRST, then work.
+2. `pickup` is NOT a worker-only formality. Its function is taking the card OUT of dispatchable state — it applies equally to the main/operator session. "No dispatch context, so skip pickup" is the exact rationalization that causes the duplicate-worker race.
+3. If `pickup` is gated (409 failed_gate), the card still must not sit dispatchable while you work — resolve the gate or do not `ready` it until you start.
+
+Order for self-done work: `create` → `ready` → **`pickup`** → work → `complete`. Never `create` → `ready` → work (leaves a dispatchable gap the poller races).
+
 ## Source of Truth & Tracker Contract
 
 **Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only. Poller dispatches off the v2 dashboard DB via the dashboard HTTP API; agents read + write exclusively via MCP tools.
