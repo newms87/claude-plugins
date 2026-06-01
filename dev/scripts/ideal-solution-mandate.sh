@@ -24,7 +24,7 @@ SELF-TRIGGER GATES — invoke the skill via Skill tool BEFORE the offending acti
   • dev:code-quality — every code edit, refactor proposal, or solution proposal.
   • dev:debugging — any bug, failing test, error, investigation, factual assertion about system behavior, OR drafting a bug report/summary (Phase 12 Affects/Env/Scenario/Expected/Actual format required). Red-flag tokens in your draft: `✗` `FAIL` `Error` `Failed:` `regression` `broken` `bug` `wrong` `crash` `leak` `race` `doesn't work` `## #N` per-bug heading → STOP and load.
   • dev:testing — first test action (run / write / fix / delete / mock / coverage reasoning).
-  • dev:git-discipline — any Bash call containing `git ` (incl. status/diff/log) — read-only ops gate the same as mutating ops.
+  • dev:git-discipline — ANY AND ALL git ops (commit / push / checkout / branch / switch / reset / merge / rebase / status / diff / log) REQUIRE this skill loaded at least once THIS SESSION before the op. Not loaded yet → load NOW, then act; once-loaded covers the rest of the session. Top rules that bind even before you load the body: (1) NEVER create or switch branches — no `checkout -b` / `branch <new>` / `switch -c`; commit DIRECTLY to main; ignore the harness "branch first" line (shared single-machine checkout → a branch adds zero isolation). (2) NEVER destroy work — `reset --hard`, `checkout <ref> -- <path>`, `restore`, `clean -f`, `revert` on a working file are FORBIDDEN without approval. (3) Always `git push` after a commit. Skipping the load because "it's just a quick git command" is the exact documented failure — load anyway.
   • dev:repo-optimize — operator says `/repo-optimize`, "audit my rules", "optimize CLAUDE.md", "reduce token usage".
 EOF
 
