@@ -57,6 +57,8 @@ You do NOT skip phases. If a phase doesn't apply, mark it complete with a one-li
 
 **8. Implement:** fix producer (case #1/#4), plan data fix (case #2), fix expectation (case #3). Minimal. Forbidden: consumer tolerant (`??`, `try/catch`), "legacy data accept it", "error message tells what to change".
 
+**8.0. MECHANISM-READ GATE (mandatory before the FIRST edit/commit of any fix).** Quote, from the source that ENFORCES the behavior (the validator/contract/shape/level/config code itself — `file:line`), the rule the fix must satisfy. An error STRING, a sibling test's pattern, or "the other case does X" is NOT that source — it tells you a symptom, not the governing contract. If you cannot cite the enforcing code, you do not understand the fix yet: keep reading, do NOT edit. **Doubly mandatory when validation is expensive** (a multi-minute run, an LLM pipeline, a deploy) — there you get one shot, so certainty comes from reading the contract, never from "commit a guess and see what the next run says." Committing a fix on an inferred mechanism = the failure this gate blocks.
+
 **9. Verify:** failing test passes · related tests pass · original trigger gone · evidence captured.
 
 **10. Backfill:** idempotent + incremental (delta + high-water mark, not truncate-reload). Cost/time 10th run identical.
