@@ -24,11 +24,13 @@ Skipping Step A leaves the card stuck mid-state — `dispatch_id` cleared (worke
 A card in `ToDo` (`dispatchable_derived: true`) is NOT a passive note — it is an **open dispatch request the poller will fulfill with a worker on its next tick.** If you create/ready a card for work YOU are doing in THIS session (not delegating), and you leave it in `ToDo` while you work, the poller dispatches a SECOND agent against the same card → two checkouts, duplicate commits, push conflict.
 
 **Mechanical gate — when you create or `ready` a card you intend to work yourself, BEFORE the first work action:**
-1. `issue_transition({id, action: 'pickup'})` → `In Progress` (`dispatchable_derived: false`). This REMOVES the card from the poller's dispatch pool. Do it FIRST, then work.
-2. `pickup` is NOT a worker-only formality. Its function is taking the card OUT of dispatchable state — it applies equally to the main/operator session. "No dispatch context, so skip pickup" is the exact rationalization that causes the duplicate-worker race.
-3. If `pickup` is gated (409 failed_gate), the card still must not sit dispatchable while you work — resolve the gate or do not `ready` it until you start.
+1. `issue_transition({id, action: 'pickup', manual: true})` → `In Progress` (`dispatchable_derived: false`). This REMOVES the card from the poller's dispatch pool. Do it FIRST, then work.
+2. **`manual: true` is MANDATORY for self-pickup** (DX-946). It stamps `dispatch_kind: 'manual'` — the marker that tells the worker this card is operator-owned: no orphan-IP heal rollback, no Epic auto-rollup, no auto-transition of any kind. A plain `pickup` (no `manual`) registers as a worker dispatch with no live session behind it; after 5 minutes the orphan heal rolls the card back to ToDo and the poller dispatches a SECOND agent against your in-flight work (this exact race burned SG-331).
+3. `pickup` is NOT a worker-only formality. Its function is taking the card OUT of dispatchable state — it applies equally to the main/operator session. "No dispatch context, so skip pickup" is the exact rationalization that causes the duplicate-worker race.
+4. `manual: true` bypasses every card-flow gate (`ready_at`, `blocked_at`, `requires_human`, `depends_on`, `conflict_on`) — a manual pickup is fully operator-controlled and works straight from Review. Only terminal / already-dispatched still refuse 409.
+5. A manual hold is released ONLY by an explicit transition from your session: `complete` / `cancel` / `block` / `rollback_pickup`. Nothing auto-clears it — abandoning the session leaves the card In Progress until you (or the operator) transition it.
 
-Order for self-done work: `create` → `ready` → **`pickup`** → work → `complete`. Never `create` → `ready` → work (leaves a dispatchable gap the poller races).
+Order for self-done work: `create` → **`pickup` with `manual: true`** → work → `complete`. (`ready` is optional — manual pickup does not require it.) Never `create` → `ready` → work (leaves a dispatchable gap the poller races), and never a bare `pickup` for in-session work (leaves a heal-rollback window).
 
 ## Source of Truth & Tracker Contract
 
@@ -69,7 +71,7 @@ Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
 | `mcp__danx_dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
 | `mcp__danx_dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
 | `mcp__danx_dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
-| `mcp__danx_dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. |
+| `mcp__danx_dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?, manual?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. `manual: true` (pickup-only, DX-946) = operator-session self-pickup: stamps `dispatch_kind: 'manual'`, bypasses card-flow gates, worker never auto-transitions the card. |
 | `mcp__danx_dashboard__issue_triage({id, verdict: 'approve'\|'cancel'\|'keep'\|'defer', ice?: {i,c,e}, reason, ttl_seconds?})` | Single atomic triage call. Server routes per verdict. |
 | `mcp__danx_dashboard__issue_comment({id, action: 'add'\|'edit'\|'delete', comment_id?, text?})` | Comment lifecycle (add/edit/delete). Server stamps author + timestamp. |
 | `mcp__danx_dashboard__issue_dependency({id, action: 'add'\|'remove', kind?: 'depends_on'\|'conflict_on', target_id?, reason?, dependency_id?})` | Manage card dependencies. |
