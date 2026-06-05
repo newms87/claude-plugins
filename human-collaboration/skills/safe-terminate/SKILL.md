@@ -25,6 +25,7 @@ Walk the full session transcript top-to-bottom. For EACH item below, mentally an
 10. **Action items not yet tracked?** Any "we should also fix X" / "follow-up: Y" / "TODO: Z" mentioned mid-session — does each have a card or commit? Floating TODOs are Open.
 11. **Schema / migration state?** Any DB migration created — has it been run? Any schema edit through tinker — does it match the canonical persistence path? Out-of-band schema mutations are Open.
 12. **Test status?** Any test file created / changed — was it run + green? Unverified test claims are Open.
+13. **Re-read live state — session memory is stale by definition.** BEFORE listing any open item whose state lives in an external system (tracker card status, another agent's work, a running process, a deploy), re-query that system NOW (card get/list, `docker ps`, `git log`). Other agents work concurrently; a status you observed earlier in the session is a hypothesis, not a fact. An open item reported from memory that a 2-second query would have shown resolved is the documented failure this item blocks.
 
 ## Output format
 
