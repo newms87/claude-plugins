@@ -79,7 +79,7 @@ staging-paths:
   - "/tmp/schemas/${SCHEMA_DEFINITION_ID}/"
 ```
 
-Each root may contain `${KEY}` placeholders substituted at request time against the dispatch overlay (same overlay used for `.mcp.json` and `.claude/settings.json`). A workspace with no `staging-paths` rejects any non-empty `staged_files` payload with 400 (fail closed).
+Each root may contain `${KEY}` placeholders substituted at request time against the dispatch overlay (same overlay used for `mcp.template.json` and `.claude/settings.json`). A workspace with no `staging-paths` rejects any non-empty `staged_files` payload with 400 (fail closed).
 
 **Validation pipeline (`src/dispatch/staged-files.ts` is the single source of truth):**
 
@@ -133,7 +133,7 @@ Defensive: if `messageId` is missing on an entry that has `usage` (never seen in
 
 Three different claude-auth misconfigurations all surface as the SAME symptom — `/api/launch` returns a `job_id`, status sits at `running`, then eventually `failed` with `summary="Agent timed out after N seconds of inactivity"`. The watcher never attaches, no JSONL appears, no error is logged. Before chasing the StallDetector, check the auth chain first:
 
-1. **Read-only bind on `.claude.json` or `.claude/`** — claude rewrites `.claude.json` (session metadata) on most runs and rotates `.credentials.json` periodically; RO blocks the writes and `claude -p` exits 0 with empty stdout. From `/tmp` cwd it exits silently; from a workspace cwd with `.mcp.json` + `.claude/settings.json` it hangs because MCP startup interacts with the auth-refresh failure (Trello PHevzRil).
+1. **Read-only bind on `.claude.json` or `.claude/`** — claude rewrites `.claude.json` (session metadata) on most runs and rotates `.credentials.json` periodically; RO blocks the writes and `claude -p` exits 0 with empty stdout. From `/tmp` cwd it exits silently; from a workspace cwd with `mcp.template.json` + `.claude/settings.json` it hangs because MCP startup interacts with the auth-refresh failure (Trello PHevzRil).
 2. **Expired OAuth token** — `claudeAiOauth.expiresAt` is in the past (snapshot dir that never rotated, prod redeploy needed). claude attempts a refresh, the refresh fails in `-p` mode, exits 0 silent.
 3. **Mismatched UID on the bind source** — host file owned by user A, container claude runs as `danxbot` (UID 1000); `chmod` on the symlink target succeeds but writes still fail.
 

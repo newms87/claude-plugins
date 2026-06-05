@@ -11,14 +11,14 @@ The always-on `.claude/rules/docker-runtime.md` rule file documents the runtime 
 
 1. Identify which contract applies: root `.mcp.json` inject / env overlay / workspace cwd / Laravel env trap.
 2. Re-read the section below for the exact invariants.
-3. If introducing a new MCP server at the repo root → STOP. Worker-only MCPs live in workspace `.mcp.json`, NEVER root.
+3. If introducing a new MCP server at the repo root → STOP. Worker-only MCPs live in workspace `mcp.template.json`, NEVER root.
 4. If introducing tracker creds (TRELLO_*, DANX_TRACKER) into the repo-root inject env → STOP. DX-203 retired this; tracker is background infra.
 5. If creating an `.env.local` (or any `.env.{APP_ENV}`) at a Laravel repo root → STOP. Production-burning trap.
 6. After edit: confirm idempotent re-run is a no-op + atomic write preserved.
 
 ## Workspace `.mcp.json` contract
 
-Workers' per-dispatch MCPs come from `<repo>/.danxbot/workspaces/<name>/.mcp.json` merged with the danxbot infrastructure server inside `dispatch()`. The workspace `.mcp.json` defines the full tool surface for dispatched agents. The root `.mcp.json` (if present) is the dev's interactive surface only; it does not feed worker dispatches.
+Workers' per-dispatch MCPs come from `<repo>/.danxbot/workspaces/<name>/mcp.template.json` merged with the danxbot infrastructure server inside `dispatch()`. The workspace `mcp.template.json` defines the full tool surface for dispatched agents. The root `.mcp.json` (if present) is the dev's interactive surface only; it does not feed worker dispatches.
 
 ## Per-target env overlays — `.env.<target>` merge contract
 

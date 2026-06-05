@@ -40,8 +40,8 @@ The local dev case collapses A and B onto the same host — but treat them as se
 | Source path | Runtime location |
 |---|---|
 | `<owner-repo>/<package-source>/` (operator's local checkout of an MCP package) | npm-published name → spawned via `npx` on **Machine B** as stdio child of the dispatched agent. Source-repo path is just where the operator edits + publishes from; it does NOT execute on the connected app's Laravel host. |
-| `<connected-repo>/.danxbot/workspaces/<name>/.mcp.json` | declares which packages the workspace's dispatched agent loads. The package itself runs as a stdio child of that agent on Machine B. |
-| `<repo>/.danxbot/workspaces/<name>/` | bind-mounted into worker container; agent's `cwd` resolves rules + `.mcp.json` from this dir |
+| `<connected-repo>/.danxbot/workspaces/<name>/mcp.template.json` | declares which packages the workspace's dispatched agent loads. The package itself runs as a stdio child of that agent on Machine B. |
+| `<repo>/.danxbot/workspaces/<name>/` | bind-mounted into worker container; agent's `cwd` resolves rules from this dir; its `mcp.template.json` is resolved + merged into the per-dispatch `--mcp-config` file |
 
 A file inside `gpt-manager/mcp-server/` does NOT execute on the gpt-manager Laravel host. It's published to npm and consumed by whatever process loads its MCP server — almost always the dispatched agent on Machine B. Same for `mcp-server-trello`: the package lives as a sibling repo on the dev host, but the only process that loads it is the trello-worker dispatch.
 
@@ -52,7 +52,7 @@ Three distinct runtime contexts. Don't confuse them.
 | Runtime | Where | Tool surface |
 |---|---|---|
 | **Main session** | Your shell on the dev host | Normal Edit/Read/Write/Bash. NEVER `mcp__trello__*`. |
-| **Dispatched workspace** | Inside a Claude Code CLI subprocess on Machine B (or local worker) launched from `<repo>/.danxbot/workspaces/<name>/` | Workspace's `.mcp.json` + `.claude/agents/*.md` + `.claude/rules/*.md` define tool surface. Per-workspace, isolated. |
+| **Dispatched workspace** | Inside a Claude Code CLI subprocess on Machine B (or local worker) launched from `<repo>/.danxbot/workspaces/<name>/` | Workspace's `mcp.template.json` + `.claude/agents/*.md` + `.claude/rules/*.md` define tool surface. Per-workspace, isolated. |
 | **Worker process** | `node` running the danxbot dist on Machine B; runs the Trello poller and `/api/launch` HTTP server | Calls `IssueTracker.*` (the only direct Trello write surface in the system); spawns Claude CLI dispatches via `dispatch()`. |
 
 The dispatched-workspace runtime is what the dispatch API hands work to. The worker runtime hosts the dispatch API and the poller — never confuse "the worker" with "an agent."
@@ -188,7 +188,7 @@ Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That
 
 ## MCP Server Ownership
 
-Each MCP server consumed by a danxbot workspace has an owner repo with a `make publish-<x>` target. Tracker/schema/trello servers may be owned by other repos in the operator's tree. The workspace's `.mcp.json` declares which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
+Each MCP server consumed by a danxbot workspace has an owner repo with a `make publish-<x>` target. Tracker/schema/trello servers may be owned by other repos in the operator's tree. The workspace's `mcp.template.json` declares which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
 
 ## Common Failure Modes
 
