@@ -48,6 +48,8 @@ Long-running (deploys, test suites, workers, dev servers) → Bash with `run_in_
 
 Use `mcp__claude-in-chrome__*` only. Start: `tabs_context_mcp` → `tabs_create_mcp` → `navigate` → `computer` → `read_page`.
 
+**Close what you opened.** Every tab you created with `tabs_create_mcp` MUST be closed via `tabs_close_mcp` before the session ends — clean up the moment you're done with a tab, not as an afterthought. Leaving tabs open litters the user's browser with stray windows across sessions. Rule: opened a tab → you own closing it. Reusing a pre-existing user tab (only on explicit request) → leave it; you didn't open it.
+
 ## dist/ + node_modules/
 
 Never read/edit `dist/` (stale). `src/` = truth. node_modules: read OK, edit NEVER.
