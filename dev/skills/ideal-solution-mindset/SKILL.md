@@ -52,6 +52,7 @@ Forbidden:
 - "Old format" + "new format" handling in the same function.
 - `if (legacyShape) {…} else {…}` migration branches.
 - Fallback values papering over a missing required input.
+- A **new required scope / identity / key field** made `optional` + given a default (a `DEFAULT_*` constant, `?? defaultX`, "omit → the default one") so a migration stays transparent or existing callers don't break — the coalesce becomes a permanent silent fallback in the canonical key. Backfill existing rows explicitly in the migration; every new write supplies the field or **fails loud**. A repo/parent legitimately having **zero** of the new entity is a valid state, never a trigger to invent a default.
 - Shims, adapters, "for backwards compat" comments.
 - Dead exports, dead imports, dead routes, commented-out blocks, `# TODO: remove`.
 - Deprecated wrappers re-exporting the new name.
@@ -127,6 +128,7 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 | "I'll write a new helper for this." | Principle #4 violation until the reuse audit is in writing. |
 | "I'll leave the old function — something might still call it." | Principle #2 violation. Find every caller; remove or update; delete the function. |
 | "I'll add a fallback so it doesn't break in the old case." | Principle #2 violation. Fail loudly instead. |
+| "Make the new field optional with a default so the migration stays transparent / existing callers don't break." | Principle #2 violation. A new scope/identity/key field is REQUIRED + fail-loud. Backfill existing rows in the migration; never add a default coalesce to the canonical key. |
 | "I'll come back and clean this up later." | Will not happen. Clean it up now. |
 
 ## Composes With
