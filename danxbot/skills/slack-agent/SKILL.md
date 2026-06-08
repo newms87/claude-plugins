@@ -113,11 +113,12 @@ so pipe it through a tool that quotes per RFC 4180 — Python's `csv`
 module is always available:
 
 ```
-… mysql -e "SELECT …" | python3 -c 'import sys,csv; w=csv.writer(sys.stdout); [w.writerow(r.split("\t")) for r in sys.stdin.read().splitlines()]' > /tmp/out.csv
+… mysql -e "SELECT …" | python3 -c 'import sys,csv; w=csv.writer(sys.stdout); [w.writerow(r.split("\t")) for r in sys.stdin.read().split("\n") if r]' > /tmp/out.csv
 ```
 
-(or the app framework's CSV writer, e.g. PHP `fputcsv`). The connected
-repo's `tools.md` has the exact recipe for that repo.
+(or the app framework's CSV writer, e.g. PHP `fputcsv`, which reads
+native values — prefer it for fields that may hold tabs/newlines). The
+connected repo's `tools.md` has the exact recipe for that repo.
 
 ## This is the ONLY path to the user
 
