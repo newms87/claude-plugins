@@ -12,7 +12,7 @@ The always-on `.claude/rules/docker-runtime.md` rule file documents the runtime 
 1. Identify which contract applies: root `.mcp.json` inject / env overlay / workspace cwd / Laravel env trap.
 2. Re-read the section below for the exact invariants.
 3. If introducing a new MCP server at the repo root → STOP. Worker-only MCPs live in workspace `mcp.template.json`, NEVER root.
-4. If introducing tracker creds (TRELLO_*, DANX_TRACKER) into the repo-root inject env → STOP. DX-203 retired this; tracker is background infra.
+4. If introducing backend-tracker creds (`DANX_TRACKER_*`) into the repo-root inject env → STOP. DX-203 retired this; a backend tracker is background infra, never in the agent path.
 5. If creating an `.env.local` (or any `.env.{APP_ENV}`) at a Laravel repo root → STOP. Production-burning trap.
 6. After edit: confirm idempotent re-run is a no-op + atomic write preserved.
 
@@ -53,7 +53,7 @@ When wiring up a new connected repo (especially Laravel / any framework with an 
 
 ## Strict isolation from danxbot
 
-Danxbot-dispatched agents (poller, `/api/launch`, Slack) use their own per-dispatch MCP config and env from `<repo>/.danxbot/.env` delivered to the worker container via `env_file: ../.env` in `<repo>/.danxbot/config/compose.yml`. The dev's interactive `claude` at the repo root only sees the single `danx-issue` MCP server the poller injects (DX-201) — zero overlap with the worker's broader MCP surface (Trello, Playwright, etc.). The worker's own dispatches still source MCP from the workspace dir, never from the repo root.
+Danxbot-dispatched agents (poller, `/api/launch`, Slack) use their own per-dispatch MCP config and env from `<repo>/.danxbot/.env` delivered to the worker container via `env_file: ../.env` in `<repo>/.danxbot/config/compose.yml`. The dev's interactive `claude` at the repo root only sees the single `danx-issue` MCP server the poller injects (DX-201) — zero overlap with the worker's broader MCP surface (dashboard, Playwright, etc.). The worker's own dispatches still source MCP from the workspace dir, never from the repo root.
 
 ## The workspace: dispatched-agent cwd
 

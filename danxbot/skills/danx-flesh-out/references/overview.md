@@ -10,7 +10,7 @@ Flesh-out is invoked when operator creates half-baked card via dashboard Create-
 - `waiting_on != null` OR `requires_human != null` → parked cards out of scope.
 - `children[]` non-empty → epic already split, refuse to orphan phases.
 
-**Probe phase (5–10 min):** Read-only exploration via `Read` / `Grep` / `Glob` / git-only bash. No code execution, no edits outside your worktree, no `mcp__trello__*`, no subagents.
+**Probe phase (5–10 min):** Read-only exploration via `Read` / `Grep` / `Glob` / git-only bash. No code execution, no edits outside your worktree, no backend-tracker MCP calls, no subagents.
 
 **Card edits (via MCP):**
 1. `description` — rewritten per zero-context-test (Goal / Context / Solution / Key Files).

@@ -1,6 +1,6 @@
 ---
 name: settings-deep
-description: '<repo>/.danxbot/settings.json schema, ownership matrix, writer-merge invariants, isFeatureEnabled hot path, pre-rename trelloPoller fallback.'
+description: '<repo>/.danxbot/settings.json schema, ownership matrix, writer-merge invariants, isFeatureEnabled hot path.'
 ---
 
 # Per-Repo Settings File Deep Contract
@@ -72,8 +72,8 @@ No remote JSON-writing script, no drift between deploy and worker views of confi
       // Optional. When set as a non-empty string, the poller only
       // dispatches ToDo cards whose name starts with this prefix —
       // pre-existing real ToDo cards are left untouched on every tick.
-      // Used by `make test-system-poller` for race-free isolation
-      // (Trello `IleofrBj`); operators can also set it to temporarily
+      // Used by `make test-system-poller` for race-free isolation;
+      // operators can also set it to temporarily
       // limit the poller to one card class without disabling it.
       // null / missing / empty string → no filter (default behavior).
       "pickupNamePrefix"?: string | null
@@ -89,17 +89,12 @@ No remote JSON-writing script, no drift between deploy and worker views of confi
   "display": {
     "worker":  { "port": 5562, "runtime": "docker" },
     "slack":   { "botToken": "xoxb-****abc", "channelId": "C0123...", "configured": true },
-    "trello":  { "apiKey":   "abcd****7890", "boardId":   "69dd...", "configured": true },
     "github":  { "token":    "ghp_****xyz", "configured": true },
     "db":      { "host": "mysql", "database": "ssap_sail", "configured": true },
-    "links":   { "trelloBoardUrl": "...", "slackChannelUrl": "", "githubUrl": "..." }
+    "links":   { "slackChannelUrl": "", "githubUrl": "..." }
   },
   "meta": { "updatedAt": "...", "updatedBy": "dashboard:<username>" | "deploy" | "setup" | "worker" }
 }
 ```
-
-### Pre-rename `trelloPoller` key fallback
-
-Pre-rename settings.json files (deployed boxes that haven't been re-written since the rename) carry `overrides.trelloPoller` instead of `overrides.issuePoller`. Read-side (`normalize` in `src/settings-file.ts`) accepts the pre-rename key for one release and copies its value into the `issuePoller` slot so operator toggles + `pickupNamePrefix` survive across the rename. Write-side ALWAYS emits `issuePoller`; no code path emits the old key. The very next `writeSettings` call canonicalizes the file. A follow-up card retires the read fallback after one release.
 
 See `src/settings-file.ts` for the canonical TypeScript types and `docs/superpowers/specs/2026-04-20-agents-tab-design.md` for the full design document.

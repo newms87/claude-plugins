@@ -9,7 +9,7 @@ description: 'Strict per-invocation user-auth gate for make launch-worker*, make
 
 **Starting, restarting, relaunching, or deploying a danxbot worker, poller, infra container, or production target requires explicit per-invocation human authorization in the CURRENT user message.**
 
-A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, writes the v2 DB, mirrors to Trello, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
+A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, writes the v2 DB, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
 
 ## Dispatched-agent context — effectively NEVER
 

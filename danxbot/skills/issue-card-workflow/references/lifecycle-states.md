@@ -53,7 +53,7 @@ The triage block on each card is owned by the **per-card triage agent** dispatch
 
 **ToDo dispatch sort:** untriaged first (`triage.expires_at === ""` — never scored) then triaged by `triage.ice.total` DESC. ICE = Impact × Confidence × Ease, each axis 1–5, total 1–125. Within each tier, FIFO by mtime. Poller's `listDispatchableYamls` enforces; agents don't rank — write good description, triage agent's ICE governs priority.
 
-**`Action Items` is not a status.** Cards on Trello "Action Items" list hydrate as `status: Review` so triage picks them up. List stays on board as UX bucket; DB record stores `status: Review`.
+**`Action Items` is not a status.** Action-item cards carry `status: Review` so triage picks them up alongside the Review list; the DB record stores `status: Review`.
 
 ## Blocked vs Waiting On vs Requires Human
 

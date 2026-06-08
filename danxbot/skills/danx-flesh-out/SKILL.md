@@ -46,7 +46,7 @@ See references/overview.md for full contract + probe rules + card edit checklist
 
 - One card only (plus phase children if split).
 - Read-only probe (no code execution, no MCP reads beyond `issue_get`).
-- No tracker calls (`mcp__trello__*` forbidden).
+- No backend-tracker calls (the agent path uses `mcp__danx_dashboard__issue_*` only).
 - No subagents.
 - Do NOT implement the work — flesh-out is spec rewrite, not code change.
 - Do NOT alter `parent_id`, `blocked` (except DX-544 clear via `issue_transition`), `waiting_on` (except chains on epic split), `requires_human`, `retro`, `dispatch`.

@@ -125,7 +125,7 @@ Any code that accumulates `usage` across JSONL entries MUST dedupe by `message.i
 - `src/agent/launcher.ts` — `job.usage` accumulator in the watcher subscriber. Closure-local `seenUsageMessageIds: Set<string>`; skips entries whose `messageId` was already accumulated.
 - `src/dashboard/jsonl-reader.ts` — `parseJsonlContent` aggregates `usage` blocks. Same per-call Set, applied BEFORE pushing blocks so timeline display + totals both stay consistent.
 
-The dedup key flows from `convertJsonlEntry` (in `session-log-watcher.ts`) which surfaces `data.messageId` for assistant entries. Both producers consume that field. A new consumer that accumulates usage from watcher entries (e.g., a Laravel forwarder, a metrics emitter) MUST dedupe by `messageId` or it will inherit the bug — see Trello `uPDpsqhe` for the ongoing `LaravelForwarder` instance of this same trap.
+The dedup key flows from `convertJsonlEntry` (in `session-log-watcher.ts`) which surfaces `data.messageId` for assistant entries. Both producers consume that field. A new consumer that accumulates usage from watcher entries (e.g., a Laravel forwarder, a metrics emitter) MUST dedupe by `messageId` or it will inherit the bug — the `LaravelForwarder` is the ongoing instance of this same trap.
 
 Defensive: if `messageId` is missing on an entry that has `usage` (never seen in real Claude Code output), accumulate anyway and `log.warn` once-per-dispatch. Better to over-count a malformed line than to silently zero out billable usage.
 
@@ -133,7 +133,7 @@ Defensive: if `messageId` is missing on an entry that has `usage` (never seen in
 
 Three different claude-auth misconfigurations all surface as the SAME symptom — `/api/launch` returns a `job_id`, status sits at `running`, then eventually `failed` with `summary="Agent timed out after N seconds of inactivity"`. The watcher never attaches, no JSONL appears, no error is logged. Before chasing the StallDetector, check the auth chain first:
 
-1. **Read-only bind on `.claude.json` or `.claude/`** — claude rewrites `.claude.json` (session metadata) on most runs and rotates `.credentials.json` periodically; RO blocks the writes and `claude -p` exits 0 with empty stdout. From `/tmp` cwd it exits silently; from a workspace cwd with `mcp.template.json` + `.claude/settings.json` it hangs because MCP startup interacts with the auth-refresh failure (Trello PHevzRil).
+1. **Read-only bind on `.claude.json` or `.claude/`** — claude rewrites `.claude.json` (session metadata) on most runs and rotates `.credentials.json` periodically; RO blocks the writes and `claude -p` exits 0 with empty stdout. From `/tmp` cwd it exits silently; from a workspace cwd with `mcp.template.json` + `.claude/settings.json` it hangs because MCP startup interacts with the auth-refresh failure.
 2. **Expired OAuth token** — `claudeAiOauth.expiresAt` is in the past (snapshot dir that never rotated, prod redeploy needed). claude attempts a refresh, the refresh fails in `-p` mode, exits 0 silent.
 3. **Mismatched UID on the bind source** — host file owned by user A, container claude runs as `danxbot` (UID 1000); `chmod` on the symlink target succeeds but writes still fail.
 
@@ -149,7 +149,7 @@ docker exec -u danxbot danxbot-worker-<repo> touch /home/danxbot/.claude.json   
 docker exec -u danxbot danxbot-worker-<repo> bash -c 'cd /tmp && unset ANTHROPIC_API_KEY && claude --dangerously-skip-permissions -p "Reply only PONG"'
 ```
 
-Empty stdout + exit 0 = auth chain broken (one of the three above). PONG + exit 0 = auth is fine; the stall is something else (real model latency, infinite loop, etc.). The `worker-compose-mounts.test.ts` regression test guards #1 at the compose level; the spawn-time preflight in Trello `3l2d7i46` (when shipped) will surface #1, #2, and #3 loudly before the worker ever starts a doomed dispatch.
+Empty stdout + exit 0 = auth chain broken (one of the three above). PONG + exit 0 = auth is fine; the stall is something else (real model latency, infinite loop, etc.). The `worker-compose-mounts.test.ts` regression test guards #1 at the compose level; a spawn-time preflight (when shipped) will surface #1, #2, and #3 loudly before the worker ever starts a doomed dispatch.
 
 ## DX-242 — `danxbot_complete` fallback chain + boot replay
 

@@ -63,9 +63,28 @@ thread (same channel, same `thread_ts`) based on the dispatch row. You
 do not pick a thread. You do not pick a channel. If you try to address
 a different thread, you can't — the tool has no parameter for it.
 
+## Data questions — query the DB with `danxbot_db_query`
+
+For a data/lookup question, fetch the rows yourself before you reply.
+**`danxbot_db_query({sql})`** runs ONE read-only SQL statement
+(`SELECT` / `DESCRIBE` / `SHOW TABLES` / `SHOW COLUMNS` / `SHOW INDEX` /
+`SHOW CREATE TABLE` — writes rejected, `LIMIT` enforced) against the
+connected repo's app DB and **returns the result rows to YOU** as
+`{columns, rows, totalRows}`. So the loop is: introspect the schema if
+you need to (and *read* what comes back), run the real query, reason
+over the returned rows, THEN post your prose answer with
+`danxbot_slack_reply`. A rejected/failed query comes back as `{error}`
+— fix the SQL and call again.
+
+**Do NOT emit SQL as bare assistant text expecting it to run.** Bare
+output goes nowhere — that is the exact stall this contract prevents.
+The ONLY way to touch the DB is the `danxbot_db_query` tool; the ONLY
+way to reach the user is the `danxbot_slack_*` tools.
+
 ## This is the ONLY path
 
 There is no direct `chat.postMessage`. There is no Bash-to-curl escape
-hatch. There is no "reply in stdout and danxbot will forward it." The
-MCP tools are the contract — everything else is an agent that forgot
-it was dispatched from Slack and went silent.
+hatch. There is no "reply in stdout and danxbot will forward it." There
+is no "type the SQL and danxbot will run it." The MCP tools are the
+contract — everything else is an agent that forgot it was dispatched
+from Slack and went silent.

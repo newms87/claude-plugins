@@ -5,7 +5,7 @@ description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issu
 
 # Issue Card Workflow
 
-Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`); worker mirrors to backend tracker (Trello) for human visibility (~60s).
+Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`). The backend-tracker mirror was torn down in DX-1003; a v2 integration is being rebuilt under DX-876. Until it lands the DB is the only tracker.
 
 ## DX-835 — two-step termination is MANDATORY
 
@@ -36,19 +36,9 @@ Order for self-done work: `create` → **`pickup` with `manual: true`** → work
 
 **Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only. Poller dispatches off the v2 dashboard DB via the dashboard HTTP API; agents read + write exclusively via MCP tools.
 
-**Backend tracker (Trello) is one-way mirror with two narrow inbound exceptions:**
+**There is no backend-tracker mirror today.** The prior one-way mirror to an external board was torn down in DX-1003 (hard-cut, no legacy). A v2 backend-tracker integration is being rebuilt from scratch under DX-876; until it lands the DB is the only tracker and there is nothing to sync to or hydrate from.
 
-Outbound (every tick): every DB field pushed to tracker so humans see current state. Tracker view is *projection* of DB; nothing tracker shows is authoritative.
-
-Inbound (narrow):
-1. **New cards:** tracker card with no DB record → hydrated to fresh record next tick. After, DB is source forever.
-2. **New comments:** human-authored tracker comments pulled into `comments[]` so agent sees them. Author detection avoids echo loops.
-
-**Everything else from tracker ignored.** Human dragging card between lists, editing title, ticking AC has zero effect on DB. Next tick re-asserts DB state. Want status change → call `mcp__danx_dashboard__issue_transition` or `mcp__danx_dashboard__issue_edit`; worker's per-tick mirror pushes to tracker.
-
-One-way + narrow inbound = unambiguous semantics. Two-way sync would create merge conflicts.
-
-**Agent path is MCP tools only.** All card reads + writes go through `mcp__danx_dashboard__issue_*` MCP tools. Worker mirrors DB state to tracker for human visibility (~60s cycle).
+**Agent path is MCP tools only.** All card reads + writes go through `mcp__danx_dashboard__issue_*` MCP tools. Want a status change → call `mcp__danx_dashboard__issue_transition` or `mcp__danx_dashboard__issue_edit`.
 
 ## DB Schema
 
@@ -130,7 +120,7 @@ See references/phases-epics.md for the split walkthrough, epic mechanics, phase 
 - AC lives in `ac[]` (set via `issue_edit`) — never inline. Phases/sub-cards in `children[]` as `<PREFIX>-N`; each child has own DB record.
 - `retro.action_item_ids[]` = only valid `<PREFIX>-N` format. Create card first, push id (via `issue_retro`).
 - Connected repo cards reference that repo's architecture (not danxbot paths).
-- NEVER call `mcp__trello__*` from agent.
+- NEVER call a backend-tracker MCP from the agent path (none exists today; a v2 one rebuilds under DX-876).
 - NEVER read/write card state via file operations — use MCP tools exclusively.
 - NEVER write `status:` literals via `issue_edit` — use `issue_transition` for lifecycle changes.
 - NEVER manually append `## Retro` to comments — use `issue_retro` tool.

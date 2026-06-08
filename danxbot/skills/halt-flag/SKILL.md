@@ -16,7 +16,7 @@ succeed. Production has seen this burn ~$1K in a single day.
 Use `critical_failure` ONLY for environment-level blockers that would break
 ANY dispatch in this environment, regardless of the card:
 
-- **MCP server(s) failed to load** — a tool you expected (Trello, schema, etc.)
+- **MCP server(s) failed to load** — a tool you expected (schema, dashboard, etc.)
   is not present in your tools list when it should be.
 - **Bash tool is broken** — returning errors unrelated to the command you ran
   (PATH issues, shell segfault, permission denied on the repo dir, the tool
