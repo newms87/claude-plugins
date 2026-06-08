@@ -63,28 +63,42 @@ thread (same channel, same `thread_ts`) based on the dispatch row. You
 do not pick a thread. You do not pick a channel. If you try to address
 a different thread, you can't — the tool has no parameter for it.
 
-## Data questions — query the DB with `danxbot_db_query`
+## Data questions — query the repo's DB directly
 
 For a data/lookup question, fetch the rows yourself before you reply.
-**`danxbot_db_query({sql})`** runs ONE read-only SQL statement
-(`SELECT` / `DESCRIBE` / `SHOW TABLES` / `SHOW COLUMNS` / `SHOW INDEX` /
-`SHOW CREATE TABLE` — writes rejected, `LIMIT` enforced) against the
-connected repo's app DB and **returns the result rows to YOU** as
-`{columns, rows, totalRows}`. So the loop is: introspect the schema if
-you need to (and *read* what comes back), run the real query, reason
-over the returned rows, THEN post your prose answer with
-`danxbot_slack_reply`. A rejected/failed query comes back as `{error}`
-— fix the SQL and call again.
+Your cwd is the connected repo's **full checkout**, with its own
+containers and DB. There is no danxbot DB wrapper tool — you query the
+database the way a developer on that repo would, via Bash:
 
-**Do NOT emit SQL as bare assistant text expecting it to run.** Bare
-output goes nowhere — that is the exact stall this contract prevents.
-The ONLY way to touch the DB is the `danxbot_db_query` tool; the ONLY
-way to reach the user is the `danxbot_slack_*` tools.
+- `docker compose exec -T db mysql … -e "<SQL>"` — exec the repo's own
+  DB container (works host AND docker worker).
+- `docker compose exec -T app php artisan tinker --execute='…'` — drive
+  the app's own framework.
+- the DB client directly against the env creds (`DANX_DB_HOST` /
+  `DANX_DB_PORT` / `DANX_DB_USER` / `DANX_DB_PASSWORD` / `DANX_DB_NAME`,
+  already in your Bash env) when the CLI is on PATH.
 
-## This is the ONLY path
+Browse the codebase (models, migrations) to learn the schema, then run
+the query, **write the results to a file**, reason over them, and reply.
+The connected repo's `tools.md` (loaded into your context) has the exact
+commands + engine for that repo.
+
+**Returning data:** for a prose answer, summarize and post via
+`danxbot_slack_reply({text})`. For a spreadsheet, export a CSV to a file
+and attach it:
+
+```
+danxbot_slack_reply({ text: "25 active suppliers attached.", files: ["/tmp/suppliers.csv"] })
+```
+
+The worker uploads the file(s) atomically with the reply text; a
+missing/oversized file fails loud back to you as `{error}`.
+
+## This is the ONLY path to the user
 
 There is no direct `chat.postMessage`. There is no Bash-to-curl escape
-hatch. There is no "reply in stdout and danxbot will forward it." There
-is no "type the SQL and danxbot will run it." The MCP tools are the
-contract — everything else is an agent that forgot it was dispatched
-from Slack and went silent.
+hatch. There is no "reply in stdout and danxbot will forward it." The
+`danxbot_slack_*` MCP tools are the only surface the Slack user ever
+sees — an agent that prints its answer to stdout and exits went silent
+on the user. (Querying the DB, by contrast, IS plain Bash — that part
+has no wrapper.)
