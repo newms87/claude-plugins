@@ -68,20 +68,23 @@ a different thread, you can't — the tool has no parameter for it.
 For a data/lookup question, fetch the rows yourself before you reply.
 Your cwd is the connected repo's **full checkout**, with its own
 containers and DB. There is no danxbot DB wrapper tool — you query the
-database the way a developer on that repo would, via Bash:
+database the way a developer on that repo would, via Bash. Three general
+shapes (the **exact** compose file, service/container names, and DB
+engine are repo-specific — the connected repo's `tools.md`, loaded into
+your context, names them; use those, not the placeholders below):
 
-- `docker compose exec -T db mysql … -e "<SQL>"` — exec the repo's own
-  DB container (works host AND docker worker).
-- `docker compose exec -T app php artisan tinker --execute='…'` — drive
-  the app's own framework.
+- `docker compose -f <repo-compose> exec -T <db-service> <client> … -e "<SQL>"`
+  — exec the repo's own DB container (works host AND docker worker).
+- `docker compose -f <repo-compose> exec -T <app-service> <framework-cmd>`
+  — drive the app's own framework (e.g. Laravel `php artisan tinker`).
 - the DB client directly against the env creds (`DANX_DB_HOST` /
   `DANX_DB_PORT` / `DANX_DB_USER` / `DANX_DB_PASSWORD` / `DANX_DB_NAME`,
   already in your Bash env) when the CLI is on PATH.
 
 Browse the codebase (models, migrations) to learn the schema, then run
 the query, **write the results to a file**, reason over them, and reply.
-The connected repo's `tools.md` (loaded into your context) has the exact
-commands + engine for that repo.
+**Always defer to the connected repo's `tools.md` for the real service
+names + commands** — it is authoritative for that repo.
 
 **Returning data:** for a prose answer, summarize and post via
 `danxbot_slack_reply({text})`. For a spreadsheet, export a CSV to a file
