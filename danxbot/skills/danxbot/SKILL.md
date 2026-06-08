@@ -101,8 +101,9 @@ Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical, sole
 ```
 
 - The dashboard Postgres DB is the authoritative source for all issue state, accessed by agents via `mcp__danx_dashboard__issue_*` MCP tools and by the worker via its internal HTTP client for dispatch picker logic.
-- There is NO backend-tracker mirror today: the prior one-way mirror to an external board was torn down in DX-1003 (hard-cut, no legacy). A v2 backend-tracker integration is being rebuilt from scratch under DX-876 — until it lands, the DB is the only tracker and there is no backend-tracker MCP to call from any runtime.
 - Agents NEVER refer to issues by tracker-native ids. Internal id `<PREFIX>-N` is the only stable handle.
+
+> **Trello sync — auxiliary, dashboard-side, never an agent concern.** The dashboard (NOT the worker, NOT the agent) mirrors each board's issues ⇄ a Trello board in real time: outbound is event-driven — the dashboard subscribes to the `issue:updated` event bus and projects the changed card to Trello immediately; inbound arrives via a Trello webhook on the dashboard. A periodic per-board reconcile sweep is an idempotent belt-and-suspenders backstop, not the sync. Agents do nothing with Trello — no tool, no read, no write — and never need to think about it. (`src/trello/*` + `src/dashboard/server.ts`, DX-876 V1–V8.)
 
 Schema authoritative source: `<DANXBOT_REPO>/src/issue-tracker/interface.ts` (the `Issue` type).
 
@@ -117,7 +118,7 @@ The worker process on Machine B runs a poller per connected repo (`src/poller/in
 3. **Triage dispatch** — if no work-ready card was dispatched, picks one card with `status` ∈ {Review, Blocked} OR `waiting_on != null` whose `triage.expires_at <= now` and dispatches `/danx-triage-card <PREFIX-N>` (per-card direct triage agent). Default TTLs: Review 24h, Blocked 3h, Waiting On 1h.
 4. **Action Items items** — the worker spawns one fresh issue per `retro.action_item_ids[]` string on terminal save.
 
-Agents write card state via `mcp__danx_dashboard__issue_*` tools only; the poller never reaches a backend tracker (the prior mirror was torn down in DX-1003; v2 rebuild → DX-876).
+Agents write card state via `mcp__danx_dashboard__issue_*` tools only. The poller's job is dispatch off the DB; Trello mirroring is the dashboard's job, not the poller's (see the Trello sync note above).
 
 ## Pre-dispatch prep step (DX-291 / DX-297)
 
