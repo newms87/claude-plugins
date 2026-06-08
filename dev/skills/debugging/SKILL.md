@@ -102,6 +102,7 @@ Multiple bugs → one block per bug, numbered. A "side effect" of a bug uses the
 | **Symptom-suppressing accessor** | Adding `?? []`, `is_string` branch, `try/catch`, return null to make the type error go away | Hides bug from every other reader of the same data |
 | **"Obvious" one-line fix** | Skipping reproduction + evidence because the diff is small | Small diffs based on guesses are still guesses |
 | **Read-code-then-conclude** | "Looking at this function, the bug must be X" without running anything | Code says what could happen; only runtime says what did |
+| **Adjacent-artifact substitution** | Verifying artifact A (a driver import, config key, filename, env var) and asserting a *different* fact B it merely connects to — `pg` import → "the DB is Postgres", `.env` key present → "the value is set", filename → "the contents" | A is not B. The driver is not the database, the key is not the value. Name the target fact and verify THAT directly — don't let a nearby artifact stand in for it. |
 | **Stop at first finding** | First `grep` hit becomes the answer, no producer trace | Multiple producers may exist; first one isn't always the writer |
 | **Restart-to-fix** | Restarting queue/Horizon/server when something is "stuck" without reading the error | Restarts hide errors; the log already had the answer |
 | **"Pre-existing, not mine"** | Test fails, deflect because it predates the change | You own the entire codebase. Always. |
