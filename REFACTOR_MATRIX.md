@@ -74,7 +74,7 @@ Columns: `plugin · skill · LOC · domain · current trigger surface · propose
 | danxbot | settings-deep | 105 | settings.json deep contract | frontmatter only | danxbot | 110 | keep | |
 | danxbot | slack-agent | 71 | slack-worker MCP discipline | frontmatter only (audience:worker) | danxbot | 80 | keep | |
 | danxbot | unblock | 126 | blocker report contract | frontmatter + base SessionStart hook | danxbot | 130 | keep | hook reference moves from base to danxbot's own hook |
-| danxbot | vue-app-build | 159 | Vue SPA template build | frontmatter only (slash cmd) | danxbot | 160 | keep | |
+| danxbot | template-app-build | 159 | Vue template-app build (per-id load/save) | frontmatter only (slash cmd) | danxbot | 160 | keep | renamed from vue-app-build (DX-892) |
 
 **Skill counts:** base 8 · dev 6 · investigate 1 · pipeline 6 · human-collaboration 5 · danxbot 24 → **50 skills, 8632 LOC**.
 

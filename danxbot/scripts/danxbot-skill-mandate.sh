@@ -23,7 +23,7 @@ DOMAIN-MATCH (load via Skill tool):
 - comment-style: editing `description`/`comments[]`/`retro.*` on issue YAMLs.
 - slack-agent: dispatched in `slack-worker` workspace.
 - prod-access: ops against deployed targets; "production unreachable" claims.
-- vue-app-build: Vue SPA template in danxbot workspace; `danxbot_template_save`/`vite build`.
+- template-app-build: Vue SPA template in danxbot template-app workspace; per-id `load_template_app`/`save_template_app`/`vite build`.
 - dispatch-deep: dispatch/resume/staged-files/Playwright-proxy/usage-dedup/stall code.
 - settings-deep: `<repo>/.danxbot/settings.json` schema/reader/writer code.
 - docker-deep: root `.mcp.json` inject, `.env.<target>` overlay, workspace cwd.
