@@ -86,16 +86,24 @@ the query, **write the results to a file**, reason over them, and reply.
 **Always defer to the connected repo's `tools.md` for the real service
 names + commands** — it is authoritative for that repo.
 
-**Returning data:** for a prose answer, summarize and post via
-`danxbot_slack_reply({text})`. For a spreadsheet, export a CSV to a file
-and attach it:
+**Returning data — NEVER dump raw rows as an inline string.** Slack
+renders a big pipe-table as unreadable monospace. Pick the format by
+size:
 
-```
-danxbot_slack_reply({ text: "25 active suppliers attached.", files: ["/tmp/suppliers.csv"] })
-```
+- **Short list** (≤ ~10 rows AND few columns) → format as clean Slack
+  mrkdwn (small table / bullets) in `danxbot_slack_reply({text})`.
+- **> 10 rows, OR many columns** → export a **CSV file** and attach it;
+  `text` is a 1–3 line summary, the data rides in the CSV, not inline:
+  ```
+  danxbot_slack_reply({ text: "47 active suppliers attached as CSV.", files: ["/tmp/suppliers.csv"] })
+  ```
+- **Default to CSV** for any list of data unless you have a genuinely
+  better view (e.g. a 3-row rollup). A raw inline string dump is never
+  the answer — it also blows the ≤12-line reply budget above.
 
 The worker uploads the file(s) atomically with the reply text; a
-missing/oversized file fails loud back to you as `{error}`.
+missing/oversized file fails loud back to you as `{error}`. For a prose
+answer with no list, just use `danxbot_slack_reply({text})`.
 
 ## This is the ONLY path to the user
 
