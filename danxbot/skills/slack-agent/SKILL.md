@@ -105,6 +105,20 @@ The worker uploads the file(s) atomically with the reply text; a
 missing/oversized file fails loud back to you as `{error}`. For a prose
 answer with no list, just use `danxbot_slack_reply({text})`.
 
+**Build the CSV with a real serializer — never hand-join with commas.**
+`awk '{print $1","$2}'` / `sed` / `tr '\t' ','` produce BROKEN CSV: real
+values contain commas/quotes (`"Adams, Jaskolski and Howell"`) and a
+naive join shifts every column. The DB client's output is tab-separated,
+so pipe it through a tool that quotes per RFC 4180 — Python's `csv`
+module is always available:
+
+```
+… mysql -e "SELECT …" | python3 -c 'import sys,csv; w=csv.writer(sys.stdout); [w.writerow(r.split("\t")) for r in sys.stdin.read().splitlines()]' > /tmp/out.csv
+```
+
+(or the app framework's CSV writer, e.g. PHP `fputcsv`). The connected
+repo's `tools.md` has the exact recipe for that repo.
+
 ## This is the ONLY path to the user
 
 There is no direct `chat.postMessage`. There is no Bash-to-curl escape
