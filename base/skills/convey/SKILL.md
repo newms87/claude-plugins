@@ -97,6 +97,10 @@ Canonical section names (bold) stay stable for skimming. Caveats = world as-is. 
 
 Replace: "in order to" → "to" | "make sure that" → "ensure"/drop | "the following" → give it | "essentially/basically/just/simply" → drop | "is dependent upon" → "needs" | "We/I/Let me" → (drop) | "It should be noted" → (drop) | "In terms of" → ":" | "due to the fact" → "because"
 
+## Self-containment + progressive disclosure
+
+Every artifact stands alone to a reader with ZERO session context. Lead with the plain-language conclusion (what + impact + next step); a reader who lived the session must NOT have to re-derive it. **Default depth = high-level.** Deep mechanism (memoization, scheduling, mock/internal wiring, evidence chains) is OMITTED unless the user asked to "explain further" / "why" — at most a one-line offer to expand, never front-loaded. Mechanical gate: "would someone who just opened the chat understand this without scrolling up?" No → cut detail, restate the conclusion.
+
 ## Self-trigger gate
 
 Before sending ANY response with: "Summary", "What shipped", "Report", "Findings", wall of paths, 3+ paragraphs on one change → confirm loaded + apply scaffold.
