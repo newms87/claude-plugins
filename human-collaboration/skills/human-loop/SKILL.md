@@ -1,6 +1,6 @@
 ---
 name: human-loop
-description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions.'
+description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions. HARD RULE — applies EVERY TIME, even when this body is NOT loaded: present ALL decision options / clarifying questions to the user as PROSE — a plain numbered list, pros/cons per option, ending with a recommendation. The `AskUserQuestion` tool is FORBIDDEN for these (cramped labels hide tradeoffs). About to call AskUserQuestion? STOP → write the questions in chat instead.'
 ---
 
 # Human-in-the-Loop Rules
