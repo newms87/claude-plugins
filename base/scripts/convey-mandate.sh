@@ -22,11 +22,13 @@ if [ "$EVENT" = "UserPromptSubmit" ]; then
 fi
 
 read -r -d '' MANDATE <<'EOF' || true
-CONVEY — default scaffold for reports/commits/PRs/comments/Slack/hand-offs/investigations. Full skill: base:convey.
+CONVEY — default for every report/commit/PR/comment/Slack/hand-off/investigation. Full skill: base:convey.
 
-Scaffold: ## headline (≤12w) → Goal (1 sentence) → Behavior diff table → Flow (ASCII, multi-actor only) → Why non-obvious (≤2 lines) → Caveats (checkbox) → Verify (`cmd` → ✅ N/N).
+LEAD WITH THE CONCLUSION. Every output stands alone to a reader with ZERO session context — never make them scroll up or re-derive. Default depth = high-level (what + impact + next step); defer deep mechanism (internals, evidence chains) until asked — at most a one-line offer to expand. Gate: "would someone who just opened the chat get this without scrolling up?" No → cut detail, restate the conclusion.
 
-Rules: concepts before paths; tables over prose; bullets over sentences; drop fillers. Budgets — report 30 lines, commit body 8, PR 40, comment 20, Slack 12, investigation 20.
+Plain English (no codebase knowledge needed); concepts before paths (identifiers/paths in Verify line only); tables/diagrams over prose; drop fillers; reports ~30 lines.
+
+Scaffold: ## headline (≤12w) → Goal (1 sentence) → Behavior diff table → Flow (ASCII, multi-actor only) → Caveats → Verify (`cmd` → ✅ N/N). Per-channel budgets + anti-patterns in the full skill.
 
 Self-trigger: "Summary"/"Report"/"Findings"/"Results" in draft, wall of paths, 3+ paragraphs on one change, or >40 lines for one action → apply.
 EOF

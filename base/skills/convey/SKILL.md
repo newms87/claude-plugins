@@ -78,20 +78,14 @@ Canonical section names (bold) stay stable for skimming. Caveats = world as-is. 
 
 | ✅ Do | ❌ Don't |
 |---|---|
-| Concepts in body; paths in Verify only | Paths above Verify |
-| Tables for "A vs B", matrix, options | Prose comparing states |
-| Plain English (zero codebase knowledge needed) | Framed by code path / symbol / `DX-212` / `validateBlocked` |
-| ASCII diagrams (`A → B → C`) | Numbered prose paragraphs |
-| Bullets for parallel items | Run-on sentences |
+| Lead with conclusion; concepts in body, paths in Verify only | Paths/symbols above Verify; reader re-derives |
+| Plain English (zero codebase knowledge) | Framed by code path / symbol / `DX-212` / `validateBlocked` |
+| Tables for "A vs B"/matrix; ASCII diagrams for flow | Prose comparing states; numbered prose paragraphs |
 | System-actor verbs (skips, stamps, rebuilds) | Personal actor (I added, We refactored) |
-| One verb per bullet | Sub-claused bullets |
 | Backticks for identifiers/commands only | Backticks on plain English |
-| `✅ N/N` one line | Per-suite tables |
-| Headline ≤12 words, no jargon | Multi-clause |
-| Drop Why-non-obvious if goal covers | Pad with restatement |
-| Next actions as `- [ ]` checkboxes | Merge with Caveats |
-| Caveats as bullets (state of world) | "Caveats: none" filler |
-| Omit section if empty | Forced entries |
+| Omit empty sections; drop Why if goal covers | Forced entries; padding / restatement |
+
+(Scaffold owns headline ≤12w, `✅ N/N` one-liner, caveats/next-actions shape — not repeated here.)
 
 ## Word compression
 
