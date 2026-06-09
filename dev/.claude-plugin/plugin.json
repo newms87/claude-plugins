@@ -1,7 +1,7 @@
 {
   "name": "dev",
   "description": "Code-writing discipline: TDD, debugging with fix, code quality, git safety.",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "author": {
     "name": "Dan Newman",
     "email": "newms87@gmail.com"
