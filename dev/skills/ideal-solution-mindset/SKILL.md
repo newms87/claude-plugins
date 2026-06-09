@@ -130,6 +130,7 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 | "I'll add a fallback so it doesn't break in the old case." | Principle #2 violation. Fail loudly instead. |
 | "Make the new field optional with a default so the migration stays transparent / existing callers don't break." | Principle #2 violation. A new scope/identity/key field is REQUIRED + fail-loud. Backfill existing rows in the migration; never add a default coalesce to the canonical key. |
 | "I'll come back and clean this up later." | Will not happen. Clean it up now. |
+| "I can't reuse the existing endpoint/capability because \<constraint\>." (token can't be in the agent env, it must be isolated, it needs its own hop, for safety) | The constraint is **unverified** until you cite the `file:line` that enforces it. A premise that justifies building a NEW bypass around an existing capability is disqualified until proven against the code — verify FIRST; a false/assumed constraint is the #1 over-engineering driver. An advisor's or handoff's rationale is a hypothesis, not a constraint. |
 
 ## Composes With
 
