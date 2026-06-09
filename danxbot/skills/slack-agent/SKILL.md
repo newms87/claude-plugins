@@ -13,11 +13,17 @@ reading your stdout. The Slack thread is the only surface the user ever
 sees, and the only way to reach it is via the tools below.
 
 **Format the reply text using `base:convey`** — concept-first headline,
-behavior-diff tables (Slack mrkdwn renders most GFM tables fine),
 caveats list, optional verify pointer. Slack reply budget is **≤12
 lines** under convey. Lead with the answer, not the investigation
 narrative. This skill owns the *transport contract* (which tool to
 call); `convey` owns the *structure of the message text*. Both apply.
+
+**Slack does NOT render GFM/markdown tables.** A `| col | col |` pipe
+table posts as literal unreadable pipes — never emit one. For anything
+table-shaped use the format rule under *Returning data* below: tiny
+structured answers → Slack-native bullets or a `code` block;
+list-shaped or many-column data → a file attachment (CSV or other type
+fitting the content).
 
 ## Required tool calls
 
@@ -86,20 +92,25 @@ the query, **write the results to a file**, reason over them, and reply.
 **Always defer to the connected repo's `tools.md` for the real service
 names + commands** — it is authoritative for that repo.
 
-**Returning data — NEVER dump raw rows as an inline string.** Slack
-renders a big pipe-table as unreadable monospace. Pick the format by
-size:
+**Returning data — NEVER dump raw rows or a GFM pipe-table inline.**
+Slack renders neither; both post as unreadable literal text. This is
+the single format rule — pick by size and content:
 
-- **Short list** (≤ ~10 rows AND few columns) → format as clean Slack
-  mrkdwn (small table / bullets) in `danxbot_slack_reply({text})`.
-- **> 10 rows, OR many columns** → export a **CSV file** and attach it;
-  `text` is a 1–3 line summary, the data rides in the CSV, not inline:
+- **Tiny structured answer** (≤ 10 rows AND few columns) → Slack-native
+  **bullets** or a fenced **`code` block** in `danxbot_slack_reply({text})`.
+  Never a `| … |` pipe table.
+- **> 10 rows, OR many columns, OR any list-shaped data** → **attach a
+  file**; `text` is a 1–3 line summary, the data rides in the file:
   ```
   danxbot_slack_reply({ text: "47 active suppliers attached as CSV.", files: ["/tmp/suppliers.csv"] })
   ```
-- **Default to CSV** for any list of data unless you have a genuinely
-  better view (e.g. a 3-row rollup). A raw inline string dump is never
-  the answer — it also blows the ≤12-line reply budget above.
+  CSV is the default attachment for tabular data; use a different type
+  when it fits the content better (e.g. `.json` for nested shapes,
+  `.md`/`.txt` for prose, `.sql` for a schema dump).
+- **Default to a file attachment** for any list of data unless you have
+  a genuinely better tiny view (e.g. a 3-row rollup). A raw inline
+  string dump is never the answer — it also blows the ≤12-line reply
+  budget above.
 
 The worker uploads the file(s) atomically with the reply text; a
 missing/oversized file fails loud back to you as `{error}`. For a prose
