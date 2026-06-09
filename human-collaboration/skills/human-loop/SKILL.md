@@ -92,6 +92,8 @@ Never kill unless user explicit "kill it"/"stop it"/"cancel it". Running = time 
 
 After options/diagnosis/proposals → text only. No Edit/Write/mutation until explicit action verb.
 
+**Present options as PROSE, never the `AskUserQuestion` tool.** Operator reads + replies in chat. Write each option concisely but well — and when an option's choice carries deeper impact or hidden complexity than a one-liner shows, give explicit **pros / cons** per option so the tradeoff is visible. `AskUserQuestion` is FORBIDDEN for these decision points (cramped labels, hides tradeoffs). Plain numbered/bulleted list with a recommendation.
+
 ## Iter Loops Do Not Carry Approval Forward
 
 iter 1 → iter N. Every iter = own decision point. Plans/measures/descriptions carry; tool-call work does NOT. After describing iter N's plan → STOP. Approval for N-1 ≠ approval for N.
