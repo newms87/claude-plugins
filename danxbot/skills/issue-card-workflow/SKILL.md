@@ -105,6 +105,8 @@ Each line MUST name a concrete user-observable result; a line with no see/do ans
 
 **Allowed parent→child type matrix:** Epic → Feature | Story | Bug | Chore (never Epic). Feature → Story | Bug | Chore. Story / Bug / Chore are atomic — no type-children. (Epic-child types are enforced mechanically by `phase_children[]`; the rest is this gate.)
 
+**Post-`issue_create` DEPENDENCY-WIRING gate (MANDATORY, same turn as creating an Epic/Feature with `phase_children[]`):** `phase_children[]` sets `parent_id` ONLY — it wires ZERO ordering. Sequentially-dependent phases dispatch in PARALLEL the instant they are readied. So immediately after the create, for EVERY phase that needs an earlier phase done first, call `issue_dependency({id: <later-phase>, action: 'add', kind: 'depends_on', target_id: <predecessor>})` — BEFORE readying any phase. Relying on Review-status to hold order is the exact failure this gate blocks: the operator's `ready` bypasses it and the poller fans out every dispatchable phase at once. "I'll add the edges when I ready them later" is the deferral that ships an unguarded epic — wire them at creation or the ordering does not exist.
+
 See references/phases-epics.md for the split walkthrough, epic mechanics, phase creation, and completion contract.
 
 ## General Rules
