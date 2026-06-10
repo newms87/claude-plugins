@@ -83,7 +83,7 @@ After own-work committed: if file has BOTH your edits AND pre-existing foreign d
 
 Wait for answer. `git add <named-paths>` + commit.
 
-**Exception — background-system drift never asks.** Files auto-mutated by running system (poller / triage / chokidar / heartbeat / TTL timer / auto-sync) ride along on every dispatch. Paths under `<repo>/.danxbot/issues/`, `.trello-retry/`, `dispatch-stops/`, `CRITICAL_FAILURE`. Stage into same commit (or sibling `chore(issues): mid-session YAML drift`). Rebase conflicts on these = YOUR job — operator can't answer schema questions.
+**Exception — background-system drift never asks.** Files auto-mutated by running system (poller / triage / heartbeat / TTL timer) ride along on every dispatch. Paths under `.trello-retry/`, `dispatch-stops/`, `CRITICAL_FAILURE`. Stage into same commit (or a sibling `chore: mid-session drift` commit). Rebase conflicts on these = YOUR job — operator can't answer schema questions.
 
 **Forbidden rationalizations:**
 
