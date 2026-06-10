@@ -7,7 +7,7 @@ description: 'Card-overrides-plan-mode + prose-only plans + zero-context test + 
 
 ## Issue Card Overrides Plan Mode (default)
 
-Card assigned (`ISS-N` YAML at `<repo>/.danxbot/issues/open/<id>.yml`) → DEFAULT is NEVER use EnterPlanMode. Card IS plan. Edit YAML directly with `Edit`/`Write` if plan changes — chokidar mirrors to DB, auto-sync pushes to tracker. Trust spec, execute.
+Card assigned (`<PREFIX>-N`, lives in the dashboard DB) → DEFAULT is NEVER use EnterPlanMode. Card IS plan. Update it via `mcp__danx_dashboard__issue_edit` if the plan changes — the tool writes the DB directly (no file, no mirror). Trust spec, execute.
 
 ## Complex-Card Escape Hatch (rare)
 
@@ -26,7 +26,7 @@ Agent CAN make the decision but card needs detail.
 
 1. `EnterPlanMode` — prose only, zero code blocks
 2. `ExitPlanMode`
-3. Edit card YAML — append resolved design to `description` OR timestamped Design Note `comments[]`. Update `phases[]` + `ac[]` if changed. (chokidar mirrors, auto-sync pushes)
+3. Append resolved design to the card — via `mcp__danx_dashboard__issue_edit({id, description})` OR a timestamped Design Note via `mcp__danx_dashboard__issue_comment({id, action: 'add', text})`. Update child phase cards + `ac[]` if changed (`issue_edit`).
 4. Resume implementation
 
 ### Move B — Blocked escalation (out of scope)
@@ -38,8 +38,8 @@ Decision agent SHOULD NOT make alone:
 - Requires authoritative judgment (priority, scope, business preference)
 
 When any holds:
-1. Edit card YAML — `status: Blocked`, `blocked: {reason, timestamp}`. Reason = one paragraph naming specific decision the human must make + agent's recommended option + tradeoffs. Append same as `comments[]`. Schema invariant `status === "Blocked" ⟺ blocked !== null` requires both edits same save.
-2. Stop. `danxbot_complete({status: "completed", summary: "Escalated to Blocked — awaiting decision on <X>"})`
+1. Block the card via `mcp__danx_dashboard__issue_transition({id, action: 'block', reason})`. Reason = one paragraph naming the specific decision the human must make + agent's recommended option + tradeoffs. The server stamps `blocked: {at, reason}` and derives `status: Blocked` — no separate `status` write.
+2. Stop. `danxbot_complete({status: "failed", summary: "Escalated to Blocked — awaiting decision on <X>"})`
 3. NEVER speculatively implement against unclear option
 
 **Move B NOT for:** "too complex," "I'm unsure," "card is short," "I have a better way." Bar is high.

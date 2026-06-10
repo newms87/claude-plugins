@@ -19,7 +19,7 @@ Read every rule below. These are the rules you are most likely to violate under 
 
 ```
 PLAN SOURCE
-  Issue card (ISS-N YAML) → danxbot:issue-card-workflow skill
+  Issue card (<PREFIX>-N in dashboard DB) → danxbot:issue-card-workflow skill
   Card path unclear after initial investigation → pipe-plan (escape hatch)
   No card + investigation → dev:debugging skill
 PRE-IMPL (every phase)
@@ -95,7 +95,7 @@ Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` ->
 
 ### 10. Issue Card IS the Plan
 
-When an issue card is assigned (e.g. `ISS-N`), never use EnterPlanMode. The YAML (`description` + `ac[]` + `phases[]` + `comments[]`) IS the plan. `Read .danxbot/issues/open/<id>.yml` (fall back to `closed/<id>.yml`) before starting. Re-read after context compaction.
+When an issue card is assigned (e.g. `<PREFIX>-N`), never use EnterPlanMode. The card (`description` + `ac[]` + child phase cards + `comments[]`) IS the plan. Read it with `mcp__danx_dashboard__issue_get({id})` before starting. Re-read after context compaction.
 
 ### 11. Complete ALL Work
 

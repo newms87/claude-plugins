@@ -57,7 +57,7 @@ For each session issue, ask:
 - Human frustrated / corrected same mistake twice?
 - Concrete fix exists (rule / tool / docs)?
 
-If yes: call `mcp__danx-issue__danx_issue_create` directly.
+If yes: call `mcp__danx_dashboard__issue_create` directly.
 
 **Categories** (frame `type` + description):
 - Prompt/rules fix · New tool/skill · Skill improvement · Documentation · Code refactor · Better error messages
@@ -97,7 +97,7 @@ Document it WHERE:
 - **CLAUDE.md** — system behavior, cross-file gotchas
 - **Rules** — behavioral patterns, recurring mistakes
 - **Code comments** — local function gotchas
-- **Issue YAML description / comments[]** — context fresh agent needs (chokidar mirrors, auto-sync pushes)
+- **Issue card description / comments[]** (via `mcp__danx_dashboard__issue_edit` / `issue_comment`) — context fresh agent needs
 
 Skip if one-off, obvious, or noise. Each rule competes for attention.
 
@@ -127,6 +127,6 @@ Rules: actionable + specific · priority order · include commands/URLs · max 7
 - Sparingly on Action Items (most sessions = zero cards)
 - Thorough on knowledge dump
 - NEVER write to `~/.claude/` except `~/.claude/rules/`
-- Action Items land as fresh `ISS-N` YAMLs `status: ToDo`
+- Action Items land as fresh `<PREFIX>-N` cards in the DB, derived `status: ToDo`
 - Knowledge dump = conversation only, no files/commits
-- NEVER call `mcp__trello__*` — use `mcp__danx-issue__danx_issue_create`
+- NEVER call `mcp__trello__*` — use `mcp__danx_dashboard__issue_create`
