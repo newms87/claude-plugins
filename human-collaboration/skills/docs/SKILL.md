@@ -60,7 +60,7 @@ Before writing into ANY plugin under `~/web/claude-plugins/<plugin>/` — except
 Mechanical pre-write check — answer YES to all FOUR before saving:
 
 1. **No repo names** in prose or examples (`danxbot`, `gpt-manager`, `<my-project>`, etc.). Use "this system" or drop the example.
-2. **No app-specific nouns** (e.g. `dispatch row`, `card YAML`, `worker`, `poller`, `Trello`, `Slack listener`). Replace with the generic primitive ("source-of-truth record", "queue entry", "background process").
+2. **No app-specific nouns** (e.g. `dispatch row`, `settings file`, `worker`, `poller`, `Trello`, `Slack listener`). Replace with the generic primitive ("source-of-truth record", "queue entry", "background process").
 3. **No tool / make-target / file-path names from a single repo.** Replace with the action they perform ("the registry lookup", "the cron entry").
 4. **Lead with the principle, not the trigger.** The failure that produced this edit is one instance of a class — write the class. The repo-specific trigger goes in the COMMIT MESSAGE, not the skill body.
 

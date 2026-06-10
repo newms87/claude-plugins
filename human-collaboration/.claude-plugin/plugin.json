@@ -1,7 +1,7 @@
 {
   "name": "human-collaboration",
   "description": "Human-in-the-loop discipline: read-only-default, diagnostic-mode-on-question, host-environment, docs/explain skills. Install on instances where a human drives the prompts. Do NOT install on autonomous dispatched workers.",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "author": {
     "name": "Dan Newman",
     "email": "newms87@gmail.com"

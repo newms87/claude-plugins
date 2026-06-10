@@ -14,7 +14,7 @@ This skill is NOT a long-form report. It is a confidence check. The user reads i
 Walk the full session transcript top-to-bottom. For EACH item below, mentally answer "did this happen this session, and is it durable on disk / persisted to the right place?" If you cannot answer w/ certainty, treat as Open.
 
 1. **Code edits committed?** Any Edit / Write to tracked files in this session — has a commit landed (or has the user explicitly said "leave uncommitted")? Uncommitted edits are Open.
-2. **Issue cards filed match user intent?** For every `mcp__danx-issue__*_create` call this session — does the parent linkage, status, AC, waiting_on, and phase coverage match what the user actually asked for? Cards w/ partial scope are Open.
+2. **Issue cards filed match user intent?** For every `mcp__danx_dashboard__issue_create` call this session — does the parent linkage, status, AC, waiting_on, and phase coverage match what the user actually asked for? Cards w/ partial scope are Open.
 3. **Investigation findings persisted?** For every investigation / debugging report delivered to the user in chat — was it captured into a card comment, retro, doc, or commit message? Chat-only findings are Open if future agents need them.
 4. **Octane / queue restarts run?** Any PHP method-add / route change / channel change / service-provider edit this session — did `octane:reload` or `queue:restart` actually run? Skipped reload = Open.
 5. **MCP packages published?** Any edit to `mcp-server/`, `mcp-server-trello/`, `danx-issue-mcp/`, `@thehammer/*` source — did `make publish-*` run? Unpublished edits are Open.
@@ -60,7 +60,7 @@ Format each open item exactly like this:
 
 If there are no open items, write `_None._` in place of the sections.
 
-**Verify.** One terminal command the user can run NOW to spot-check the recap (e.g. `git status`, `mcp__danx-issue__danx_issue_list`, `docker ps`). Skip if no verification command applies.
+**Verify.** One terminal command the user can run NOW to spot-check the recap (e.g. `git status`, `mcp__danx_dashboard__issue_list`, `docker ps`). Skip if no verification command applies.
 
 ## Anti-patterns
 
@@ -136,7 +136,7 @@ If there are no open items, write `_None._` in place of the sections.
 
 ---
 
-**Verify.** `mcp__danx-issue__danx_issue_list({status: "Review"})` → 4 new SG-N cards.
+**Verify.** `mcp__danx_dashboard__issue_list({status_derived: "Review"})` → 4 new SG-N cards.
 ```
 
 ## Composition
