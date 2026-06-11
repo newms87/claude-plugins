@@ -30,6 +30,8 @@ See references/overview.md for full contract + probe rules + card edit checklist
 3. **Rewrite** — `description` per zero-context-test (Goal / Context / Solution / Key Files). Exact file paths, gotchas, verify command.
 4. **AC populate** — 3–8 verifiable items (imperative-verb prefix). Forbidden shapes: "Active sessions run /reload-plugins", "operator verifies in their environment", "manual UI smoke", "post-terminal-save auto-flip".
 5. **Epic split** (optional) — if 3+ phases / spans domains / >500 LOC: call `issue_create({type: 'Epic', phase_children: [...]})` to create phases atomically, then `issue_edit` to wire `parent_id` on any manual children, then set `waiting_on` chains via `issue_dependency`.
+
+**Quality gates + known dependency edges:** for deciding which `required_gates` to flag on the card(s) and recording any already-known `depends_on` / `conflict_on` edges, consult `issue-card-workflow` (single source of truth) — do NOT review or board-scan; just decide + flag.
 6. **Save changes** — call `issue_edit({id, description, ac})` to persist the prose changes. If sentinel-blocked, call `issue_transition({id, action: 'unblock'})` to clear the block.
 7. **Append comment** — call `issue_comment({id, action: 'add', text: "## Flesh-out — <date>\n..."})` with markdown body.
 8. **Complete** — `danxbot_complete({status: "ready"})` (default).

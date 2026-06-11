@@ -55,7 +55,7 @@ Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
 
 | Tool | Purpose |
 |---|---|
-| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically. Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
+| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, required_gates?})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically. `required_gates?: string[]` flags which quality gates apply (see Quality-Gate Flagging gate). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
 | `mcp__danx_dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
 | `mcp__danx_dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
 | `mcp__danx_dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
@@ -114,6 +114,30 @@ Each line MUST name a concrete user-observable result; a line with no see/do ans
 **Post-`issue_create` DEPENDENCY-WIRING gate (MANDATORY, same turn as creating an Epic/Feature with `phase_children[]`):** `phase_children[]` sets `parent_id` ONLY — it wires ZERO ordering. Sequentially-dependent phases dispatch in PARALLEL the instant they are readied. So immediately after the create, for EVERY phase that needs an earlier phase done first, call `issue_dependency({id: <later-phase>, action: 'add', kind: 'depends_on', target_id: <predecessor>})` — BEFORE readying any phase. Relying on Review-status to hold order is the exact failure this gate blocks: the operator's `ready` bypasses it and the poller fans out every dispatchable phase at once. "I'll add the edges when I ready them later" is the deferral that ships an unguarded epic — wire them at creation or the ordering does not exist.
 
 See references/phases-epics.md for the split walkthrough, epic mechanics, phase creation, and completion contract.
+
+## Quality-Gate Flagging at Card Creation (decide, don't review)
+
+**Flagging a gate is a DECISION recorded on the card — NOT work you perform in the moment.** As the creating/fleshing agent you only decide WHICH gates apply and flag them, then move on. The gate RUNS LATER: the three PRE gates are dispatched by the worker into the dedicated gate-reviewer agent before work starts; the POST `code` gate runs inside the work agent's own session at the end. **NEVER attempt to perform any review at creation time** — no design audit, no test-plan pass, no diff read. Decide → flag → next.
+
+Flag a gate when its trigger fits the card:
+
+| Gate | Phase | Flag when the card… |
+|---|---|---|
+| `dependency` | PRE | likely overlaps other in-flight work — ordering risk, same-file/surface conflict potential. |
+| `architecture` | PRE | is non-trivial design: new module boundaries, touches core invariants, an architectural decision. |
+| `tdd` | PRE | has behavior that must be pinned test-first / AC that should be checkable tests. |
+| `code` | POST | finished diff warrants a code review before completion. |
+
+**HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle in the issue drawer. The operator can also toggle gates on/off later. A gate runs only when the BOARD has it enabled (master switch) AND the card is flagged — flagging is the per-card half of that AND.
+
+## Known dependency / conflict edges at creation (opportunistic, never a search)
+
+When you ALREADY KNOW of a related in-progress / ToDo card in this moment (a sibling you just created, a card you read this session), record the edge:
+
+- `depends_on` — one-way: this card needs another card's output first. `issue_dependency({id, action:'add', kind:'depends_on', target_id})`.
+- `conflict_on` — same-file/surface overlap, mutually exclusive per pair. `issue_dependency({id, action:'add', kind:'conflict_on', target_id})`.
+
+**MUST NOT go searching / scanning the board for related cards.** Record only what you already know — opportunistic, best-effort, not a discovery pass. This is DISTINCT from the thorough **dependency quality GATE** (flag `dependency` above), which does the systematic compare against the full live Ready + In-Progress set later. It is ALSO distinct from the mandatory epic phase-child DEPENDENCY-WIRING gate above (which wires required ordering among phases of an epic you just created) — that one stays mandatory; this known-edge recording is the looser, any-card, best-effort layer.
 
 ## General Rules
 
