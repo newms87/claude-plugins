@@ -104,6 +104,8 @@ a different thread, you can't — the tool has no parameter for it.
 
 ## Data questions — query the repo's DB directly
 
+> **CRITICAL — token conservation (HARD RULE): query/command output ALWAYS goes to a `/tmp/` file, NEVER inline into the tool response.** Every DB query — and any command that could emit more than a few lines — MUST redirect output to a file you name: `… > /tmp/q.json 2>&1`, or the client's own sink (`mysql -e "…" > /tmp/out.tsv`, `psql -o /tmp/r.txt`, `\o /tmp/r.txt`, `COPY … TO '/tmp/x.csv'`). Then read that file ONLY if you actually need a value, and read the **narrowest slice** (`grep`/`head`/a specific key) — never the whole dump. Letting raw rows land in the Bash tool result silently burns thousands of tokens of your context for zero benefit; it is the single most expensive mistake in a dispatch. There is **no "just a quick SELECT" exception** — pipe it to a file. If you only need a count or one field, ask the query for exactly that (`COUNT(*)`, one column) instead of selecting rows you will discard. Same discipline for reading files you wrote: slice, don't slurp.
+
 For a data/lookup question, fetch the rows yourself before you reply.
 Your cwd is the connected repo's **full checkout**, with its own
 containers and DB. There is no danxbot DB wrapper tool — you query the
