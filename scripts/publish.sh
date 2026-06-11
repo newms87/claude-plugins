@@ -214,8 +214,23 @@ for plugin in "${TARGETS[@]}"; do
   BUMPED+=("${plugin} v${next}")
 done
 
-info "Pushing..."
-git push
+# Push — UNLESS we are running inside a danxbot agent worktree.
+#
+# A dispatched danxbot agent works on branch `<agent>` in a worktree, not
+# `main`. A bare `git push` from there lands the bump commit on
+# `origin/<agent>` — never `origin/main` — so it ships NOTHING to
+# consumers (the marketplace version-compares `main`). When DANX_AGENT_WORKTREE
+# is set we therefore leave the bump committed on the agent branch and let
+# `.danxbot/scripts/agent-finalize.sh` do the real push (`HEAD:main`, with a
+# rebase-race loop). Operator/main-session runs (no DANX_AGENT_WORKTREE) push
+# normally — unchanged behavior.
+if [ -n "${DANX_AGENT_WORKTREE:-}" ]; then
+  info "DANX_AGENT_WORKTREE set — bump committed on this branch; NOT pushing."
+  info "Run .danxbot/scripts/agent-finalize.sh to squash + push HEAD:main."
+else
+  info "Pushing..."
+  git push
+fi
 
 ok "Done:"
 for line in "${BUMPED[@]}"; do

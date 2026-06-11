@@ -1,0 +1,22 @@
+name: claude-plugins
+issue_prefix: CP
+url: git@github-newms87:newms87/claude-plugins.git
+runtime: local
+language: markdown
+framework: none
+
+# No build/test toolchain — the marketplace ships markdown (skills, rules,
+# agent files). The "gate" for a change reaching consumers is the version
+# bump in <plugin>/.claude-plugin/plugin.json, pushed to origin/main by
+# agent-finalize.sh. See workflow.md.
+commands:
+  test: ""
+  lint: ""
+  type_check: ""
+  dev: ""
+
+paths:
+  source: .
+  tests: .
+
+git_mode: main

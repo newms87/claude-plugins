@@ -1,0 +1,12 @@
+# Everything under .danxbot/ is danxbot CLIENT runtime state (per-connected-
+# repo: worktrees, workspaces, inject trees, settings, secrets) EXCEPT the
+# committed connected-repo declaration in config/ + scripts/. Ignore all,
+# re-include those two. Broad-by-design so the inject pipeline can add new
+# regenerable runtime dirs without a .gitignore edit (CP3 — service vs
+# client layering).
+*
+!.gitignore
+!config/
+!config/**
+!scripts/
+!scripts/**
