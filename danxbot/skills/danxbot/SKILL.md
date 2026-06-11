@@ -120,46 +120,9 @@ The worker process on Machine B runs a poller per connected repo (`src/poller/in
 
 Agents write card state via `mcp__danx_dashboard__issue_*` tools only. The poller's job is dispatch off the DB; Trello mirroring is the dashboard's job, not the poller's (see the Trello sync note above).
 
-## Pre-dispatch prep step (DX-291 / DX-297)
+## Pre-dispatch worktree git (worker-owned, DX-1154 / DX-1156)
 
-Every multi-agent dispatch begins with the `danx-prep` skill running on the agent's worktree. The prep agent runs commit-first WIP recovery, branch sync against `origin/main`, file-scope conflict reasoning against in-progress siblings, and a self-stuck check on the candidate card, then emits ONE verdict via `mcp__danxbot__danxbot_prep_verdict`:
-
-| Verdict | Worker route side-effect |
-|---|---|
-| `ok` | Combined-mode → dispatch keeps running, agent proceeds into `/danx-next`. Separate-mode → stop; poller re-picks next tick for the work pass. |
-| `conflict_on` | Call `issue_dependency({id, action: 'add', kind: 'conflicts_with', target_id, reason})` for each partner. The poller's `isAnyKindBlocked` filter skips dispatch while any partner is non-terminal; auto-resolves on the partner reaching terminal status. |
-| `blocked` | Call `issue_transition({id, action: 'block', reason})` to set the card's `blocked` timestamp; `deriveStatus` rule 3 projects the card to `Blocked`. |
-| `abort` | Stamp `agents.<name>.broken = {reason, suggested_steps, set_at}` on `<repo>/.danxbot/settings.json`. The picker filters this agent out on every subsequent tick until the operator clears the field via the dashboard Agents tab. |
-
-Mode is per-repo via `agentDefaults.prepMode` in `<repo>/.danxbot/settings.json` (`combined` default). DX-297 retired the separate `runConflictCheck` precursor dispatch + the `dispatchInRecoveryMode` recovery prompt; the prep agent now owns file-overlap reasoning + branch state inspection directly on the agent's worktree.
-
-The `agents.<name>.broken` field is a persistent dispatch gate, distinct from per-tick quarantine (DX-221) and `<repo>/.danxbot/CRITICAL_FAILURE` (whole-repo halt). Broken means "this specific agent's worktree is wedged" — the operator clears it after manually unwedging the worktree (e.g. resolving a `git rebase` conflict, force-pushing the agent's branch).
-
-## Self-healing worktree sync (DX-645 — Phase 3 of DX-576)
-
-The autosave-rebase-conflict class — prior dispatch left
-`wip(autosave)` commits on the agent branch AND `origin/main` moved
-since — used to land an `agents.<name>.broken` stamp and wait for
-operator intervention. As of DX-645 the worker auto-dispatches a
-`worktree-repair` workspace inside the broken worktree on every
-`syncWorktree.kind === "abort"`. Repair agent rebases + resolves +
-pushes; on terminal `completed` the dispatcher clears
-`agent.broken` programmatically and the original agent is
-dispatchable again on the next tick.
-
-| Event | Path |
-|---|---|
-| `dispatchWithRecovery` observes `syncWorktree.kind === "abort"` | Stamps `agent.broken` (picker-gate during repair) → emits `sync-repair-needed` event → throws so the multi-agent caller releases its lock |
-| `sync-repair-dispatcher` subscribes → dispatches `worktree-repair` workspace (worker-initiated, `agent_name = null` so strikes are bypassed) | Repair agent `cd`s into broken worktree → runs Pre-task sync contract → resolves rebase in place (inject-pipeline files take `origin/main`; other files reconcile on merit) → `git push --force-with-lease` agent branch → `danxbot_complete({status: "complete"})` |
-| Repair dispatch terminal `completed` | Dispatcher's `onComplete` callback atomically clears `agent.broken = null` + zeros `strikes.count` (preserves history). Original agent rejoins the picker rotation on next tick. |
-| Repair dispatch terminal `failed` | Dispatcher leaves `agent.broken` populated. Existing operator-gate behavior preserved as the fallback for genuine application-code conflicts that the repair could not resolve. |
-
-The repair flow is for `syncWorktree` abort ONLY — `snapshotIfDirty`
-abort (HEAD not on agent branch, commit failure) retains the
-operator-gate behavior because that class signifies worktree
-corruption the repair contract cannot heal.
-
-Code surface — `src/dispatch/recovery-mode.ts` (emit), `src/agent/sync-repair-dispatcher.ts` (subscribe + dispatch + clear), `src/inject/workspaces/worktree-repair/` (workspace dir + CLAUDE.md contract body).
+The work dispatch is **zero-prep** — the task body is `/danx-next <id>` alone (DX-1156 retired the `danx-prep` skill, `danxbot_prep_verdict`, the `prep` DispatchKind, and `agentDefaults.prepMode`). The worker brings the agent's worktree to `origin/main` deterministically BEFORE spawning (`src/dispatch/worktree-ff.ts`); a true conflict escalates to a `worktree-maintenance` dispatch instead. Conflict / dependency detection is the Dependency PRE quality gate (DX-1180). Full contract: `danxbot/.claude/rules/agent-dispatch.md` + CLAUDE.md Core Principle 4.
 
 ## External Dispatch API
 
