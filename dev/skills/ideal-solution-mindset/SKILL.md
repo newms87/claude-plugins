@@ -48,7 +48,10 @@ A legacy path that "still works" is **as dangerous as a known bug**. It propagat
 
 Hard cuts are the default. Touching the area for any other reason → bring the rest of it to the new shape in the same change. Out-of-scope callers that don't conform → **fail loudly** (typed error, hard assertion, deletion of the obsolete entry-point), never silently degrade.
 
+**Deleting a feature means erasing every trace of it.** The clean codebase reads as if the feature never existed — not "existed and was removed." A comment, test, or guard whose only purpose is to record that a feature is gone is itself dead weight: it adds tokens, cognitive load, and indirection for every future reader, and keeps the dead name searchable forever. The tombstone is deleted in the same change as the feature. Erasing the implementation but leaving its memorial is an incomplete delete, not a careful one.
+
 Forbidden:
+- **Tombstones for a removed feature** — a comment naming the dead thing ("X retired / deprecated / removed", "used to live in Y", "replaced the old Z", "no longer has a W step"), a test that asserts a specific removed feature is ABSENT (`expect(out).not.toContain("oldThing")`), or a denylist / forbidden-pattern / "do not reintroduce" registry row that names one specific dead feature. The deletion is the enforcement; the absence is self-evident from the clean tree. (Guarding a *generic anti-pattern class* that has no implementation to delete — "never write a back-compat reader" — is a standing rule, not a tombstone; the line is whether it names a specific feature that once existed.)
 - "Old format" + "new format" handling in the same function.
 - `if (legacyShape) {…} else {…}` migration branches.
 - Fallback values papering over a missing required input.
@@ -127,6 +130,7 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 | "This is getting complex but I think it's fine." | Principle #3 violation. Restart simplification loop. |
 | "I'll write a new helper for this." | Principle #4 violation until the reuse audit is in writing. |
 | "I'll leave the old function — something might still call it." | Principle #2 violation. Find every caller; remove or update; delete the function. |
+| "I'll leave a comment / test / guard noting the feature was removed so nobody re-adds it." | Principle #2 violation — a tombstone is dead code. Delete the trace with the feature; the clean tree reads as if it never existed. |
 | "I'll add a fallback so it doesn't break in the old case." | Principle #2 violation. Fail loudly instead. |
 | "Make the new field optional with a default so the migration stays transparent / existing callers don't break." | Principle #2 violation. A new scope/identity/key field is REQUIRED + fail-loud. Backfill existing rows in the migration; never add a default coalesce to the canonical key. |
 | "I'll come back and clean this up later." | Will not happen. Clean it up now. |
