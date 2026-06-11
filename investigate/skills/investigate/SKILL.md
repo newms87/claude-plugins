@@ -11,7 +11,7 @@ Read-only diagnostic. Hypothesis → evidence → findings → options. **You do
 
 - User says "investigate," "look into," "why," "how does," "what's happening"
 - About to make factual claim about runtime (timing, causality, process state, config) without direct evidence
-- Task-completion exit codes tell you the wrapper finished, NOT the underlying process. Verify with live probe (ps, curl, docker ps, systemctl status) before asserting state.
+- Task-completion exit codes tell you the wrapper finished, NOT whether the underlying process is healthy. Always verify with live probes (ps, curl, docker ps, systemctl status) before asserting state.
 - Draft contains hedging ("probably," "typically," "should be") → STOP, gather evidence
 
 **Not for:** Direct file quotes, doc lookups, or fix-application tasks.
