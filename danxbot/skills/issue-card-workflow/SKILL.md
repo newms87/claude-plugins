@@ -32,6 +32,8 @@ A card in `ToDo` (`dispatchable_derived: true`) is NOT a passive note — it is 
 
 Order for self-done work: `create` → **`pickup` with `manual: true`** → work → `complete`. (`ready` is optional — manual pickup does not require it.) Never `create` → `ready` → work (leaves a dispatchable gap the poller races), and never a bare `pickup` for in-session work (leaves a heal-rollback window).
 
+**Sub-agents under YOUR control ARE in-session work — you own their cards' FULL lifecycle.** Dispatching the work to your OWN `Agent`/sub-agent (not the danxbot poller) is NOT the "(not delegating)" exemption above: manual-pickup the card → `In Progress` BEFORE launching the sub-agent, keep it `In Progress` the whole time they run, and YOU drive the terminal `complete`/`block` the moment they finish (verify via `issue_get`). The ONLY thing "delegating" exempts is handing a card to the *poller* via `ready` — there a worker claims it. Readying (or leaving in `ToDo`) a card your own sub-agent is actively working, and letting the poller own its state, is the failure this clause blocks.
+
 ## Source of Truth
 
 **Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only — that is the whole surface. Poller dispatches off the dashboard DB via the dashboard HTTP API. Want a status change → call `mcp__danx_dashboard__issue_transition` or `mcp__danx_dashboard__issue_edit`.
