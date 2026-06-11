@@ -45,6 +45,39 @@ post a `danxbot_slack_reply` explaining what you couldn't answer and
 why, then call `danxbot_complete` with `status: "failed"` and the
 failure reason.
 
+## Created or identified a card for this thread → LINK it (MANDATORY)
+
+If this dispatch **creates** an issue card (via
+`mcp__danx_dashboard__issue_create`) OR identifies the ONE existing card
+this thread is about, you MUST bind the thread to that card:
+
+> `mcp__danxbot__link_thread_to_issue({ issue_id: "<card id>" })`
+
+**Call order is fixed:** `danxbot_slack_reply` (your "Created SO-1 …"
+confirmation — this first reply becomes the card-view *message #1*) →
+**`link_thread_to_issue`** → `danxbot_complete`. The link slots BETWEEN
+reply and complete; it is part of the terminal sequence, not optional
+cleanup.
+
+**Why it is mandatory.** The link is what registers the Slack **mirror**:
+once bound, every future update to the card (status moves, new comments,
+edits) re-renders this thread's card-view message — the card *syncs back
+to Slack*. Skip the call and the card still exists and still mirrors to
+Trello (that side is automatic, server-side), but the Slack thread is
+orphaned: the user sees your one reply and nothing ever again. Creating
+a card from a thread without linking it is an incomplete dispatch.
+
+**Rules:**
+- **One thread ↔ one card, immutable 1:1.** Link the single primary card
+  the thread is about. Thread + channel are implicit from the dispatch —
+  you pass ONLY `issue_id`, never a thread/channel.
+- A **409** means the thread (or that card) is already linked — that is
+  fine, treat it as already-done and proceed to `danxbot_complete`. Never
+  try to re-link.
+- Created several cards in one thread (e.g. an epic + phases)? Link the
+  **one** the thread is primarily tracking (usually the parent/epic, or
+  the single card the user asked for).
+
 ## Intermediate updates — use sparingly
 
 **`danxbot_slack_post_update`** posts a status line into the same
