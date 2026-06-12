@@ -112,6 +112,18 @@ Draft >40 lines for single action = convey not applied. Re-shape.
 - **Code-path options:** `1. Thread byId into validateBlocked. 2. Move forceWaitingOnToDo. 3. Drop invariant.` → Frame as behavior + trade, no symbols. "1. Validator smarter (keeps history, medium effort). 2. Picker clears note (cheap, loses history). 3. Drop rule (one-line, loses guardrail)."
 - **Section padding:** Three commas, one idea. `Same-file overlap ≠ conflict — git auto-merges. Only heavy structural overlap earns stamp.`
 
+## Cheap-to-verify facts — read, never estimate
+
+If a fact is one tool call away, READ it before you assert it. Stating a number you could have checked is the failure — a confident wrong fact is worse than "let me check."
+
+**Elapsed time / duration is the canonical trap.** You have ZERO reliable internal sense of wall-clock: a session can sit idle for hours, the date can roll mid-session, and "feels like a few minutes" is routinely off by orders of magnitude. Before ANY claim about elapsed time, duration, "N minutes ago", "recently", "just", or how long since an event:
+
+1. Read the current clock (`date`-equivalent).
+2. Read the source timestamp (the record, the log line, the commit).
+3. Compute the difference and state THAT.
+
+Never narrate a duration from memory or feel. Same discipline for any other one-lookup fact: current branch/HEAD, a row's status, a file's existence. "I think it's been ~X" about a checkable quantity → STOP, check, then state the computed value.
+
 ## Length budgets
 
 | Output | Budget |
