@@ -29,7 +29,11 @@ See references/overview.md for full contract + probe rules + card edit checklist
 2. **Probe** (5–10 min, read-only) — `Read` / `Grep` / `Glob` / git bash only. No executions, no code edits, no MCP write calls.
 3. **Rewrite** — `description` per zero-context-test (Goal / Context / Solution / Key Files). Exact file paths, gotchas, verify command.
 4. **AC populate** — 3–8 verifiable items (imperative-verb prefix). Forbidden shapes: "Active sessions run /reload-plugins", "operator verifies in their environment", "manual UI smoke", "post-terminal-save auto-flip".
-5. **Epic split** (optional) — if 3+ phases / spans domains / >500 LOC: call `issue_create({type: 'Epic', phase_children: [...]})` to create phases atomically, then `issue_edit` to wire `parent_id` on any manual children, then set `waiting_on` chains via `issue_dependency`.
+5. **Container split** (optional) — decide by slice count, and NEVER leave a Feature as the dispatchable work unit:
+   - **One slice → keep it a Story** (carry size in `effort_level`); no split.
+   - **A few slices → create a Feature CONTAINER with child Story cards** — `issue_create({type: 'Feature', ...})` for the container, THEN `issue_create({type: 'Story'|'Bug'|'Chore', parent_id: <feature-id>, ...})` for each dispatchable child slice (`phase_children[]` is Epic-ONLY — the server 400s it on a Feature, so wire Feature children via `parent_id`). Never a Feature that is itself worked. A Feature is a container: it groups child Stories, is never dispatched, status computed from children.
+   - **Many slices / spans domains / >500 LOC → Epic** — `issue_create({type: 'Epic', phase_children: [...]})`.
+   Then `issue_edit` to wire `parent_id` on any manual children, and set `waiting_on` chains via `issue_dependency`. **Forbidden end-state:** a fleshed-out Feature holding the work in its own body / `ac[]` with no child cards.
 
 **Quality gates + known dependency edges:** for deciding which `required_gates` to flag on the card(s) and recording any already-known `depends_on` / `conflict_on` edges, consult `issue-card-workflow` (single source of truth) — do NOT review or board-scan; just decide + flag.
 6. **Save changes** — call `issue_edit({id, description, ac})` to persist the prose changes. If sentinel-blocked, call `issue_transition({id, action: 'unblock'})` to clear the block.

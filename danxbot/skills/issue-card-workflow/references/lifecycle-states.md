@@ -35,7 +35,7 @@ This applies to:
 
 **Interaction with `waiting_on`.** `waiting_on` is status-independent — card may carry dep-chain record at any status (Review, ToDo, In Progress, Blocked). Validator does NOT couple them. Sequential phase chains may stamp `waiting_on.by[]` at creation alongside `status: Review` — chain rides through Review → ToDo cleanly; no second-pass edit needed.
 
-**Interaction with epic status derivation.** Poller propagates parent epic triggers from children's derived-status union. When all phase children derive `Review`, epic also derives `Review` (rule 7 fallthrough). When creating agent stamps `ready_at` on some phases, parent epic gets own `ready_at` stamped by poller (rule 5 → parent `ToDo`). Agent does NOT manually stamp epic's triggers — derivation owns them.
+**Interaction with container status derivation (Epic OR Feature).** Poller propagates the parent container's triggers from children's derived-status union. When all children derive `Review`, the container also derives `Review` (rule 7 fallthrough). When the creating agent stamps `ready_at` on some children, the parent container gets its own `ready_at` stamped by poller (rule 5 → parent `ToDo`). Agent does NOT manually stamp a container's triggers — derivation owns them.
 
 ## Triage Lifecycle
 
@@ -97,11 +97,11 @@ Reverse the terminal trigger. NEVER touch `status:`. NEVER touch `list_name`. On
 
 Forbidden in reopen edits (and every other): writing `status:` field directly via `issue_edit`. Use `issue_transition` to drive lifecycle. Status and display list are server-derived from trigger fields; agents touch only trigger timestamps. Use MCP tools only.
 
-## Epic Status is Computed, Not Edited
+## Container Status is Computed, Not Edited
 
-Parent's derived status (Epic OR any non-epic with non-empty `children[]`) is **derivation-owned by server**. The DB engine computes parent status from children's derived statuses — union of child states propagates correctly. Agents NEVER manually stamp epic's triggers; call `issue_transition` on child cards instead; server recomputes parent status automatically.
+A **container type** (Epic OR Feature) has its status **derivation-owned by server** — computed from its children's derived statuses, NOT from its own lifecycle. Feature, like Epic, is a CONTAINER: never dispatched to a worker, status computed from children, its own lifecycle columns (`ready_at` / `completed_at` / `cancelled_at` / `blocked`) stay null. Story / Bug / Chore are **leaves** — a leaf NEVER rolls up from `children[]` even if it somehow has any; its status derives from its own lifecycle. The DB engine computes container status from children's derived statuses — union of child states propagates correctly. Agents NEVER manually stamp a container's triggers; call `issue_transition` on child cards instead; server recomputes container status automatically.
 
-**Priority rules (first match wins):**
+**Priority rules (first match wins) — same for Epic AND Feature:**
 
 1. Any child derives `Blocked` → parent stamped `blocked: {at, reason}`.
 2. Any child derives `In Progress` → parent derives `In Progress`.
@@ -114,15 +114,16 @@ Cancelled children excluded from rules 4–5 — single non-cancelled child shif
 
 Parent rollup ignores orthogonal `requires_human` — checked only at dispatch, not propagated. Dashboard surfaces child-count subscript on epic children when any phase has `requires_human != null`.
 
-**Implications for agents:**
-- When you finish phase card, call `danxbot_complete({status: "complete"})` — worker stamps phase's `completed_at`, poller propagates parent on next tick. Do NOT touch epic — edit overwritten.
-- When phase stamps `blocked.at`, parent's `blocked` synthesized by poller. Operator triages from parent view.
-- Epic stays at whatever derivation produces. Stamping `completed_at` on Epic with one child `In Progress` is no-op, cleared next tick.
+**Implications for agents (container = Epic OR Feature):**
+- When you finish a child card, call `danxbot_complete({status: "complete"})` — worker stamps the child's `completed_at`, poller propagates the parent container on next tick. Do NOT touch the container — edit overwritten.
+- When a child stamps `blocked.at`, the container's `blocked` synthesized by poller. Operator triages from container view.
+- The container stays at whatever derivation produces. Stamping `completed_at` on an Epic OR Feature with one child `In Progress` is no-op, cleared next tick.
 - Parents with `waiting_on != null` skipped by parent-status derivation — parent's own dep-chain note takes precedence. Set parent's `waiting_on` explicitly when needed.
 
-**Forbidden end-states for any turn creating epic:**
-- Epic written, `children: []`, no phase child cards created.
-- Epic written, phase split listed only in description prose, no phase child cards created.
-- Epic written, "phases TBD" / "left for triage" / "will split next session" anywhere.
+**Forbidden end-states for any turn creating a container (Epic OR Feature):**
+- Container written, `children: []`, no child cards created.
+- Container written, work / split listed only in description prose, no child cards created.
+- Container written, "phases TBD" / "left for triage" / "will split next session" anywhere.
+- **Feature written with executable work in its own body / `ac[]` but NO child cards.** A Feature is a container — work lives ONLY in child Story/Bug/Chore cards; a Feature that describes its own work is INVALID.
 
-If about to end turn in any — STOP, write phase cards first. CRITICAL: epic without phase cards is INVALID + workflow violation.
+If about to end turn in any — STOP, write the child cards first. CRITICAL: a container (Epic OR Feature) without child cards is INVALID + workflow violation.

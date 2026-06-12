@@ -14,13 +14,16 @@ The axis is **decomposability, not elapsed time** (see the Card Taxonomy gate in
 
 **Combine adjacent phases (DX-512).** Three good phases beat seven mediocre ones. Every phase costs a dispatch: fresh worker, fresh context, fresh review, fresh commit. Before adding a phase, ask "does the combined unit still ship as one green functional commit?" — if yes, combine. Phase fan-out is a cost multiplier; treat it like adding a dependency, not ticking a checklist.
 
-## CRITICAL: Epic Without Phase Cards is INVALID
+## CRITICAL: A Container (Epic OR Feature) Without Child Cards is INVALID
 
-An Epic card with empty `children[]` is **never acceptable end-state**. Instant creation → create EVERY phase card in SAME response. No "phases sketched in description, will split later," no "wait for user to confirm," no "user only asked for epic."
+A container card — Epic OR Feature — with empty `children[]` is **never acceptable end-state**. Both are containers: never dispatched, status computed from children. Instant creation → create EVERY child card in SAME response. No "phases sketched in description, will split later," no "wait for user to confirm," no "user only asked for the container." A Feature carrying executable work in its own body / `ac[]` with no children is the same DEFECT as an empty Epic — all executable work lives in child Story/Bug/Chore cards, never in the Feature itself.
 
-If user prompt looks like it asks for "just an epic," it does NOT. Read as "epic + every phase card" — that's the unit of work. Asking user "want me split phases now?" after writing epic is the violation; do NOT do that.
+If user prompt looks like it asks for "just an epic / just a feature," it does NOT. Read as "container + every child card" — that's the unit of work. Asking user "want me split children now?" after writing the container is the violation; do NOT do that.
 
-## Epic Mechanics
+## Container Mechanics (Epic OR Feature)
+
+These mechanics are IDENTICAL for both container types — wherever a step says "epic," a `type: Feature` container behaves the same: it is never dispatched, its status is computed from children, and its own lifecycle columns stay null. A Feature differs from an Epic only in scale (a few child Stories vs many), never in dispatch/status behavior.
+
 
 1. Set epic's `type: Epic` (no `status:` literal — creation defaults derive to `Review`; server leaves `ready_at`/`completed_at`/`cancelled_at`/`blocked` all null so rule 7 falls through to raw `status: Review` field on creation).
 
@@ -53,10 +56,10 @@ If either fails, three options — all keep this dispatch's terminal signal hone
 - **Split into fresh sibling card** if residue is genuinely separate scope. Current card narrows AC set to what landed; new card carries residue. Document split in `comments[]` entry.
 - **Move to Blocked / Waiting On** if real human action / external dep gates remainder (per Step 10 / 10b — read no-false-blockers patterns first).
 
-**`danxbot_complete({status: "complete"})` on `type: Epic` is FORBIDDEN.** Epic terminal state DERIVED from child terminal states (rollup), never written directly. Planning-style dispatch whose candidate IS epic (split-into-phases pattern) ends with `danxbot_complete({status: "complete"})` ONLY when every phase child already terminal — rare; planning typically split-and-handoff rather than split-and-rollup. Common case the planning dispatch should:
+**`danxbot_complete({status: "complete"})` on a container (`type: Epic` OR `type: Feature`) is FORBIDDEN.** A container's terminal state is DERIVED from child terminal states (rollup), never written directly — neither type is ever dispatched or completed in its own right. Planning-style dispatch whose candidate IS a container (split-into-children pattern) ends with `danxbot_complete({status: "complete"})` ONLY when every child already terminal — rare; planning typically split-and-handoff rather than split-and-rollup. Common case the planning dispatch should:
 
-- Confirm every phase card exists with `parent_id` linked + own AC + `waiting_on` chain stamped.
-- Leave epic at derived `In Progress` state (or whatever rollup resolves).
-- Call `danxbot_complete({status: "complete"})` — server's write-side guard rejects direct terminal transitions on Epic cards. The DB contract ensures Epic status flows ONLY from children's derived states. Dispatch row finalizes normally; Epic card status remains server-derived.
+- Confirm every child card exists with `parent_id` linked + own AC + `waiting_on` chain stamped.
+- Leave the container at derived `In Progress` state (or whatever rollup resolves).
+- Call `danxbot_complete({status: "complete"})` — server's write-side guard rejects direct terminal transitions on container (Epic / Feature) cards. The DB contract ensures container status flows ONLY from children's derived states. Dispatch row finalizes normally; container card status remains server-derived.
 
 This guard is defense-in-depth — rule above is contract you uphold. If you reach guard, you tripped the rule.

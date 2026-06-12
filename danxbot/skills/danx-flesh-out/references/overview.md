@@ -15,7 +15,7 @@ Flesh-out is invoked when operator creates half-baked card via dashboard Create-
 **Card edits (via MCP):**
 1. `description` — rewritten per zero-context-test (Goal / Context / Solution / Key Files).
 2. `ac[]` — 3–8 verifiable items (imperative-verb prefix, no "operator verifies" / "manual UI smoke" / "post-dispatch auto-flip" shapes).
-3. If split: `type: Epic`, `children[]` populated, phase cards created via `danx_issue_create`, `waiting_on` chain stamped phase 2..N.
+3. If split: pick the container by slice count — **one slice stays a Story** (no split); **a few slices → a Feature CONTAINER with child Story cards** (never a Feature worked directly); **many slices / multi-domain → Epic**. Epic children are created atomically via `phase_children[]` (Epic-ONLY — the server 400s `phase_children` on a Feature); Feature children are created as separate `Story`/`Bug`/`Chore` cards each carrying `parent_id: <feature-id>`. The container's `children[]` is populated, `waiting_on` chain stamped child 2..N. A Feature is a container exactly like an Epic — never dispatched, status computed from children; a fleshed-out Feature must NEVER hold the work in its own body / `ac[]` with no children.
 4. If `status: Review`: `triage{expires_at, last_status, last_explain, ice, history}` stamped.
 5. `comments[]` — ONE `## Flesh-out` entry summarizing action (rewrite, AC count, split count).
 6. DX-544 sentinel-block clear: parse ` start as <Review|ToDo>` token; emit `danxbot_complete({status: "ready"})` (default) or `"review"` (sentinel target).

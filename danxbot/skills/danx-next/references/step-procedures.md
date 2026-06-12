@@ -83,7 +83,7 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 
 Check card's existing state. ANY condition = epic already split — DO NOT re-split, DO NOT call `issue_create`:
 
-1. **Card's `children: []` is non-empty.** Epic fully linked. `issue_get` each child id, identify first with `status_derived: ToDo` (or `In Progress` if resuming), treat THAT phase as work. Re-fetch that phase card, restart workflow at Step 1 using phase card.
+1. **Card's `children: []` is non-empty.** Container (Epic OR Feature) fully linked — a container is NEVER worked directly; descend to a child. `issue_get` each child id, identify first with `status_derived: ToDo` (or `In Progress` if resuming), treat THAT child as work. Re-fetch that child card, restart workflow at Step 1 using the child card.
 2. **Card's `type: Epic` AND `children: []` empty.** Epic created without children linked (or by human on tracker) — phase cards may exist but lack `parent_id` linkage. **Invoke `danx-epic-link` skill via Skill tool.** It scans open issues, identifies epic's phase children, sets `parent_id` on each phase, sets `children[]` on epic. After return, re-fetch epic via `issue_get` — `children[]` now populated — jump back to Step 3.0 (first condition now matches).
 3. **Card's `type` is NOT Epic but other cards reference it as parent.** Call `mcp__danx_dashboard__issue_list({parent_id: "<this.id>"})`. Any matches = card is actually epic that lost `Epic` label. Promote via `issue_edit({id, type: "Epic", ...})`, set `children[]` from matched cards (sorted like `danx-epic-link`). Jump back to Step 3.0.
 
@@ -99,7 +99,7 @@ If NOT splitting, skip to Step 4.
 
 1. Call `mcp__danx_dashboard__issue_edit({id, type: "Epic"})` to promote the parent. Keep it `In Progress`. Add a comment via `issue_comment` summarizing the split. Don't worry about `children[]` yet — you don't have phase ids until each `issue_create` returns.
 2. For each phase, call `mcp__danx_dashboard__issue_create({type, title, description, parent_id, ac?, effort_level?})`:
-   - `type` — `"Bug"` or `"Feature"` (phase kind, not `Epic`).
+   - `type` — a **dispatchable leaf**: `"Story"`, `"Bug"`, or `"Chore"`. NOT `Epic` and NOT `Feature` — both are containers, never worked directly; a Feature phase-child would itself need child Story cards. If a phase is genuinely a few-slice capability, create it as a `Feature` container WITH its own child Story cards in the same pass (never a bare dispatchable Feature).
    - `title` — `"<Epic Title> > Phase N: Description"`.
    - `description` — full markdown body.
    - `parent_id` — the epic's `id` (e.g. `ISS-12`).
@@ -113,7 +113,7 @@ If NOT splitting, skip to Step 4.
    - **Skip the dependency ONLY when phases are genuinely independent** (different domains, no shared state, any order). Default is sequential — explain in a comment on the epic if skipped.
 5. Restart workflow at Step 1 using the first phase card.
 
-Epic stays `In Progress` until ALL phase cards are Done — then its terminal state derives from child rollup (never a direct write).
+A container (Epic OR Feature) stays `In Progress` until ALL child cards are Done — then its terminal state derives from child rollup (never a direct write); neither container type is ever completed or dispatched directly.
 
 ## Step 4 — Implement (TDD)
 
@@ -360,7 +360,7 @@ If either fails, three options:
 - **Split into fresh sibling card** for genuinely separate scope; narrow THIS card's AC set; document in `comments[]`.
 - **Route to Blocked / Waiting On** (Step 10 / 10b) when real human action / external dep gates remainder.
 
-**`danxbot_complete({status: "complete"})` on `type: Epic` is FORBIDDEN.** Epic terminal state derives from child rollup, never direct write. Planning dispatch whose candidate IS epic (split-into-phases pattern) calls `danxbot_complete({status: "complete"})` ONLY when every phase child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses the `completed_at` / `cancelled_at` stamp on an Epic card, surfaces `stamp-terminal-epic-refused` system error. Dispatch row finalizes; the card stamp is suppressed. Guard is defense-in-depth — rule above is what you uphold. If you reach guard, you tripped the rule.
+**`danxbot_complete({status: "complete"})` on a container (`type: Epic` OR `type: Feature`) is FORBIDDEN.** A container's terminal state derives from child rollup, never direct write — neither is ever dispatched or completed directly. Planning dispatch whose candidate IS a container (split-into-children pattern) calls `danxbot_complete({status: "complete"})` ONLY when every child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses the `completed_at` / `cancelled_at` stamp on a container card, surfaces a `stamp-terminal-epic-refused` system error. Dispatch row finalizes; the card stamp is suppressed. Guard is defense-in-depth — rule above is what you uphold. If you reach guard, you tripped the rule.
 
 ### Sha-less completion rejected
 
