@@ -61,6 +61,19 @@ Effective flow:
 
 No remote JSON-writing script, no drift between deploy and worker views of config, no duplicated display-building logic.
 
+## Agents roster — TWO surfaces, do not conflate (DX-1113)
+
+There are two distinct "agents" homes; only ONE moved to Postgres. Conflating them is the trap this section exists to prevent.
+
+| Surface | Home | Accessor | Status |
+|---|---|---|---|
+| **Per-repo** `settings.json` `agents{}` map | `<repo>/.danxbot/settings.json` (the file THIS skill documents) | `normalizeAgents` / `mutateAgents` / `agentsMapMutated` + the DX-281 per-key merge in `writeSettings`, all in `src/settings-file.ts`; `AGENTS_MAX` cap | **UNCHANGED** — still on disk, still DX-281 per-key merged |
+| **Per-board** named-agent roster | `board_agents` Postgres table (one row per `(board_id, name)`) | `src/issues/db/board-agents.ts` — `readBoardAgents` / `readBoardAgent` / `insertBoardAgent` / `deleteBoardAgent` / `mutateBoardAgent` / `ensureBoardAgents` | **MOVED to Postgres (DX-1113)** |
+
+DX-1113 moved ONLY the per-board roster (bio, capabilities, schedule, `enabled`, `broken`, `strikes`, `effortLevel`) into `board_agents`. Each agent is its own row, so the strike accumulator, the dashboard CRUD, and the broken stamp do per-row updates under a `(board_id, name)` advisory lock — the old whole-file per-key merge (`mergeBoardAgents` / `mutateBoardAgents` / `agentsMapMutated`) that existed only to stop one file-writer clobbering another agent's keys is **deleted**, not preserved (exactly ONE home — Core Principle 1). Boot step `ensureBoardAgents` (`src/index.ts`) seeds the table once from the legacy on-disk roster (`src/agents-backfill.ts`) — the one-time data migration. Never add an `agents` field back to the per-BOARD settings contract, and never add a JSON-fallback reader.
+
+**Keep the distinction sharp:** the per-REPO `settings.json` `agents{}` map (first row above) is a SEPARATE surface and is NOT affected by DX-1113 — its DX-281 per-key merge in `writeSettings` is live and load-bearing. Only the per-board roster left the settings layer.
+
 ## Schema (abbreviated)
 
 ```

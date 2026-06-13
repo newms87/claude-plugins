@@ -53,7 +53,7 @@ When wiring up a new connected repo (especially Laravel / any framework with an 
 
 ## Strict isolation from danxbot
 
-Danxbot-dispatched agents (poller, `/api/launch`, Slack) use their own per-dispatch MCP config and env from `<repo>/.danxbot/.env` delivered to the worker container via `env_file: ../.env` in `<repo>/.danxbot/config/compose.yml`. The dev's interactive `claude` at the repo root only sees the single `danx-issue` MCP server the poller injects (DX-201) — zero overlap with the worker's broader MCP surface (dashboard, Playwright, etc.). The worker's own dispatches still source MCP from the workspace dir, never from the repo root.
+Danxbot-dispatched agents (poller, `/api/launch`, Slack) use their own per-dispatch MCP config and env from `<repo>/.danxbot/.env` delivered to the worker container via `env_file: ../.env` in `<repo>/.danxbot/config/compose.yml`. Danxbot injects NO MCP server into the dev's repo-root `.claude/` — the repo root is developer-owned and the inject pipeline actively scrubs any leftover `danx-*` artifacts there (DX-269 retired the rules/skills inject; the legacy `danx-issue` server is gone — the workspace-shape tests assert its absence). The worker's own dispatches source MCP exclusively from the per-dispatch `--mcp-config` temp file (resolved from the workspace `mcp.template.json`) under `--strict-mcp-config`; the live agent-facing server is `@thehammer/danx-dashboard-mcp` (tools prefixed `mcp__danx_dashboard__`, in-tree at `packages/danx-dashboard-mcp/`), plus `playwright` on workspaces that declare it.
 
 ## The workspace: dispatched-agent cwd
 
