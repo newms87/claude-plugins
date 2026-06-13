@@ -13,7 +13,7 @@ Default agent output is code-first: file paths, symbols, prose. Reader reverse-e
 
 | Situation | Apply? |
 |---|---|
-| End-of-turn report, commit body, PR, issue YAML, Slack, code-review, findings, unblock, hand-off | YES |
+| End-of-turn report, commit body, PR, issue card, Slack, code-review, findings, unblock, hand-off | YES |
 | Inline narration ("running test now"), code itself | NO |
 
 Finished artifact someone reads to decide → convey applies.
@@ -101,13 +101,13 @@ Before sending ANY response with: "Summary", "What shipped", "Report", "Findings
 
 Draft >40 lines for single action = convey not applied. Re-shape.
 
-**Terminal MCP calls:** when previous tool = terminal signal (`danxbot_complete`, etc.), emit NO text. Process being SIGTERM'd; tokens wasted. Tool's `summary` arg + issue YAML `retro` ARE the report.
+**Terminal MCP calls:** when previous tool = terminal signal (`danxbot_complete`, etc.), emit NO text. Process being SIGTERM'd; tokens wasted. Tool's `summary` arg + issue card `retro` ARE the report.
 
 ## Anti-patterns
 
 - **Wall of paths:** `What shipped: src/A.ts — foo | src/B.ts — bar | ...` → Can't tell what WORKS. Use Goal + Behavior diff.
 - **Code-shape leakage:** `ConflictVerdict is tagged union with kind: "ok"|"conflict"|...` → Move type signature to Verify; in body say "three decisions".
-- **Prose flow:** `Picker calls runConflictCheck, awaits verdict, invokes applyConflictVerdict, mutates YAML...` → Use arrow: `picker → check → verdict → apply → YAML`.
+- **Prose flow:** `Picker calls runConflictCheck, awaits verdict, invokes applyConflictVerdict, writes the card...` → Use arrow: `picker → check → verdict → apply → DB`.
 - **Jargon-first:** `SG-135 waiting_on + In Progress → DX-212 invariant (waiting_on != null ⟹ status=ToDo) fires...` → Lead with real-world, then internals. "Card waiting on SG-134 finished. Agent picked up + flipped to In Progress. Validator sees note-pinned + status-not-waiting → screams." Then field (`waiting_on`), ID (`DX-212`), path (`yaml.ts:941`) in Verify.
 - **Code-path options:** `1. Thread byId into validateBlocked. 2. Move forceWaitingOnToDo. 3. Drop invariant.` → Frame as behavior + trade, no symbols. "1. Validator smarter (keeps history, medium effort). 2. Picker clears note (cheap, loses history). 3. Drop rule (one-line, loses guardrail)."
 - **Section padding:** Three commas, one idea. `Same-file overlap ≠ conflict — git auto-merges. Only heavy structural overlap earns stamp.`
@@ -131,7 +131,7 @@ Never narrate a duration from memory or feel. Same discipline for any other one-
 | End-of-turn | 30 |
 | Commit body | 8 |
 | PR | 40 |
-| YAML comment | 20 |
+| Card comment | 20 |
 | Slack | 12 |
 | Investigation | 20 |
 | Subagent prompt | 30 |
