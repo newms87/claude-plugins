@@ -52,6 +52,8 @@ Capture verbatim — file contents (cite line numbers), command output (exit cod
 
 If step requires write → STOP. Tell user what + why, get explicit authorization.
 
+**Read-only probes need NO authorization — gathering them IS the job, including prod/remote.** A read-only probe against a deployed/production target (SSH `cat`/`ps`/`psql SELECT`, `docker ps`/`logs`, `curl` status, SSM `get-parameter`, `make deploy-status`/`deploy-logs`) is ordinary evidence gathering, not a gated escalation. NEVER write "I can't see prod from here / that needs prod access" or offer a read-only prod probe as an option to approve — go run it. Only WRITES to prod (restart, deploy, secrets-push, destroy, DB mutation) cross the authorization line. Deferring a read-only prod read as if it needed permission is the failure this gate blocks.
+
 ### 5. Verify against hypothesis
 
 | Evidence | Action |
