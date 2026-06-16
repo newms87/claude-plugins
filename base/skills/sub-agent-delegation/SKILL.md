@@ -33,3 +33,19 @@ All no → sub-agent is passthrough. Cut it.
 ## Tool design implication
 
 Tool's only job = "fetch static blob" → stage on disk, agent reads via Read. Fetch tool + fetch sub-agent = latency/tokens/indirection for zero capability. Mutable ops stay tools; pure-fetch becomes filesystem.
+
+## ALWAYS parallelize independent work — fan out, don't serialize
+
+When a task decomposes into INDEPENDENT sub-tasks — multiple reviews of the same artifact, several non-overlapping fixes, independent file edits or investigations — dispatch them as parallel sub-agents in ONE message (multiple Agent/Task tool calls in a single response), NOT one at a time. Serializing work that has no ordering dependency is pure wasted wall-clock. Sub-agents are the mechanism that makes the parallelism possible; reach for them whenever independent work exists, not only for synthesis.
+
+**Hard cap: 3 concurrent sub-agents (3 parallel items).** More than 3 independent items → batch them: run 3, collect results, then run the next set. The cap is for INDEPENDENT work ONLY — never parallelize genuinely dependent steps (step B needs step A's output).
+
+**Use sub-agents to APPLY fixes, not just to review.** When findings (or any work) split into independent, non-overlapping fixes, fan THEM out to parallel sub-agents too (≤3) — never serialize independent fixes.
+
+**Guardrails (all still hold):**
+- **Non-overlapping files/state only.** Two agents must NEVER edit the same file concurrently — partition the work by file/module first; overlap → keep those items serial.
+- **Synthesis-not-passthrough still applies** (the pre-dispatch check above): each parallel sub-agent returns a condensed artifact, not raw bytes. If a "sub-agent" would only echo what you could produce yourself, run it inline instead — fan-out is for genuinely independent *work*, not for wrapping trivial edits.
+- **The parent runs the test suite ONCE, after all edits land** — never run tests inside parallel sub-agents (no parallel test runs).
+
+### Canonical case — POST code-trio quality gates
+The three POST code gates (`code-test-quality` / `code-architecture` / `code-quality`) are independent read-only reviews of the SAME diff with zero ordering dependency. Dispatch their reviewer sub-agents (`architecture-reviewer` + `code-quality-reviewer`) in ONE batch (≤3), run the inline `code-test-quality` review alongside them, collect ALL findings, fix ONCE (independent fixes fanned out, ≤3), then sign off each gate. Do NOT run the three gate reviews one at a time — that was the observed failure this rule exists to prevent.
