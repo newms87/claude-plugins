@@ -54,6 +54,8 @@ If step requires write → STOP. Tell user what + why, get explicit authorizatio
 
 **Read-only probes need NO authorization — gathering them IS the job, including prod/remote.** A read-only probe against a deployed/production target (SSH `cat`/`ps`/`psql SELECT`, `docker ps`/`logs`, `curl` status, SSM `get-parameter`, `make deploy-status`/`deploy-logs`) is ordinary evidence gathering, not a gated escalation. NEVER write "I can't see prod from here / that needs prod access" or offer a read-only prod probe as an option to approve — go run it. Only WRITES to prod (restart, deploy, secrets-push, destroy, DB mutation) cross the authorization line. Deferring a read-only prod read as if it needed permission is the failure this gate blocks.
 
+**Elapsed / "N min ago" / "is it stuck" claims — read the CLOCK first, NEVER infer "now".** Any wall-clock duration (age of a dispatch, time-since-X, idle gap) requires reading the actual current time via `date` THIS turn, then subtracting the target timestamp. NEVER anchor "now" to a timestamp that appeared earlier in context (a prior tool result, a completed-at stamp, a previous message) — those are stale by an unknown amount and produce wrong elapsed math. About to write "~N minutes/hours ago" or "just started" / "sitting for"? STOP → run `date` first.
+
 ### 5. Verify against hypothesis
 
 | Evidence | Action |
