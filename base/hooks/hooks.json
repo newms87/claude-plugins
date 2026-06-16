@@ -15,6 +15,10 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/tool-discipline-mandate.sh SessionStart"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/current-time-mandate.sh SessionStart"
           }
         ]
       }
