@@ -140,6 +140,8 @@ Append each result as a new comment via `issue_comment({id, action: 'add', text:
 
 If critical issues found, fix, re-run failed gate, add a `## Review Fixes` comment summarizing fixes.
 
+**Parallelize independent reviews + fixes — hard cap 3 (DX-1363).** Independent reviews of the same diff have zero ordering dependency: dispatch the reviewer sub-agents in ONE message (multiple `Agent`/`Task` calls in a single response), not one at a time. The same applies to a card's required POST code-trio gates (`code-test-quality` / `code-architecture` / `code-quality`) — see the workspace CLAUDE.md "Code trio" section: batch the reviewer sub-agents (≤3), collect all findings, fix ONCE. When the fixes themselves split into independent, non-overlapping changes, fan THOSE out to parallel sub-agents too (≤3). Cap is 3 concurrent; >3 → batch. Guardrails: non-overlapping files only; the parent runs the test suite ONCE after edits (never parallel test runs); `base:sub-agent-delegation` synthesis discipline still applies.
+
 ## Step 6 — Check Off Acceptance Criteria
 
 For each `ac[i]`, verify it holds (test evidence, command output, direct code read). Flip the item to `checked: true` via `issue_edit({id, ac})` only with direct evidence.
