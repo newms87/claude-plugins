@@ -48,6 +48,9 @@ A card may carry stale claims from prior dead dispatches. **NEVER skip work beca
 
 4. **If `status_derived` is `Done` or `Cancelled`** AND every AC verifies AND every commit verifies AND `retro.good` + `retro.bad` non-empty: prior session finished. Call `danxbot_complete({status: "complete", summary: "Verified prior dispatch's terminal state on resume — no work to redo."})` and stop. **Do not redo work.**
 5. **Otherwise:** card is yours — resume from first failing AC.
+6. **Delegation-marker resume (DX-1368):** if the card carries a `## Delegated → <TARGET-CARD-ID>` marker comment AND its `depends_on` edge has cleared (the partner went terminal — the only reason this card re-dispatched), follow the marker instead of redoing the delegated work:
+   - Partner **Done** → verify the delegated work actually landed (read the partner card / its commits), do any residual in-repo AC the marker names, then complete THIS card.
+   - Partner **Cancelled** → do NOT blind-complete; re-evaluate (do the work here if it now fits, or re-block / re-delegate). `depends_on` clears on cancel too, so a re-dispatch is NOT proof of success.
 
 ## Step 1.5 — You Fix What You Find
 
@@ -258,6 +261,27 @@ Skip to Step 11.
 
 Blocked is **LAST RESORT** AND **EXCLUSIVELY for cards needing human acting**. If card is waiting on other in-flight work — that's **Waiting On** (Step 10b), not Blocked.
 
+**Cross-repo work → DELEGATE, do not block (DX-1368).** Before treating "the work belongs to another repo I can't write" as a blocker, FIRST resolve whether that repo is a danxbot board: attempt `issue_list`/`issue_create` with `board=<repo>:<slug>` (unknown board → 404).
+
+- **Board EXISTS → DELEGATE, never self-block.** `issue_create({board: '<repo>:<slug>', type, title, description, ac})` moving the real spec + AC to the target board → `issue_dependency({id: <this>, action: 'add', kind: 'depends_on', target_id: <new>, reason: 'delegated cross-repo work'})` → drop the structured delegation marker comment on THIS card (template below) → keep any residual in-repo AC (if none, the card just tracks the delegate). The `depends_on` gate holds this card non-dispatchable until the partner is terminal, then the picker auto-re-dispatches it and Step 1.1 reads the marker on resume. Do NOT stamp `blocked` — cross-board `depends_on` resolves the partner globally by id and auto-clears on the partner's Done/Cancel (no new infra; confirmed by `src/issues/__tests__/cascade.test.ts`).
+- **Board does NOT exist** (operator-only repo, e.g. `~/web/claude-plugins`) → fall through to the block path below.
+
+Structured delegation marker comment (`issue_comment({id, action: 'add', text})`) — keep the `## Delegated → <id>` header verbatim so Step 1.1 can key on it:
+
+```
+## Delegated → <TARGET-CARD-ID>
+
+This card's work belongs to repo `<repo>` (board `<repo>:<slug>`). The spec + AC
+moved to <TARGET-CARD-ID> on that board. A `depends_on` edge holds THIS card
+non-dispatchable until <TARGET-CARD-ID> is terminal.
+
+**On clear (this card re-dispatches when <TARGET-CARD-ID> goes terminal):**
+- <TARGET-CARD-ID> Done → verify the delegated work landed, do any residual
+  in-repo AC, then complete THIS card.
+- <TARGET-CARD-ID> Cancelled → do NOT blind-complete; re-evaluate (do the work
+  here if it now fits, or re-block / re-delegate).
+```
+
 Use Step 10 ONLY when blocker is genuinely one of:
 
 - **Credentials / secrets** human must rotate / push to SSM.
@@ -265,7 +289,7 @@ Use Step 10 ONLY when blocker is genuinely one of:
   - **NOT Blocker:** pre-existing flaky/failing test in unrelated file. File Action Item via `issue_create`, push id to `retro.action_item_ids[]`, check AC off (your card's tests pass), proceed.
   - **NOT Blocker:** AC says "manual UI smoke" / "operator clicks X." Agent has dashboard token + playwright MCP + dashboard component-test runner. Verify programmatically (component test → playwright → rewrite AC), check off, proceed.
   - **NOT Blocker:** AC verifies behavior firing AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, tracker mirror, self-derived state). Rewrite AC to unit test for derivation function, run it, check off.
-- **External repo / file worker has no write access** AND no other agent fixes it.
+- **External repo / file worker has no write access** AND no other agent fixes it — but ONLY after the cross-repo DELEGATE pre-check above fails (i.e. the target repo has NO danxbot board). If it has a board, delegate, don't block.
 - **Genuine human design decision** (ambiguous spec, missing requirement, conflicting direction). Specifically: answer changes goal / implementation plan in way ONLY human decides.
 - **Architectural ambiguity** — multiple valid implementations, different tradeoffs, human call.
 - **Card cannot be completed as described** without important change to goal / implementation plan.
