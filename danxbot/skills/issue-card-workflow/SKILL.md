@@ -19,11 +19,15 @@ Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's e
 
 Skipping Step A leaves the card stuck mid-state — `dispatch_id` cleared (worker side), but no lifecycle stamp. Verify via `issue_get` after Step A: `completed_at` / `cancelled_at` / `blocked_at` non-null + `status_derived` matches expected, BEFORE Step B.
 
-## DECIDE FIRST: inline-now vs ready-for-worker (do NOT default to inline)
+## DEFAULT IS ALWAYS: create card + `ready` for the worker. Inline is NOT a decision you make.
 
-Before claiming a card for yourself, decide WHICH path the operator wants — this is a fork, not a foregone conclusion. On a board with a running poller/worker, the autonomous path is danxbot's whole point: `ready` the card → the worker brings the worktree to `origin/main`, runs the PRE/POST quality-gate reviewer dispatches natively, finalizes the merge. Doing it INLINE (manual pickup) bypasses all of that and forces you to hand-stamp required gates via the operator override route — clunky, and usually not what an operator who said "fix this" on a worker-enabled board expected.
+Inline (working a card yourself in this session) is NEVER a judgment call. The operator MUST **explicitly** state to do the card inline ("do it inline" / "do it yourself" / "this session" / "don't dispatch" / "handle it now"). Absent that explicit instruction, the assumption is ALWAYS: **create the card and let the worker handle it** — `ready` it (or leave it in `ToDo`) so the poller dispatches a worker, which brings the worktree to `origin/main`, runs the PRE/POST quality-gate reviewer dispatches natively, and finalizes the merge.
 
-**Mechanical gate — operator gives a fix/build/change ask (not "do it yourself right now"):** do NOT assume inline. Pick inline ONLY when one holds: (a) operator said do-it-now / this-session / interactively; (b) no worker runs for this board; (c) it's exploratory/tiny and dispatch overhead dwarfs the work. Otherwise the default is **file the card + `ready` it for the worker** (or surface the one-line choice "inline now vs ready for the worker?" when genuinely ambiguous). "Lower latency to just do it" / "the self-pickup gate told me how" is the rationalization this gate blocks — that gate is for AFTER you've decided inline, never the decision itself.
+**Mechanical gate — operator gives a fix/build/change ask:**
+1. Did the operator EXPLICITLY say to do it inline / yourself / this-session / not-dispatch? → if NO: create the card, `ready` it, STOP. The worker owns it. Do not manual-pickup, do not work it.
+2. Only an explicit inline instruction unlocks the self-pickup path below.
+
+There is NO "exploratory / tiny / lower-latency / I'm already here / the work is small" exception — every one of those is the rationalization this gate blocks. "Help me fix this" / "can you fix X" / "this is broken" are NOT inline instructions — they are card-creation requests fulfilled by the worker. When in doubt, it is NOT inline.
 
 ## In-session work = self-pickup IMMEDIATELY (a ToDo card is an open dispatch request)
 
