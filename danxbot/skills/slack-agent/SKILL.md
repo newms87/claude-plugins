@@ -102,17 +102,59 @@ thread (same channel, same `thread_ts`) based on the dispatch row. You
 do not pick a thread. You do not pick a channel. If you try to address
 a different thread, you can't — the tool has no parameter for it.
 
-## Data questions — query the repo's DB directly
+## Data questions — query prod read-only by DEFAULT
+
+For a data/lookup question ("what is / how many / show me"), fetch the
+rows yourself before you reply. **Which database** you query is decided
+by one rule:
+
+| DB | When | Mode |
+|---|---|---|
+| `prod_db_*` MCP tools | Production data questions — **the default** | read-only |
+| local dev DB (repo-native Bash) | You need to **mutate** data to answer — a sandbox experiment, when production data is NOT needed | read-write |
+
+**Production is the default.** Almost every Slack data question ("what
+is the status of order X", "how many active suppliers") is answered
+against **production** data, read-only, via the `prod_db_*` MCP tools:
+
+- `prod_db_list_tables` — list the tables.
+- `prod_db_describe_table` — inspect a table's columns.
+- `prod_db_query` — run ONE read-only `SELECT` (SELECT-only,
+  single-statement, against a GRANT-SELECT-only replica).
+
+These tools return rows **directly in the tool response** — there is no
+file redirect for MCP output — so keep every result set narrow **at the
+query**: ask for exactly the rows/columns you need (`LIMIT`, `COUNT(*)`,
+specific columns), never a wide `SELECT *` that burns your context.
+
+**`prod_db_*` tools absent → local-only repo.** If your tool list has no
+`prod_db_*` tools, this repo has no production DB wired in — local is all
+you have, so use the local path below.
+
+**DB unreachable → respond, don't fix.** If the database you need is not
+reachable (`prod_db_*` errors out, or the local container is down), reply
+**promptly** via `danxbot_slack_reply` that the DB is currently
+unavailable, and stop. You do **NOT** diagnose, restart containers, or
+repair the system — that is not your job inside a Slack conversation.
+DB-up is the assumed normal; a momentary outage is the operator's
+concern, not yours to chase down.
+
+### Local dev DB — the mutate-sandbox case (rare)
+
+Reach for the local dev DB ONLY when answering the question requires
+**mutating** data — a sandbox experiment where you set up local state,
+run code/commands, observe the effect, and production data is not
+needed (plus the tool-presence fallback above: a local-only repo with no
+`prod_db_*` tools). Your cwd is the connected repo's **full checkout**,
+with its own containers and DB, so you query it the way a developer on
+that repo would, via Bash.
 
 > **CRITICAL — token conservation (HARD RULE): query/command output ALWAYS goes to a `/tmp/` file, NEVER inline into the tool response.** Every DB query — and any command that could emit more than a few lines — MUST redirect output to a file you name: `… > /tmp/q.json 2>&1`, or the client's own sink (`mysql -e "…" > /tmp/out.tsv`, `psql -o /tmp/r.txt`, `\o /tmp/r.txt`, `COPY … TO '/tmp/x.csv'`). Then read that file ONLY if you actually need a value, and read the **narrowest slice** (`grep`/`head`/a specific key) — never the whole dump. Letting raw rows land in the Bash tool result silently burns thousands of tokens of your context for zero benefit; it is the single most expensive mistake in a dispatch. There is **no "just a quick SELECT" exception** — pipe it to a file. If you only need a count or one field, ask the query for exactly that (`COUNT(*)`, one column) instead of selecting rows you will discard. Same discipline for reading files you wrote: slice, don't slurp.
 
-For a data/lookup question, fetch the rows yourself before you reply.
-Your cwd is the connected repo's **full checkout**, with its own
-containers and DB. There is no danxbot DB wrapper tool — you query the
-database the way a developer on that repo would, via Bash. Three general
-shapes (the **exact** compose file, service/container names, and DB
-engine are repo-specific — the connected repo's `tools.md`, loaded into
-your context, names them; use those, not the placeholders below):
+There is no danxbot DB wrapper tool for this path — three general shapes
+(the **exact** compose file, service/container names, and DB engine are
+repo-specific — the connected repo's `tools.md`, loaded into your
+context, names them; use those, not the placeholders below):
 
 - `docker compose -f <repo-compose> exec -T <db-service> <client> … -e "<SQL>"`
   — exec the repo's own DB container (works host AND docker worker).
@@ -172,5 +214,5 @@ There is no direct `chat.postMessage`. There is no Bash-to-curl escape
 hatch. There is no "reply in stdout and danxbot will forward it." The
 `danxbot_slack_*` MCP tools are the only surface the Slack user ever
 sees — an agent that prints its answer to stdout and exits went silent
-on the user. (Querying the DB, by contrast, IS plain Bash — that part
-has no wrapper.)
+on the user. (Querying the DB is via the `prod_db_*` tools or, for the
+local sandbox, plain Bash — those parts work outside the Slack tools.)
