@@ -19,6 +19,12 @@ Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's e
 
 Skipping Step A leaves the card stuck mid-state — `dispatch_id` cleared (worker side), but no lifecycle stamp. Verify via `issue_get` after Step A: `completed_at` / `cancelled_at` / `blocked_at` non-null + `status_derived` matches expected, BEFORE Step B.
 
+## DECIDE FIRST: inline-now vs ready-for-worker (do NOT default to inline)
+
+Before claiming a card for yourself, decide WHICH path the operator wants — this is a fork, not a foregone conclusion. On a board with a running poller/worker, the autonomous path is danxbot's whole point: `ready` the card → the worker brings the worktree to `origin/main`, runs the PRE/POST quality-gate reviewer dispatches natively, finalizes the merge. Doing it INLINE (manual pickup) bypasses all of that and forces you to hand-stamp required gates via the operator override route — clunky, and usually not what an operator who said "fix this" on a worker-enabled board expected.
+
+**Mechanical gate — operator gives a fix/build/change ask (not "do it yourself right now"):** do NOT assume inline. Pick inline ONLY when one holds: (a) operator said do-it-now / this-session / interactively; (b) no worker runs for this board; (c) it's exploratory/tiny and dispatch overhead dwarfs the work. Otherwise the default is **file the card + `ready` it for the worker** (or surface the one-line choice "inline now vs ready for the worker?" when genuinely ambiguous). "Lower latency to just do it" / "the self-pickup gate told me how" is the rationalization this gate blocks — that gate is for AFTER you've decided inline, never the decision itself.
+
 ## In-session work = self-pickup IMMEDIATELY (a ToDo card is an open dispatch request)
 
 A card in `ToDo` (`dispatchable_derived: true`) is NOT a passive note — it is an **open dispatch request the poller will fulfill with a worker on its next tick.** If you create/ready a card for work YOU are doing in THIS session (not delegating), and you leave it in `ToDo` while you work, the poller dispatches a SECOND agent against the same card → two checkouts, duplicate commits, push conflict.
