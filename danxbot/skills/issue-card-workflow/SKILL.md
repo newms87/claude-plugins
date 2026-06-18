@@ -1,6 +1,6 @@
 ---
 name: issue-card-workflow
-description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issue_* tools, comment/retro/blocked/waiting_on contracts, container-atomic rule (Epic + Feature).'
+description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issue_* tools, comment/retro/blocked/waiting_on contracts, container-atomic rule (Epic + Feature). LOAD BEFORE proposing card TYPE or how to slice work into cards (epic/feature/story) — recommending a card structure in chat is the gated action, not just the issue_create call; the slice/taxonomy gate that decides epic-vs-story lives ONLY in this body, so naming a type before loading = deciding it wrong.'
 ---
 
 # Issue Card Workflow
