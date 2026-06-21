@@ -144,7 +144,17 @@ Flag a gate when its trigger fits the card:
 | `tdd` | PRE | has behavior that must be pinned test-first / AC that should be checkable tests. |
 | `code` | POST | finished diff warrants a code review before completion. |
 
-**HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle in the issue drawer. The operator can also toggle gates on/off later. A gate runs only when the BOARD has it enabled (master switch) AND the card is flagged — flagging is the per-card half of that AND.
+**HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle later (`mcp__danx_dashboard__issue_quality_gate` / the issue drawer).
+
+**Board requirement is TRI-STATE per gate, NOT a binary on/off.** Each gate's `board_quality_gate_settings.default_state` is one of:
+
+| Board `default_state` | Does flagging the card make the gate run? |
+|---|---|
+| `required` | Runs ALWAYS — per-card flag irrelevant. |
+| `optional` | **ENABLED, per-card opt-in — runs when the card flags it.** This is NOT "off". |
+| `disabled` | Never runs — per-card flag is inert. |
+
+So a per-card flag launches the gate when the board state is `required` OR `optional`; it is inert ONLY when the board state is `disabled`. **Do not read `optional` as disabled** — that misread concludes a flagged gate "won't fire" when it will. The single source of truth is `isGateEffectivelyRequired` (`src/issues/quality-gates/read.ts`): `disabled`→never, `required`→always, `optional`→the per-card `required` flag.
 
 ## Known dependency / conflict edges at creation (opportunistic, never a search)
 
