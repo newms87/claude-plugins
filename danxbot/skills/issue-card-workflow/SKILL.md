@@ -29,10 +29,6 @@ Inline (working a card yourself in this session) is NEVER a judgment call. The o
 
 There is NO "exploratory / tiny / lower-latency / I'm already here / the work is small" exception — every one of those is the rationalization this gate blocks. "Help me fix this" / "can you fix X" / "this is broken" are NOT inline instructions — they are card-creation requests fulfilled by the worker. When in doubt, it is NOT inline.
 
-## A durable work-record's ONLY vessel is a card (or `/tmp`) — NEVER a tracked repo file
-
-Spec / design / plan / handoff / findings / requirements doc → the card body (`description` / a comment), OR a throwaway `/tmp/*.md` if it is purely transient scratch. Writing it as a `.md` inside the project repo's tracked tree (`docs/`, repo root, any committed path) is FORBIDDEN — that litters version control with a planning artifact and bypasses the card system. A handoff for ANOTHER agent (e.g. "build library X") is a card with the spec in its body, not a file you commit. Mechanical pre-write check before `Write`-ing any `.md`/spec: "Is this a durable work-record (spec/design/plan/handoff/findings)?" YES → card body or `/tmp`, NEVER a tracked repo path. "It's the deliverable" / "docs/ is where specs live" / "the agent needs a file to read" are the rationalizations this blocks — the agent reads the card.
-
 ## In-session work = self-pickup IMMEDIATELY (a ToDo card is an open dispatch request)
 
 A card in `ToDo` (`dispatchable_derived: true`) is NOT a passive note — it is an **open dispatch request the poller will fulfill with a worker on its next tick.** If you create/ready a card for work YOU are doing in THIS session (not delegating), and you leave it in `ToDo` while you work, the poller dispatches a SECOND agent against the same card → two checkouts, duplicate commits, push conflict.
