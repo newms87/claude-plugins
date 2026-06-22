@@ -95,8 +95,6 @@ Replace: "in order to" → "to" | "make sure that" → "ensure"/drop | "the foll
 
 Every artifact stands alone to a reader with ZERO session context. Lead with the plain-language conclusion (what + impact + next step); a reader who lived the session must NOT have to re-derive it. **Default depth = high-level.** Deep mechanism (memoization, scheduling, mock/internal wiring, evidence chains) is OMITTED unless the user asked to "explain further" / "why" — at most a one-line offer to expand, never front-loaded. Mechanical gate: "would someone who just opened the chat understand this without scrolling up?" No → cut detail, restate the conclusion.
 
-**Carve-out — the reader's active DECISION OBJECT is never "deep mechanism."** A breakdown the operator is using to approve/scope the work — a deletion set, a file/surface map, a per-item scope table they engaged with this turn — must be SURFACED in the channel they read (chat), not buried in an artifact they cannot see inline (a card body, a `/tmp/` doc). "I put the table in the card" is NOT conveying it: if the operator decides in chat, the decision object lives in chat. Compress internals, never the thing being approved.
-
 ## Self-trigger gate
 
 Before sending ANY response with: "Summary", "What shipped", "Report", "Findings", wall of paths, 3+ paragraphs on one change → confirm loaded + apply scaffold.
