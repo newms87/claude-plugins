@@ -144,6 +144,8 @@ Flag a gate when its trigger fits the card:
 | `tdd` | PRE | has behavior that must be pinned test-first / AC that should be checkable tests. |
 | `code` | POST | finished diff warrants a code review before completion. |
 
+**Pre-`issue_create` GATE-DECISION check (MANDATORY, every card — no silent default):** Before writing the `issue_create` payload, state a one-word verdict for EACH of the four gates — `dependency / architecture / tdd / code` → `flag` or `skip` against its trigger row above. `required_gates[]` is then the list of every `flag`. Omitting `required_gates` is a DECISION you must have made on purpose (all four `skip`), never an oversight — "I didn't think about gates" is the exact failure this check blocks. Default-on heuristics: a Feature/Epic, a new model/table, or cross-layer work → `architecture: flag`; any card with behavioral AC → `tdd: flag`. Containers inherit nothing — flag the Feature/Epic itself, not just its children.
+
 **HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle later (`mcp__danx_dashboard__issue_quality_gate` / the issue drawer).
 
 **Board requirement is TRI-STATE per gate, NOT a binary on/off.** Each gate's `board_quality_gate_settings.default_state` is one of:
