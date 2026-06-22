@@ -5,6 +5,10 @@ description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issu
 
 # Issue Card Workflow
 
+## VOID-GATE — a decomposition drafted BEFORE this skill loaded is VOID (mechanical, first action)
+
+If you arrive here having ALREADY decided the card TYPE (epic/feature/story), the SLICE breakdown, or the EFFORT level — in chat, in a plan, or in your head — that draft is **VOID. Discard it and re-derive from the gates below.** This skill DEFINES what a slice / type / size IS; anything you picked pre-load used your own heuristic, not the gate, so it is wrong-by-construction even if it "looks right." Validating a pre-load draft against the gate ("the skill just confirms what I designed") is the exact failure — the gate is an INPUT to the decision, never a rubber-stamp on it. Re-run the slice-count, vertical-cut, and effort gates from scratch as if no draft existed.
+
 Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
 
 ## DX-835 — two-step termination is MANDATORY
