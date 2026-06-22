@@ -9,6 +9,12 @@ description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issu
 
 If you arrive here having ALREADY decided the card TYPE (epic/feature/story), the SLICE breakdown, or the EFFORT level — in chat, in a plan, or in your head — that draft is **VOID. Discard it and re-derive from the gates below.** This skill DEFINES what a slice / type / size IS; anything you picked pre-load used your own heuristic, not the gate, so it is wrong-by-construction even if it "looks right." Validating a pre-load draft against the gate ("the skill just confirms what I designed") is the exact failure — the gate is an INPUT to the decision, never a rubber-stamp on it. Re-run the slice-count, vertical-cut, and effort gates from scratch as if no draft existed.
 
+**PRE-`issue_create` TRANSCRIPT CHECKLIST — these MUST appear visibly in your message before ANY `issue_create` call (N cards = N of each, no exceptions):**
+1. **Slice Plan** (Feature/Epic) — the numbered Story breakdown.
+2. **GATE-DECISION TABLE per card** — for EVERY card (containers included), a table of the quality gates with `flag / skip` + a one-line reason each (full contract: "Quality-Gate Flagging" section below). Letting board defaults ride WITHOUT printing this table is a silent-default failure — the most-missed item on this list. If you reach `issue_create` and have not printed a gate table for that card, STOP and print it first.
+
+Missing any item = do not call `issue_create`. "I re-derived slices/effort" is NOT sufficient — the gate table is a separate, equally-mandatory emission.
+
 Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
 
 ## DX-835 — two-step termination is MANDATORY
