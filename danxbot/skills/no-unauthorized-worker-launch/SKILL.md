@@ -40,8 +40,8 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 
 | Command | Why forbidden |
 |---|---|
-| `make launch-worker REPO=<name>` | Starts a docker worker → poller dispatches ToDo cards |
-| `make launch-worker-host REPO=<name>` | Starts a host worker → poller dispatches ToDo cards in interactive terminals |
+| `make launch-worker BOARD=<board-name>` | Starts a docker worker → poller dispatches ToDo cards |
+| `make launch-worker-host BOARD=<board-name>` | Starts a host worker → poller dispatches ToDo cards in interactive terminals |
 | `make launch-all-workers` | Starts every configured worker. Worse than above. |
 | `make launch-infra` | Starts shared MySQL + dashboard. Dashboard alone is mostly safe; if the user wants ONLY the dashboard, they will say so. |
 | `make launch-dashboard-host` | Same — operator-driven only. |
@@ -68,7 +68,7 @@ The forbidden list is specifically **launching workers + deploys**, NOT verifica
 
 Read-only diagnostics also remain unrestricted:
 
-- `make logs REPO=<name>` (tail of an already-running worker)
+- `make logs BOARD=<board-name>` (tail of an already-running worker)
 - `make deploy-status TARGET=<t>` / `make deploy-logs TARGET=<t>`
 - `docker ps`, `docker logs <container>`, `docker inspect <container>`
 - Reading files under `<repo>/.danxbot/` (issues, settings, env)
@@ -80,7 +80,7 @@ Anything that would *create* a polling process is the prohibited class.
 
 ## Launch mechanism — canonical path only
 
-When authorization to launch IS granted, the launch shape is ALSO constrained — the only allowed mechanism for a foreground-style worker target (`make launch-worker-host`, `make launch-worker`, `make launch-dashboard-host`, `npx tsx src/index.ts`) is a single Bash tool call with `run_in_background: true`. That gives operator the documented kill primitive (`make stop-worker REPO=<name>`), the documented log path (`make logs REPO=<name>`), and a single tracked PID the agent can re-probe via `pgrep`.
+When authorization to launch IS granted, the launch shape is ALSO constrained — the only allowed mechanism for a foreground-style worker target (`make launch-worker-host`, `make launch-worker`, `make launch-dashboard-host`, `npx tsx src/index.ts`) is a single Bash tool call with `run_in_background: true`. That gives operator the documented kill primitive (`make stop-worker BOARD=<board-name>`), the documented log path (`make logs BOARD=<board-name>`), and a single tracked PID the agent can re-probe via `pgrep`.
 
 **FORBIDDEN exotic wrappers, even with launch authorization:** `systemd-run --user …`, `nohup … &`, `setsid …`, `disown`, `screen -dm …`, `tmux new-session -d …`, any wrapper that detaches the worker from the documented lifecycle. These reduce operator visibility (logs land in `journalctl --user` / `nohup.out` / a tmux pane the operator does not know exists), break `make stop-worker`, and split the kill primitive. If the bg-task notification appears to terminate the worker early, the response is INVESTIGATE (`investigate` skill → check `journalctl`, `pgrep`, the worker's own shutdown log for signal source) — NOT bypass the lifecycle. The bash bg task is intended to host long-lived workers; exotic-wrap is a workaround, not a fix.
 
@@ -93,7 +93,7 @@ The CURRENT user message in THIS session must directly request the specific work
 - "launch the danxbot worker for `<repo>`"
 - "restart the `<repo>` worker"
 - "deploy danxbot to `<TARGET>`"
-- "run `make launch-worker REPO=<repo>`"
+- "run `make launch-worker BOARD=<board-name>`"
 
 Examples that do NOT authorize a worker launch:
 
