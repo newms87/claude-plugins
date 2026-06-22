@@ -144,7 +144,15 @@ Flag a gate when its trigger fits the card:
 | `tdd` | PRE | has behavior that must be pinned test-first / AC that should be checkable tests. |
 | `code` | POST | finished diff warrants a code review before completion. |
 
-**Pre-`issue_create` GATE-DECISION check (MANDATORY, every card — no silent default):** Before writing the `issue_create` payload, state a one-word verdict for EACH of the four gates — `dependency / architecture / tdd / code` → `flag` or `skip` against its trigger row above. `required_gates[]` is then the list of every `flag`. Omitting `required_gates` is a DECISION you must have made on purpose (all four `skip`), never an oversight — "I didn't think about gates" is the exact failure this check blocks. Default-on heuristics: a Feature/Epic, a new model/table, or cross-layer work → `architecture: flag`; any card with behavioral AC → `tdd: flag`. Containers inherit nothing — flag the Feature/Epic itself, not just its children.
+**Pre-`issue_create` GATE-DECISION TABLE (MANDATORY, every card — emit visibly, no silent default):** Before EACH `issue_create`, print in your message a gate table FOR THAT CARD covering every gate whose board state is **Optional** (the gates that are the agent's call — `required` ones always run, `disabled` ones never do, so neither needs a row). One row per Optional gate: `Gate | flag / skip | reason`. The reason is one brief clause justifying the verdict against the trigger row above. `required_gates[]` on the payload = exactly the rows marked `flag`. No table printed in the turn → DO NOT create the card. Omitting `required_gates` is valid ONLY when the table shows every Optional gate as `skip` with a reason each — "I didn't think about gates" / an empty `required_gates` with no table is the exact failure this check blocks. Default-on heuristics: a Feature/Epic, a new model/table, or cross-layer work → `architecture: flag`; any card with behavioral AC → `tdd: flag`. Containers inherit nothing — table + flag the Feature/Epic itself, not just its children. Creating N cards in a turn = N tables.
+
+> **Gate table for `<card title>`:**
+> | Gate | Verdict | Reason |
+> |---|---|---|
+> | architecture | flag | new model + cross-layer recorders |
+> | tdd | flag | behavioral AC must be pinned test-first |
+> | dependency | skip | isolated surface, no overlap |
+> | code | flag | diff warrants review before completion |
 
 **HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle later (`mcp__danx_dashboard__issue_quality_gate` / the issue drawer).
 
