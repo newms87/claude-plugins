@@ -9,11 +9,10 @@ description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issu
 
 If you arrive here having ALREADY decided the card TYPE (epic/feature/story), the SLICE breakdown, or the EFFORT level — in chat, in a plan, or in your head — that draft is **VOID. Discard it and re-derive from the gates below.** This skill DEFINES what a slice / type / size IS; anything you picked pre-load used your own heuristic, not the gate, so it is wrong-by-construction even if it "looks right." Validating a pre-load draft against the gate ("the skill just confirms what I designed") is the exact failure — the gate is an INPUT to the decision, never a rubber-stamp on it. Re-run the slice-count, vertical-cut, and effort gates from scratch as if no draft existed.
 
-**PRE-`issue_create` TRANSCRIPT CHECKLIST — these MUST appear visibly in your message before ANY `issue_create` call (N cards = N of each, no exceptions):**
+**PRE-`issue_create` TRANSCRIPT CHECKLIST — this MUST appear visibly in your message before ANY Feature/Epic `issue_create` call (N containers = N plans):**
 1. **Slice Plan** (Feature/Epic) — the numbered Story breakdown.
-2. **GATE-DECISION TABLE per card** — for EVERY card (containers included), a table of the quality gates with `flag / skip` + a one-line reason each (full contract: "Quality-Gate Flagging" section below). Letting board defaults ride WITHOUT printing this table is a silent-default failure — the most-missed item on this list. If you reach `issue_create` and have not printed a gate table for that card, STOP and print it first.
 
-Missing any item = do not call `issue_create`. "I re-derived slices/effort" is NOT sufficient — the gate table is a separate, equally-mandatory emission.
+Missing it = do not call `issue_create`. (Quality-gate decisions are a server-enforced REQUIRED `issue_create` field — see "Quality-Gate Decisions" below — so they need no separate transcript emission.)
 
 Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
 
@@ -75,7 +74,7 @@ Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
 
 | Tool | Purpose |
 |---|---|
-| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, required_gates?})` | **BLOCKING PRECONDITION — do NOT emit this call until you have printed the GATE-DECISION TABLE for every card it creates (the epic AND each `phase_children` entry) THIS turn (see "Pre-`issue_create` GATE-DECISION TABLE"). A long create flow is the exact place this drops — running the slice plan + dep wiring while skipping the gate table is the #1-missed failure; the table is NOT optional, NOT inferable from board defaults, NOT deferrable to "I'll set gates after."** Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically. `required_gates?: string[]` flags which quality gates apply (see Quality-Gate Flagging gate). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
+| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
 | `mcp__danx_dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
 | `mcp__danx_dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
 | `mcp__danx_dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
@@ -141,42 +140,29 @@ Each line MUST name a concrete user-observable result; a line with no see/do ans
 
 See references/phases-epics.md for the split walkthrough, epic mechanics, phase creation, and completion contract.
 
-## Quality-Gate Flagging at Card Creation (decide, don't review)
+## Quality-Gate Decisions at Card Creation (decide, don't review)
 
-**Flagging a gate is a DECISION recorded on the card — NOT work you perform in the moment.** As the creating/fleshing agent you only decide WHICH gates apply and flag them, then move on. The gate RUNS LATER: the three PRE gates are dispatched by the worker into the dedicated gate-reviewer agent before work starts; the POST `code` gate runs inside the work agent's own session at the end. **NEVER attempt to perform any review at creation time** — no design audit, no test-plan pass, no diff read. Decide → flag → next.
+**Deciding a gate is a DECISION recorded on the card — NOT work you perform in the moment.** You decide WHETHER each board-optional gate runs on this card and why; the gate RUNS LATER (the PRE gates are dispatched into the gate-reviewer agent before work starts; the POST `code` gate runs inside the work agent's own session at the end). **NEVER review at creation time** — no design audit, no test-plan pass, no diff read. Decide → record → next.
 
-Flag a gate when its trigger fits the card:
+**`gate_decisions` is a REQUIRED `issue_create` field** whenever the board has any **optional** gate for the card's type — the server enforces it fail-closed (DX-1594), so you cannot create without answering. You do NOT pre-compute which gates are optional: just create, and if a decision is missing the create returns `400 {error, required_gate_decisions: [...]}` naming exactly which gates to answer. Retry with one `{gate, enabled, note}` per listed gate:
 
-| Gate | Phase | Flag when the card… |
+- `enabled` — whether the gate runs on this card.
+- `note` — non-empty rationale (persisted as the decision rationale, distinct from the reviewer verdict).
+
+`required` board gates auto-on and `disabled` board gates auto-off — they take NO decision (naming one → 400). A board with no optional gates needs no `gate_decisions` at all. Containers (Epic/Feature) are never gated — no decision owed.
+
+**Phase children carry their OWN `gate_decisions`** — each `phase_children[]` entry takes a `gate_decisions` array resolved against THAT child's type, enforced by the same fail-closed wall. The atomic epic create answers every child's gates in one call; no post-create gate-toggle step.
+
+Reasoning hint for choosing `enabled` per gate (registry names — the names the 400 returns):
+
+| Gate | Phase | Enable when the card… |
 |---|---|---|
-| `dependency` | PRE | likely overlaps other in-flight work — ordering risk, same-file/surface conflict potential. |
-| `architecture` | PRE | is non-trivial design: new module boundaries, touches core invariants, an architectural decision. |
-| `tdd` | PRE | has behavior that must be pinned test-first / AC that should be checkable tests. |
-| `code` | POST | finished diff warrants a code review before completion. |
+| `plan-dependency` | PRE | likely overlaps other in-flight work — ordering / same-surface conflict risk. |
+| `plan-architecture` | PRE | is non-trivial design: new module boundaries, touches core invariants. |
+| `plan-tdd` | PRE | has behavior to pin test-first / AC that should be checkable tests. |
+| `code-architecture` / `code-quality` / `code-test-quality` | POST | finished diff warrants architecture / quality / test review before completion. |
 
-**Pre-`issue_create` GATE-DECISION TABLE (MANDATORY, every card — emit visibly, no silent default):** Before EACH `issue_create`, print in your message a gate table FOR THAT CARD covering every gate whose board state is **Optional** (the gates that are the agent's call — `required` ones always run, `disabled` ones never do, so neither needs a row). One row per Optional gate: `Gate | flag / skip | reason`. The reason is one brief clause justifying the verdict against the trigger row above. `required_gates[]` on the payload = exactly the rows marked `flag`. No table printed in the turn → DO NOT create the card. Omitting `required_gates` is valid ONLY when the table shows every Optional gate as `skip` with a reason each — "I didn't think about gates" / an empty `required_gates` with no table is the exact failure this check blocks. Default-on heuristics: a Feature/Epic, a new model/table, or cross-layer work → `architecture: flag`; any card with behavioral AC → `tdd: flag`. Containers inherit nothing — table + flag the Feature/Epic itself, not just its children. Creating N cards in a turn = N tables.
-
-> **Gate table for `<card title>`:**
-> | Gate | Verdict | Reason |
-> |---|---|---|
-> | architecture | flag | new model + cross-layer recorders |
-> | tdd | flag | behavioral AC must be pinned test-first |
-> | dependency | skip | isolated surface, no overlap |
-> | code | flag | diff warrants review before completion |
-
-**HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle later (`mcp__danx_dashboard__issue_quality_gate` / the issue drawer).
-
-**`phase_children[]` CANNOT carry `required_gates` — atomic epic-create flags ZERO child gates (MANDATORY post-create step):** the `issue_create` Epic path accepts `required_gates` for the EPIC only; each `phase_children[]` entry has NO gate field, so every child is born at board-default state with code/architecture gates OFF. This is the silent trap — the create returns `quality_gates[]` rows that LOOK present but sit at the default `required` state. So immediately after an Epic-with-`phase_children` create, in the SAME turn, run `issue_quality_gate({id: <child>, gate, required: true})` for EACH code child's flagged gates from its table. The gate registry is SPLIT — flag BOTH halves: PRE `plan-architecture` + POST `code-architecture` / `code-quality` / `code-test-quality` for code-bearing children (`plan-dependency`/`plan-tdd` usually board-required already). "I set required_gates on the epic" does NOT cover the children — verify each child via `issue_get.quality_gates[].required`. Read-only/capture children (no code) skip the code-* gates.
-
-**Board requirement is TRI-STATE per gate, NOT a binary on/off.** Each gate's `board_quality_gate_settings.default_state` is one of:
-
-| Board `default_state` | Does flagging the card make the gate run? |
-|---|---|
-| `required` | Runs ALWAYS — per-card flag irrelevant. |
-| `optional` | **ENABLED, per-card opt-in — runs when the card flags it.** This is NOT "off". |
-| `disabled` | Never runs — per-card flag is inert. |
-
-So a per-card flag launches the gate when the board state is `required` OR `optional`; it is inert ONLY when the board state is `disabled`. **Do not read `optional` as disabled** — that misread concludes a flagged gate "won't fire" when it will. The single source of truth is `isGateEffectivelyRequired` (`src/issues/quality-gates/read.ts`): `disabled`→never, `required`→always, `optional`→the per-card `required` flag.
+Post-create, flip a per-card gate with `issue_quality_gate({id, gate, required})` (the PRE/plan- gates run before the work dispatch; the POST/code- gates block `issue_transition complete`).
 
 ## Known dependency / conflict edges at creation (opportunistic, never a search)
 
