@@ -166,6 +166,8 @@ Flag a gate when its trigger fits the card:
 
 **HOW to flag:** pass `required_gates: ["architecture", "tdd", ...]` (gate NAMES) on `mcp__danx_dashboard__issue_create`, OR flip the per-card gate toggle later (`mcp__danx_dashboard__issue_quality_gate` / the issue drawer).
 
+**`phase_children[]` CANNOT carry `required_gates` — atomic epic-create flags ZERO child gates (MANDATORY post-create step):** the `issue_create` Epic path accepts `required_gates` for the EPIC only; each `phase_children[]` entry has NO gate field, so every child is born at board-default state with code/architecture gates OFF. This is the silent trap — the create returns `quality_gates[]` rows that LOOK present but sit at the default `required` state. So immediately after an Epic-with-`phase_children` create, in the SAME turn, run `issue_quality_gate({id: <child>, gate, required: true})` for EACH code child's flagged gates from its table. The gate registry is SPLIT — flag BOTH halves: PRE `plan-architecture` + POST `code-architecture` / `code-quality` / `code-test-quality` for code-bearing children (`plan-dependency`/`plan-tdd` usually board-required already). "I set required_gates on the epic" does NOT cover the children — verify each child via `issue_get.quality_gates[].required`. Read-only/capture children (no code) skip the code-* gates.
+
 **Board requirement is TRI-STATE per gate, NOT a binary on/off.** Each gate's `board_quality_gate_settings.default_state` is one of:
 
 | Board `default_state` | Does flagging the card make the gate run? |
