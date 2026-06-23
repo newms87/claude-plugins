@@ -230,6 +230,31 @@ if [ -n "${DANX_AGENT_WORKTREE:-}" ]; then
 else
   info "Pushing..."
   git push
+
+  # Refresh THIS machine's local marketplace clone so the just-pushed
+  # version is loadable in the current session.
+  #
+  # CC HARNESS BUG (verified 2026-06-22): `/reload-plugins` + `autoUpdate:
+  # true` READ the local marketplace clone but NEVER `git pull` it. If the
+  # clone sits behind origin, `/reload-plugins` rebuilds the cache from the
+  # OLD commit and the version we just published never loads — the publish
+  # looks shipped, ships nowhere into the session. We pull the clone here so
+  # the operator's `/reload-plugins` immediately picks up the new version.
+  # (Consumer-only machines that did NOT run this script still must pull
+  # their own clone before `/reload-plugins` — same bug, different host.)
+  MARKETPLACE_NAME="$(node -p "require('./.claude-plugin/marketplace.json').name" 2>/dev/null || true)"
+  CLONE_DIR="${HOME}/.claude/plugins/marketplaces/${MARKETPLACE_NAME}"
+  if [ -n "$MARKETPLACE_NAME" ] && [ -d "${CLONE_DIR}/.git" ]; then
+    info "Refreshing local marketplace clone (${CLONE_DIR}) — works around the /reload-plugins no-pull bug..."
+    if git -C "$CLONE_DIR" pull --ff-only >/dev/null 2>&1; then
+      ok "Marketplace clone current — run /reload-plugins to load the new version."
+    else
+      err "WARN: could not ff-pull ${CLONE_DIR}. Pull it by hand, THEN /reload-plugins:"
+      err "  git -C ${CLONE_DIR} pull --ff-only && # then /reload-plugins"
+    fi
+  else
+    info "No local marketplace clone at ${CLONE_DIR} — skipping refresh (nothing cached on this machine)."
+  fi
 fi
 
 ok "Done:"
