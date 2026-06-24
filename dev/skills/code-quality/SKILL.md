@@ -63,6 +63,8 @@ Adding periodic/maintenance logic → grep canonical scheduler surfaces first. U
 
 Read source before using prop/component/code. Reading = seconds; fixing guess = minutes. Comments on class/method = authoritative. Read before editing + before asserting behavior.
 
+**Source-of-truth check before persisting state (mechanical).** Before choosing WHERE to write persistent/config state (DB row vs version-controlled file vs env), READ the seed + load path and confirm which store is authoritative AT RUNTIME: what does the dispatch/read path actually read, and does the boot seeder OVERWRITE/prune or only insert-missing? A config file that merely seeds a DB once (insert-missing, never overwrites) is a DEFAULT, not the source of truth — the DB is, and runtime/operator state lives there. NEVER infer authority from a file's header comment; trace the read path. Editing the seed file for a per-install / temporary / operator-divergent value is the wrong layer — it ships fleet-wide + needs a code revert.
+
 ## Domain Guides Mandatory
 
 Read domain guide before fixing tests/writing code. Don't infer from impl.
