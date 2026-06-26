@@ -38,6 +38,10 @@ Inline (working a card yourself in this session) is NEVER a judgment call. The o
 
 There is NO "exploratory / tiny / lower-latency / I'm already here / the work is small" exception — every one of those is the rationalization this gate blocks. "Help me fix this" / "can you fix X" / "this is broken" are NOT inline instructions — they are card-creation requests fulfilled by the worker. When in doubt, it is NOT inline.
 
+## DECIDE FIRST: ready-for-worker vs build-in-session (default = WORKER)
+
+Before ANY implementation, answer one question: **does the operator want this work BUILT now in this session, or FILED for the danxbot worker to build autonomously?** On a worker-backed board the **DEFAULT is FILE + `ready` → the poller dispatches a worker** — that is the entire point of danxbot. Do NOT implement the card yourself in the operator's session unless the operator EXPLICITLY said "build/implement/do it now (here/yourself)". "We need X" / "improve X" / a feature description = a request to FILE the cards and ready them, NOT to spend the operator's interactive session coding. When unsure which they want, ASK — never assume build-in-session. Self-pickup (below) applies ONLY once you have CONFIRMED in-session build is intended.
+
 ## In-session work = self-pickup IMMEDIATELY (a ToDo card is an open dispatch request)
 
 A card in `ToDo` (`dispatchable_derived: true`) is NOT a passive note — it is an **open dispatch request the poller will fulfill with a worker on its next tick.** If you create/ready a card for work YOU are doing in THIS session (not delegating), and you leave it in `ToDo` while you work, the poller dispatches a SECOND agent against the same card → two checkouts, duplicate commits, push conflict.
