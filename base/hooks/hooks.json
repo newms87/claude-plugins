@@ -1,6 +1,26 @@
 {
-  "description": "Plugin skill load mandate + convey + tool-discipline mandates (SessionStart) and destructive-DB-operation deny guard (PreToolUse Bash).",
+  "description": "Plugin skill load mandate + convey + tool-discipline mandates (SessionStart), destructive-DB-operation deny guard (PreToolUse Bash), and live time + elapsed-since-last-fire injection (UserPromptSubmit + PostToolUse).",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/inject-time.sh UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/inject-time.sh PostToolUse"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
