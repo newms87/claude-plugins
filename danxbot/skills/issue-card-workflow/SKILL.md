@@ -179,6 +179,31 @@ When you ALREADY KNOW of a related in-progress / ToDo card in this moment (a sib
 
 **MUST NOT go searching / scanning the board for related cards.** Record only what you already know — opportunistic, best-effort, not a discovery pass. This is DISTINCT from the thorough **dependency quality GATE** (flag `dependency` above), which does the systematic compare against the full live Ready + In-Progress set later. It is ALSO distinct from the mandatory epic phase-child DEPENDENCY-WIRING gate above (which wires required ordering among phases of an epic you just created) — that one stays mandatory; this known-edge recording is the looser, any-card, best-effort layer.
 
+## Issue-Ref Comment Protocol — code comments carry card context (DEFAULT MODE)
+
+`// CARD-ID: <reason>` comments are the **default operating mode** for every agent working in a repo — both WRITING them while implementing and READING them before changing code. They make the code self-documenting: a future agent (reviewer, next implementer, slack-worker) learns WHY a non-obvious decision was made by reading the comment + loading the card, instead of reconstructing intent.
+
+**WRITING — when you implement code tied to a card requirement.** Add a `// CARD-ID: <brief reason>` comment on any non-obvious decision the card's AC / description / design forced — a guard, an ordering constraint, an unusual default, a workaround, an invariant the card defines. Use the repo's comment syntax (`//`, `#`, `--`, `<!-- -->`). The reason is WHY this shape, not WHAT the code does.
+
+```ts
+// DX-1234: pickup before spawn — poller races a second worker onto a ToDo card otherwise
+issue_transition({ id, action: "pickup", manual: true });
+```
+
+Skip the ref on self-evident lines — the bar is "a future agent would otherwise mis-edit this." Multiple cards may stack: `// DX-100 / DX-205: ...`.
+
+**READING — before you change ANY code.** Grep the files you are about to touch for existing refs and load each one's card context FIRST. Anchor the grep to COMMENT markers — an unanchored `[A-Z]+-[0-9]+` also matches ids in test names, migration filenames, fixture strings, and error text (this repo is ref-dense outside comments), drowning the signal:
+
+```bash
+grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files-you-will-edit>   # comment-anchored ref lines
+```
+
+Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx_dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]` BEFORE editing the referenced code. The comment names the constraint; the card holds the full intent. Editing past a ref without loading its card risks silently breaking the original requirement — that is the exact failure this protocol prevents.
+
+**LIFECYCLE.** The ref travels with the code as long as the constraint applies. UPDATE it when the constraint changes form (new card supersedes). REMOVE it only when the constraint is genuinely lifted (the card was reverted / the requirement no longer holds) — never leave a ref pointing at a dead constraint, never strip a live one.
+
+**Harness-override note.** The base harness default says "don't reference the task/fix in comments." Issue-ref comments are the SANCTIONED exception on danxbot repos: they document a STANDING behavioral constraint (not a transient task name), travel with the code, and are maintained over the code's life. They are a feature of the codebase, not residue of one dispatch.
+
 ## General Rules
 
 - One card at a time; no orchestrator, no subagents
@@ -192,4 +217,5 @@ When you ALREADY KNOW of a related in-progress / ToDo card in this moment (a sib
 - NEVER write `status:` literals via `issue_edit` — use `issue_transition` for lifecycle changes.
 - NEVER manually append `## Retro` to comments — use `issue_retro` tool.
 - NEVER escape markdown — use formatting (`##`, fenced blocks, tables).
+- **Issue-ref comments are DEFAULT MODE** (see "Issue-Ref Comment Protocol" above): WRITE `// CARD-ID: <reason>` on non-obvious card-driven decisions; READ + `issue_get` every comment-anchored ref in code you touch BEFORE editing it.
 - **Durable work-records live on a card — never a substitute artifact.** (WHEN this fires lives in the SKILL LOAD MANDATE; this is the contract once loaded.) Any card/epic/plan/findings/design/handoff/spec meant to survive the session = CREATE/APPEND on a tracker card (MCP `issue_create`, or `POST /api/issues`). Substitutes that do NOT count and are forbidden: a standalone repo `.md`, and in-session `TaskCreate`/`TaskList` (ephemeral working memory — mirror steps there only AFTER the card exists). Forbidden target dirs — `docs/handoffs/`, `docs/specs/`, or any dir git history shows was deleted: recreating them is the failure. Create-tooling unavailable → STOP and ask; never default to a parallel `.md`. Standalone docs only when the user explicitly asks for a file/doc.

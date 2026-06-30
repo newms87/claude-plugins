@@ -25,6 +25,10 @@ structured answers → Slack-native bullets or a `code` block;
 list-shaped or many-column data → a file attachment (CSV or other type
 fitting the content).
 
+## Editing code in this dispatch → read issue-refs first (DEFAULT MODE)
+
+If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent: before changing a file, `grep -noE '[A-Z]+-[0-9]+'` it for existing card refs and `mcp__danx_dashboard__issue_get({id})` each unique id to load the constraint that put the code in its current shape; when YOU make a non-obvious card-driven decision, add a `// <CARD-ID>: <reason>` comment. Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".
+
 ## Required tool calls
 
 1. **`danxbot_slack_reply`** — call this exactly ONCE, after you have

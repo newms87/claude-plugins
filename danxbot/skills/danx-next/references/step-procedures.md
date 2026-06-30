@@ -77,6 +77,7 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 ## Step 2 — Plan
 
 1. Read full `description`, all `comments[]`, all `ac[]` titles, existing `children[]` (call `issue_get` on each child id to see what's built).
+1.5. **Load issue-ref context from the code you'll touch (DEFAULT MODE).** Before designing changes, grep the files in scope for COMMENT-anchored card refs and load each one: `grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>` (anchor to comment markers — bare `[A-Z]+-[0-9]+` also hits test names / migration filenames / fixtures in this ref-dense repo) → for every UNIQUE id, `mcp__danx_dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]`. Those comments name standing constraints prior cards imposed on this code — editing past them without loading the card silently breaks original intent. (Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".)
 2. **Bug cards (`type: Bug`):** investigate root cause via `Read` / `Grep` / `Bash` before designing fix.
 3. **Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly. Step 10 (Blocked) ONLY for true human-action blockers (credentials, secret rotation, ambiguous spec, architectural ambiguity). **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required. Anything else → apply Step 1.5, fix yourself.
 4. Design approach in head. No code yet.
@@ -123,6 +124,7 @@ A container (Epic OR Feature) stays `In Progress` until ALL child cards are Done
 1. Write failing test capturing expected behavior.
 2. Run tests — confirm new test fails.
 3. Implement — minimum code to pass.
+3.5. **Write issue-ref comments on non-obvious decisions (DEFAULT MODE).** For any guard / ordering rule / unusual default / workaround / invariant THIS card's AC or design forces, add `// <CARD-ID>: <brief reason>` (repo's comment syntax) on that line — the reason is WHY this shape, so the next agent who reads it loads the card instead of mis-editing. Skip self-evident lines. (Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".)
 4. Run tests — all green.
 5. Refactor — clean up; re-run.
 6. Type check — command from `.claude/rules/danx-repo-config.md` (skip if empty).
