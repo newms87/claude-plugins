@@ -10,7 +10,7 @@ You process ONE card: **read card (`issue_get`) → plan → implement → quali
 ## Top-Level Flow
 
 0. Verify on latest `origin/main` (references/step-procedures.md § Step 0).
-1. Read the card via `mcp__danx_dashboard__issue_get` for the id the dispatch prompt named.
+1. Get the card body: if the dispatch prompt inlines a `## Card snapshot` block (DX-1675 — the worker inlines the current card body on a fresh work dispatch), use that block as the card body and SKIP the initial `issue_get`; otherwise (resume — no snapshot block) read the card via `mcp__danx_dashboard__issue_get` for the id the dispatch prompt named. Re-read via `issue_get` only when you need fresher than the snapshot (the snapshot is current at dispatch time; the DB stays canonical).
 1.1. **Resume self-check** — terminal state + checked ACs + filled retro → call `danxbot_complete`, stop. Don't redo.
 1.5. **You Fix What You Find** rule — internalize before proceeding (references/step-procedures.md § Step 1.5).
 2. Plan (references/step-procedures.md § Step 2).
