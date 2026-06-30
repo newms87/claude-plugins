@@ -63,6 +63,8 @@ Adding periodic/maintenance logic → grep canonical scheduler surfaces first. U
 
 Read source before using prop/component/code. Reading = seconds; fixing guess = minutes. Comments on class/method = authoritative. Read before editing + before asserting behavior.
 
+**A comment referencing a tracked work item (`// CARD-ID: reason` / `# TICKET-N: reason`) is authoritative on WHY.** It records a standing constraint the original work imposed — a guard, ordering rule, unusual default, invariant. Before changing code that carries such a ref, CONSULT the referenced item (whatever tracker the repo uses) to recover the full intent; editing past it blind risks silently breaking the requirement that put it there. When you make a non-obvious decision driven by a tracked item, ADD the same ref so the next reader inherits the WHY. (Tool-specific load mechanics live in the repo's own issue-workflow skill.)
+
 **Source-of-truth check before persisting state (mechanical).** Before choosing WHERE to write persistent/config state (DB row vs version-controlled file vs env), READ the seed + load path and confirm which store is authoritative AT RUNTIME: what does the dispatch/read path actually read, and does the boot seeder OVERWRITE/prune or only insert-missing? A config file that merely seeds a DB once (insert-missing, never overwrites) is a DEFAULT, not the source of truth — the DB is, and runtime/operator state lives there. NEVER infer authority from a file's header comment; trace the read path. Editing the seed file for a per-install / temporary / operator-divergent value is the wrong layer — it ships fleet-wide + needs a code revert.
 
 ## Domain Guides Mandatory
