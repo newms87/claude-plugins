@@ -117,7 +117,7 @@ it("renders initials when no avatar", () => {
 
 ### b) Playwright drive (when component test can't reach it)
 
-Workspace `.mcp.json` ships `mcp__playwright__*` tools. Auth via the
+The clean-room `mcp.template.json` ships `mcp__playwright__*` tools (when the profile's catalog selects the playwright server). Auth via the
 operator's persistent token:
 
 ```bash

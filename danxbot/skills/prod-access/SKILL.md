@@ -30,7 +30,7 @@ The dashboard proxies auth-gated requests to the right worker on `danxbot-net`. 
 
 | Route | Method | Notes |
 |-------|--------|-------|
-| `/api/launch` | POST | Body `{repo, workspace, task, api_token, overlay?, ...}` (post-P5 shape — `workspace` is required, see commit `9baf431`) |
+| `/api/launch` | POST | Body `{board, profile, task, api_token, overlay?, ...}` (DX-1715 — `profile` is the dispatch-identity selector, required; `board` is the `<repo>:<slug>` scope key, required) |
 | `/api/status/:jobId?repo=<name>` | GET | Returns `{job_id, status, summary, started_at, completed_at, elapsed_seconds, input_tokens, ...}` |
 | `/api/cancel/:jobId?repo=<name>` | POST | |
 | `/api/stop/:jobId?repo=<name>` | POST | External stop (not the in-agent MCP callback) |

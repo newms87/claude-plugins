@@ -23,12 +23,12 @@ HIGH-VIOLATION:
 
 DOMAIN-MATCH (load via Skill tool):
 - comment-style: editing `description`/`comments[]`/`retro.*` on issue cards.
-- slack-agent: dispatched in `slack-worker` workspace.
+- slack-agent: dispatched under the `slack-worker` profile.
 - prod-access: ops against deployed targets; "production unreachable" claims.
-- template-app-build: Vue SPA template in danxbot template-app workspace; per-id `load_template_app`/`save_template_app`/`vite build`.
+- template-app-build: Vue SPA template on a danxbot template-app dispatch; per-id `load_template_app`/`save_template_app`/`vite build`.
 - dispatch-deep: dispatch/resume/staged-files/Playwright-proxy/usage-dedup/stall code.
 - settings-deep: `<repo>/.danxbot/settings.json` schema/reader/writer code.
-- docker-deep: root `.mcp.json` inject, `.env.<target>` overlay, workspace cwd.
+- docker-deep: root `.mcp.json` inject, `.env.<target>` overlay, clean-room cwd.
 - danx-next: `/danx-next` — top ToDo card, full autonomous workflow.
 - danx-start: `/danx-start` — all ToDo cards sequentially.
 - danx-ideate: `/danx-ideate` — generate feature cards.

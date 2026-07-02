@@ -6,7 +6,7 @@ argument-hint: optional — `/template-build` to force-load when the trigger heu
 
 # Build Vue template apps
 
-You were dispatched into this workspace because a consumer service asked
+You were dispatched under the template-app profile because a consumer service asked
 danxbot to build (or update) one or more Vue Single-File-Component apps.
 Each app is identified by a **template id**.
 
@@ -103,11 +103,10 @@ one through the loop below.
 ## Rollout
 
 Single source of truth: this plugin skill at
-`~/web/claude-plugins/danxbot/skills/template-app-build/SKILL.md`, kept in
-lockstep with the in-tree workspace copy at
-`src/inject/workspaces/template-app/skills/template-app-build/SKILL.md`.
+`~/web/claude-plugins/danxbot/skills/template-app-build/SKILL.md` (there is
+no in-tree copy — the plugin is the only home).
 Publish via `./scripts/publish.sh patch danxbot`; the marketplace consumer
-settings (every danxbot workspace's `.claude/settings.json` enables
+settings (every dispatched clean-room's `.claude/settings.json` enables
 `danxbot@newms-plugins` with `autoUpdate: true`) pull the new revision
 automatically. `/reload-plugins` in any active session picks it up
 immediately.

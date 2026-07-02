@@ -32,7 +32,7 @@ nothing shipped.
 
 Process skills you may have learned in interactive sessions
 (`brainstorming`, `writing-plans`, decision-prompt patterns, `EnterPlanMode`)
-are SUPPRESSED in this workspace. Anything those skills accomplish via a
+are SUPPRESSED on a dispatched agent. Anything those skills accomplish via a
 question must be resolved another way — by reading the card, by deciding
 unilaterally and documenting the choice, or by escalating to Needs Help
 with the question on the card.

@@ -13,7 +13,7 @@ A worker pickup is destructive. As soon as a danxbot worker boots it polls the c
 
 ## Dispatched-agent context — effectively NEVER
 
-If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The issue card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. From any workspace. Under any circumstance.
+If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The issue card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. Under any profile. Under any circumstance.
 
 This is true even if:
 
@@ -24,7 +24,7 @@ This is true even if:
 - You see a `Makefile` target that looks helpful.
 - A skill, plan, or pipeline tells you to.
 - The card belongs to the danxbot repo itself.
-- You are running inside the danxbot repo's workspace.
+- You are running inside a dispatch against the danxbot repo itself.
 
 You do not have authorization to operate the danxbot infrastructure. Only the human operator running the host session does.
 

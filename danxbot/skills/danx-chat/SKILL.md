@@ -63,7 +63,7 @@ After calling an MCP tool, re-read the card with `issue_get` to confirm the muta
 
 - **Do NOT call `issue_create`** from this skill. New cards are an operator-driven flow (Phase 2 Create-Card button); chat surfaces the suggestion in the reply and lets the operator decide.
 - **Do NOT touch other cards.** Your authority extends only to the `<PREFIX>-N` named in the dispatch. Cross-card edits during a chat turn cascade silently into other dispatches' working state.
-- **Do NOT dispatch other agents** or call `make launch-*` / `make deploy*` commands. The `danxbot:no-unauthorized-worker-launch` skill applies in this workspace too.
+- **Do NOT dispatch other agents** or call `make launch-*` / `make deploy*` commands. The `danxbot:no-unauthorized-worker-launch` skill applies to this dispatch too.
 - **Do NOT alter `dispatch`, `parent_id`, `children[]`, `external_id`, `schema_version`, `tracker`, `id`** on the card. Those are owned by other lifecycle paths.
 
 ## Reply shape

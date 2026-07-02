@@ -22,7 +22,7 @@ This step is read-only — if `git status` shows uncommitted changes BEFORE you 
 
 Query the DB via `mcp__danx_dashboard__issue_get({id})` to fetch the card. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
 
-**Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the workspace's auto-rendered policy carries operator-tunable assignment prompt + 7-rung level ladder. If the card's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set it via `mcp__danx_dashboard__issue_edit({id, effort_level: "<level>"})`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
+**Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the clean-room's catalog-materialized policy carries operator-tunable assignment prompt + 7-rung level ladder. If the card's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set it via `mcp__danx_dashboard__issue_edit({id, effort_level: "<level>"})`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
 
 **Resume detection:** if the card's `status_derived` is `In Progress` (i.e. `dispatch != null` AND no terminal trigger) AND prior session state exists (checked ACs, comments from earlier, `retro.commits[]`), treat as resumption → proceed to Step 1.1. Trust `status_derived`.
 
@@ -145,7 +145,7 @@ Append each result as a new comment via `issue_comment({id, action: 'add', text:
 
 If critical issues found, fix, re-run failed gate, add a `## Review Fixes` comment summarizing fixes.
 
-**Parallelize independent reviews + fixes — hard cap 3 (DX-1363).** Independent reviews of the same diff have zero ordering dependency: dispatch the reviewer sub-agents in ONE message (multiple `Agent`/`Task` calls in a single response), not one at a time. The same applies to a card's required POST code-trio gates (`code-test-quality` / `code-architecture` / `code-quality`) — see the workspace CLAUDE.md "Code trio" section: batch the reviewer sub-agents (≤3), collect all findings, fix ONCE. When the fixes themselves split into independent, non-overlapping changes, fan THOSE out to parallel sub-agents too (≤3). Cap is 3 concurrent; >3 → batch. Guardrails: non-overlapping files only; the parent runs the test suite ONCE after edits (never parallel test runs); `base:sub-agent-delegation` synthesis discipline still applies.
+**Parallelize independent reviews + fixes — hard cap 3 (DX-1363).** Independent reviews of the same diff have zero ordering dependency: dispatch the reviewer sub-agents in ONE message (multiple `Agent`/`Task` calls in a single response), not one at a time. The same applies to a card's required POST code-trio gates (`code-test-quality` / `code-architecture` / `code-quality`) — see the clean-room CLAUDE.md "Code trio" section: batch the reviewer sub-agents (≤3), collect all findings, fix ONCE. When the fixes themselves split into independent, non-overlapping changes, fan THOSE out to parallel sub-agents too (≤3). Cap is 3 concurrent; >3 → batch. Guardrails: non-overlapping files only; the parent runs the test suite ONCE after edits (never parallel test runs); `base:sub-agent-delegation` synthesis discipline still applies.
 
 ## Step 6 — Check Off Acceptance Criteria
 
@@ -207,9 +207,9 @@ If dispatch prompt's first paragraph is `You are <name>.` followed by `Your work
 
 5. **No-op safety net.** If stdout is `NO_OP` (stderr contains `no commits ahead of origin/main`) you ran finalize without making changes — dispatch was docs-only, or forgot to edit code. Decide: docs-only → still Done, leave `retro.commits[]` empty; missing edits → fix them, re-run finalize. Do NOT push literal token `NO_OP` to `retro.commits[]`.
 
-### Step 7b — Single-workspace dispatch (no persona block)
+### Step 7b — Plain issue-worker dispatch (no persona block)
 
-If dispatch prompt has no `You are <name>.` first paragraph, you're in single-workspace mode (`<repo>/.danxbot/workspaces/issue-worker/`). Consult `Git Mode` in `.claude/rules/danx-repo-config.md`:
+If dispatch prompt has no `You are <name>.` first paragraph, you're running the plain `issue-worker` profile (no named-agent persona). Consult `Git Mode` in `.claude/rules/danx-repo-config.md`:
 
 - `auto-merge`: feature branch `danxbot/<kebab-case-title>`, stage + commit, push, merge to main, delete branch.
 - `pr`: feature branch, stage + commit, push, `gh pr create`.
@@ -303,7 +303,7 @@ Use Step 10 ONLY when blocker is genuinely one of:
 - Waiting on another card / phase / Action Item to ship first → **Waiting On** (Step 10b). No human needed; poller auto-unblocks.
 - Stale config in editable file → fix in-session.
 - Bug in readable/editable function (in any bind-mounted repo) → fix in-session.
-- Test failure pointing at defect in same workspace/repo → fix in-session.
+- Test failure pointing at defect in same repo → fix in-session.
 - Missing file you can write → fix in-session.
 - Anything where next agent would open same files + make same edits you could make now → fix in-session.
 

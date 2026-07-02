@@ -1,6 +1,6 @@
 ---
 name: danxbot
-description: 'Networking model, runtime envs, deployment vs local, issue-tracker poller boundary, MCP server consumers of danxbot workspaces.'
+description: 'Networking model, runtime envs, deployment vs local, issue-tracker poller boundary, MCP server consumers of danxbot dispatches.'
 ---
 
 # Danxbot — How It Works
@@ -20,9 +20,9 @@ Reading this skill avoids three recurring mistakes:
 When this skill is invoked, write these as TodoWrite items and tick them off as you read:
 
 1. Confirm whether the work is **local** (this dev box) or **deployed** (production AWS target).
-2. Identify which **runtime** owns the action — main session, dispatched workspace, or worker.
+2. Identify which **runtime** owns the action — main session, dispatched agent, or worker.
 3. If touching a backend tracker → confirm you are NOT in agent path.
-4. If touching MCP servers consumed by workspaces → confirm publish step required.
+4. If touching MCP servers consumed by dispatched profiles → confirm publish step required.
 
 ## Two-Machine Networking Model
 
@@ -40,8 +40,8 @@ The local dev case collapses A and B onto the same host — but treat them as se
 | Source path | Runtime location |
 |---|---|
 | `<owner-repo>/<package-source>/` (operator's local checkout of an MCP package) | npm-published name → spawned via `npx` on **Machine B** as stdio child of the dispatched agent. Source-repo path is just where the operator edits + publishes from; it does NOT execute on the connected app's Laravel host. |
-| `<connected-repo>/.danxbot/workspaces/<name>/mcp.template.json` | declares which packages the workspace's dispatched agent loads. The package itself runs as a stdio child of that agent on Machine B. |
-| `<repo>/.danxbot/workspaces/<name>/` | bind-mounted into worker container; agent's `cwd` resolves rules from this dir; its `mcp.template.json` is resolved + merged into the per-dispatch `--mcp-config` file |
+| DB catalog `mcp-server` artifacts selected by the dispatch's **profile** | declares which packages the dispatched agent loads. The package itself runs as a stdio child of that agent on Machine B. |
+| per-dispatch **clean-room cwd** (materialized from the profile's catalog) | the launch cwd; agent's `.claude/` (rules, skills, `mcp.template.json`) is written here per-dispatch, then `mcp.template.json` is resolved + merged into the per-dispatch `--mcp-config` file |
 
 A file inside `gpt-manager/mcp-server/` does NOT execute on the gpt-manager Laravel host. It's published to npm and consumed by whatever process loads its MCP server — almost always the dispatched agent on Machine B.
 
@@ -52,10 +52,10 @@ Three distinct runtime contexts. Don't confuse them.
 | Runtime | Where | Tool surface |
 |---|---|---|
 | **Main session** | Your shell on the dev host | Normal Edit/Read/Write/Bash. NEVER call a backend-tracker MCP directly. |
-| **Dispatched workspace** | Inside a Claude Code CLI subprocess on Machine B (or local worker) launched from `<repo>/.danxbot/workspaces/<name>/` | Workspace's `mcp.template.json` + `.claude/agents/*.md` + `.claude/rules/*.md` define tool surface. Per-workspace, isolated. |
+| **Dispatched agent** | Inside a Claude Code CLI subprocess on Machine B (or local worker) launched from a per-dispatch **clean-room cwd** | The profile's catalog-materialized `.claude/` (`mcp.template.json` + `agents/*.md` + `rules/*.md`) defines the tool surface. Per-dispatch, isolated. |
 | **Worker process** | `node` running the danxbot dist on Machine B; runs the issue poller and `/api/launch` HTTP server | Reads the dashboard DB via its internal HTTP client for dispatch picker logic; spawns Claude CLI dispatches via `dispatch()`. |
 
-The dispatched-workspace runtime is what the dispatch API hands work to. The worker runtime hosts the dispatch API and the poller — never confuse "the worker" with "an agent."
+The dispatched-agent runtime is what the dispatch API hands work to. The worker runtime hosts the dispatch API and the poller — never confuse "the worker" with "an agent."
 
 ## Local vs Deployed
 
@@ -80,8 +80,7 @@ Inside each connected repo:
 | `<repo>/.danxbot/config/overview.md` + `workflow.md` + `tools.md` | Repo context for dispatched agents | yes |
 | `<repo>/.danxbot/.env` | Secrets + per-repo toggles, `DANX_*` prefix, `DANXBOT_WORKER_PORT` | gitignored |
 | `<repo>/.danxbot/.env.<target>` | Per-deploy-target overlay | gitignored |
-| `<repo>/.danxbot/workspaces/<name>/` | Generated dispatch workspaces | gitignored |
-| `<repo>/.danxbot/settings.json` | Per-repo three-valued runtime toggles (Slack, issuePoller, dispatchApi, ideator, autoTriage) + per-repo `agents{}` roster (each repo owns its own set of named agents — `sage` in gpt-manager and `sage` in danxbot are different agents) | yes |
+| `<repo>/.danxbot/settings.json` | Per-repo three-valued runtime toggles (Slack, issuePoller, dispatchApi, ideator, autoTriage). The named-agent roster is NOT here — it lives in Postgres (`agent_profile` / `board_agents`, DX-1113 / DX-1225) | yes |
 | `<repo>/.danxbot/worktrees/<agent>/` | Per-agent git worktree + per-agent `docker-compose.yml` w/ worktree-unique port allocation (consumer-repo stack — pgsql/redis/etc — runs once per agent, isolated from primary) | gitignored |
 
 **Multi-repo agent lookup — mechanical pre-claim check.** Before claiming an agent name "does not exist" / "never landed" / "is missing", enumerate EVERY connected repo: `for r in ~/web/danxbot/repos/*/; do grep -l <name> "$r/.danxbot/settings.json" 2>/dev/null; done` AND `ls ~/web/danxbot/repos/*/.danxbot/worktrees/`. Agents are per-repo; cwd `.danxbot/` is just one repo's roster. Same applies to worktrees — checking `git worktree list` from the danxbot source repo shows ONLY danxbot's worktrees, not gpt-manager's or platform's. "I checked the agents dir" w/o naming which repo's agents dir is the failure mode this rule blocks.
@@ -130,12 +129,13 @@ The work dispatch is **zero-prep** — the task body is `/danx-next <id>` alone 
 curl -sS -X POST https://<your-danxbot-deployment>/api/launch \
   -H "Authorization: Bearer $DANXBOT_DISPATCH_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"repo": "<connected-repo>", "workspace": "system-test", "task": "Reply OK and call danxbot_complete.", "api_token": "'"$DANXBOT_DISPATCH_TOKEN"'"}'
+  -d '{"board": "<repo>:<slug>", "profile": "system-test", "task": "Reply OK and call danxbot_complete.", "api_token": "'"$DANXBOT_DISPATCH_TOKEN"'"}'
 ```
 
-- `workspace` is required. Must match a directory under `<connected-repo>/.danxbot/workspaces/`.
+- `profile` is required (DX-1715 — the dispatch-identity selector; the retired `workspace` key is rejected 400). Must match a known dispatch profile.
+- `board` is the `<repo>:<slug>` scope key (required); the retired top-level `repo` field is gone (DX-1182).
 - `api_token` (Bearer) → `DANXBOT_DISPATCH_TOKEN`. Per-deployment, persisted to SSM at `/<ssm_prefix>/shared/DANXBOT_DISPATCH_TOKEN`.
-- Worker rejects bodies that include the retired `allow_tools` / `agents` / `schema_*` fields — workspace defines the tool surface, not the caller.
+- Worker rejects bodies that include the retired `allow_tools` / `agents` / `schema_*` fields — the profile's catalog defines the tool surface, not the caller.
 - Full route table: `/api/launch`, `/api/resume`, `/api/status/:id`, `/api/cancel/:id`, `/api/stop/:id`. See `danxbot/.claude/rules/agent-dispatch.md#external-entry`.
 
 Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That HTTP call IS the boundary. Anything fancier (FS sharing, cross-host kills, `/proc` walks across the boundary) is wrong.
@@ -144,7 +144,7 @@ Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That
 
 ## MCP Server Ownership
 
-Each MCP server consumed by a danxbot workspace has an owner repo with a `make publish-<x>` target. Schema and other servers may be owned by other repos in the operator's tree. The workspace's `mcp.template.json` declares which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
+Each MCP server consumed by a danxbot dispatch has an owner repo with a `make publish-<x>` target. Schema and other servers may be owned by other repos in the operator's tree. The dispatch profile's catalog `mcp-server` selections declare which packages it loads. For operator-owned packages, publish freely without re-asking permission — generic "ask before publishing" rules do NOT apply to MCP servers the operator owns.
 
 ## Common Failure Modes
 

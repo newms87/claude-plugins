@@ -54,14 +54,14 @@ Response shape: `{job_id: <new dispatch id>, parent_job_id, status: "launched"}`
 
 ## Pre-dispatch file staging — `staged_files`
 
-`/api/launch` accepts an optional `staged_files: [{path, content}]` array. Every entry is written to disk BEFORE `spawnAgent` so the dispatched agent sees a fully-populated workspace state on first turn. The mechanism replaces the older "agent calls an MCP tool at startup to fetch its own state" pattern, which put a runtime contract on the agent (must call exactly once, no re-call) and failed opaquely when the agent forgot.
+`/api/launch` accepts an optional `staged_files: [{path, content}]` array. Every entry is written to disk BEFORE `spawnAgent` so the dispatched agent sees a fully-populated clean-room state on first turn. The mechanism replaces the older "agent calls an MCP tool at startup to fetch its own state" pattern, which put a runtime contract on the agent (must call exactly once, no re-call) and failed opaquely when the agent forgot.
 
 **Body shape:**
 
 ```json
 {
-  "repo": "gpt-manager",
-  "workspace": "schema-builder",
+  "board": "gpt-manager:default",
+  "profile": "schema-builder",
   "task": "...",
   "overlay": { "SCHEMA_DEFINITION_ID": "42" },
   "staged_files": [
@@ -70,22 +70,22 @@ Response shape: `{job_id: <new dispatch id>, parent_job_id, status: "launched"}`
 }
 ```
 
-**Workspace contract — `staging-paths` allowlist:**
+**Profile contract — `staging-paths` allowlist:**
 
-A workspace's `workspace.yml` declares the allowlist roots:
+A profile declares the allowlist roots:
 
 ```yaml
 staging-paths:
   - "/tmp/schemas/${SCHEMA_DEFINITION_ID}/"
 ```
 
-Each root may contain `${KEY}` placeholders substituted at request time against the dispatch overlay (same overlay used for `mcp.template.json` and `.claude/settings.json`). A workspace with no `staging-paths` rejects any non-empty `staged_files` payload with 400 (fail closed).
+Each root may contain `${KEY}` placeholders substituted at request time against the dispatch overlay (same overlay used for `mcp.template.json` and `.claude/settings.json`). A profile with no `staging-paths` rejects any non-empty `staged_files` payload with 400 (fail closed).
 
 **Validation pipeline (`src/dispatch/staged-files.ts` is the single source of truth):**
 
 1. Body shape — every entry MUST be `{path: string, content: string}`. Bad shape → 400.
 2. Placeholder substitution — `${KEY}` references in `staged_files[].path` resolve against the overlay; unknown keys → 400.
-3. Allowlist check — every resolved absolute path MUST live under one of the workspace's substituted `staging-paths` roots. Path-traversal payloads (`..`, absolute paths outside the allowlist, sibling-prefix attacks like `/tmp/schemas/42-evil` against root `/tmp/schemas/42/`) → 400.
+3. Allowlist check — every resolved absolute path MUST live under one of the profile's substituted `staging-paths` roots. Path-traversal payloads (`..`, absolute paths outside the allowlist, sibling-prefix attacks like `/tmp/schemas/42-evil` against root `/tmp/schemas/42/`) → 400.
 4. Write — `mkdir -p` parents, `writeFileSync(path, content)` for each. Any IO failure rolls back every file written by THIS call (in reverse order) and returns 500. No agent spawns on either failure path.
 
 **Cleanup contract:** when the dispatch reaches a terminal state, `cleanupStagedFiles` removes EVERY path the worker wrote — and ONLY those paths. Sibling files in the same directory survive. Directories created during staging are NOT removed (a shared root like `/tmp/schemas/42/` may be used by sibling dispatches; tearing it down because we happen to be the last writer is the wrong contract). Cleanup is best-effort: failures are swallowed so a stuck file doesn't mask the dispatch's terminal status.
@@ -96,7 +96,7 @@ Each root may contain `${KEY}` placeholders substituted at request time against 
 - `StagedFilesError("write")` → HTTP 500 (worker IO)
 - Either branch leaves zero files on disk — the `writeStagedFiles` rollback guarantees all-or-nothing.
 
-**Why inline-in-launch (not a separate `PUT /api/workspace/<name>/files`)?**
+**Why inline-in-launch (not a separate `PUT /api/profile/<name>/files`)?**
 
 - Atomic — no race window where staged files exist but the dispatch never lands (or vice versa).
 - One round-trip — schema dispatches stage ~10–30 small JSON files; one POST is faster than orchestrating per-file PUTs.
@@ -133,7 +133,7 @@ Defensive: if `messageId` is missing on an entry that has `usage` (never seen in
 
 Three different claude-auth misconfigurations all surface as the SAME symptom — `/api/launch` returns a `job_id`, status sits at `running`, then eventually `failed` with `summary="Agent timed out after N seconds of inactivity"`. The watcher never attaches, no JSONL appears, no error is logged. Before chasing the StallDetector, check the auth chain first:
 
-1. **Read-only bind on `.claude.json` or `.claude/`** — claude rewrites `.claude.json` (session metadata) on most runs and rotates `.credentials.json` periodically; RO blocks the writes and `claude -p` exits 0 with empty stdout. From `/tmp` cwd it exits silently; from a workspace cwd with `mcp.template.json` + `.claude/settings.json` it hangs because MCP startup interacts with the auth-refresh failure.
+1. **Read-only bind on `.claude.json` or `.claude/`** — claude rewrites `.claude.json` (session metadata) on most runs and rotates `.credentials.json` periodically; RO blocks the writes and `claude -p` exits 0 with empty stdout. From `/tmp` cwd it exits silently; from a clean-room cwd with `mcp.template.json` + `.claude/settings.json` it hangs because MCP startup interacts with the auth-refresh failure.
 2. **Expired OAuth token** — `claudeAiOauth.expiresAt` is in the past (snapshot dir that never rotated, prod redeploy needed). claude attempts a refresh, the refresh fails in `-p` mode, exits 0 silent.
 3. **Mismatched UID on the bind source** — host file owned by user A, container claude runs as `danxbot` (UID 1000); `chmod` on the symlink target succeeds but writes still fail.
 
@@ -243,7 +243,7 @@ Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`)
 
 - `src/agent/api-error-detector.ts` — pure detector, no recover logic.
 - `src/agent/attach-monitoring-stack.ts` — wires detector onto shared watcher; carries `handleApiErrorRecover` + `MAX_RECOVERS`.
-- `src/agent/agent-types.ts#SpawnAgentOptions.recoverContext` — `{originalTask, workspace, workerPort, repoLocalPath}`. Required for the recover-ok branch; missing context fail-louds to `api_error_failed` so the row doesn't leak in `recovered` with no resume-child.
+- `src/agent/agent-types.ts#SpawnAgentOptions.recoverContext` — `{originalTask, profile, workerPort, repoLocalPath}`. Required for the recover-ok branch; missing context fail-louds to `api_error_failed` so the row doesn't leak in `recovered` with no resume-child.
 - `src/dispatch/core.ts` — auto-injects `recoverContext` from `RepoContext.localPath` + `workerPort`.
 - `src/worker/dispatch.ts#handleResume` — threads `recover_count` + `parent_recover_id` from POST body onto the new dispatch row.
 - `src/dashboard/dispatches.ts` — surfaces `recoverCount` + `parentRecoverId` on `Dispatch`; `dispatches-routes.ts` validates `?status=recovered`.
@@ -265,16 +265,16 @@ Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`)
 - `git stash` of the inject-written files → destroys the inject's output; next tick re-writes it; oscillation, not a fix.
 - `git checkout <file>` / `git restore` on the dirty paths → already banned in `dev:git-discipline`, regardless of motivation.
 
-**Correct fix (canonical example: DX-340).** danxbot's inject pipeline (`src/inject/sync.ts` → `mirrorWorkspaceTree`) rewrites templated content into `<consumer-repo>/.danxbot/workspaces/<templated>/*` every tick. When the consumer repo TRACKS those paths, every tick dirties the working tree → `syncWorktree` aborts → quarantine. The fix is on the writer-side gitignore boundary:
+**Correct fix (canonical example: DX-340).** danxbot's inject pipeline (`src/inject/*`, e.g. `syncRepoFiles`) rewrites danxbot-owned content into `<consumer-repo>/.danxbot/*` every tick. When the consumer repo TRACKS those paths, every tick dirties the working tree → `syncWorktree` aborts → quarantine. The fix is on the writer-side gitignore boundary:
 
-1. Extend `<repo>/.danxbot/.gitignore` (via `ensureGitignoreEntry` calls in `src/inject/sync.ts` — see `src/inject/gitignore-workspaces.ts`) to cover the inject-owned paths.
+1. Extend `<repo>/.danxbot/.gitignore` (via `ensureGitignoreEntry` calls in the inject pipeline) to cover the inject-owned paths.
 2. One-time `git rm --cached` of those paths in each consumer repo, commit, push. Files stay on disk; inject keeps writing them; git stops seeing the writes as modifications.
 3. Re-dispatch — `syncWorktree` returns `noop` or a clean ff merge.
 
 **Mechanical decision rule when `syncWorktree` aborts on ff-only:**
 
 1. `git status --short` inside the failing worktree → which paths are dirty?
-2. Identify the writer (`grep -r "<path-fragment>"` across danxbot `src/`; `mirrorWorkspaceTree` / `renderPerRepoFilesIntoWorkspaces` / any inject helper = the writer is danxbot itself).
+2. Identify the writer (`grep -r "<path-fragment>"` across danxbot `src/`; `syncRepoFiles` / any inject helper = the writer is danxbot itself).
 3. Fix the gitignore at the writer's gitignore boundary. Commit. Push. One-time `git rm --cached` in the affected consumer repo(s).
 4. Re-dispatch.
 

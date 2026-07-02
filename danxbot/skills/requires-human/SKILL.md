@@ -58,7 +58,7 @@ Set `requires_human` ONLY when the unblock action is one of:
 - **3rd-party API token rotation** the agent does not hold (Stripe, Slack
   app token, GitHub PAT in the operator's keyring).
 - **Granting access to an external dashboard** (adding the agent to a SaaS
-  workspace, granting a role on an external tracker).
+  tenant/account, granting a role on an external tracker).
 - **Manual deploy of external infra** the worker does not control (a
   vendor portal click-through, a managed service version bump that is
   not gated by `make deploy`).
