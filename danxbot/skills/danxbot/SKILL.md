@@ -61,7 +61,7 @@ The dispatched-agent runtime is what the dispatch API hands work to. The worker 
 
 | Verb | What it does |
 |---|---|
-| `make launch-worker REPO=<name>` (from danxbot repo) | Starts a local Docker worker container for the named repo on this dev box. Compose file: `<connected-repo>/.danxbot/config/compose.yml`. Uses local image `danxbot:latest`. |
+| `make launch-worker BOARD=<board-name>` (from danxbot repo) | Starts the ONE machine-level Docker worker container for this dev box (DX-1734 — a single worker dispatches agents across every connected repo's boards; `BOARD=` only resolves its boot identity). `REPO=<name>` is retired (DX-979) and fails loud. Compose file: `docker-compose.worker.yml`. Uses local image `danxbot:latest`. |
 | `make deploy TARGET=<target>` (from danxbot repo) | Deploys danxbot + every repo's worker to the target's AWS instance. Per-target config: `deploy/targets/<target>.yml`. Pushes per-target env overlays from SSM. |
 | `make publish-mcp` / other `publish-*` targets | Publishes MCP servers to npm. Required before a new dispatch can pick up changes. **You own these packages — publish freely without asking.** |
 
@@ -76,7 +76,7 @@ Inside each connected repo:
 | Path | Purpose | Committed? |
 |---|---|---|
 | `<repo>/.danxbot/config/config.yml` | Repo-level danxbot config (board mapping, worker port, etc.) | yes |
-| `<repo>/.danxbot/config/compose.yml` | Worker docker-compose for local launch | yes |
+| `<repo>/.danxbot/config/compose.yml` | Per-repo dev-stack bind config consumed by the machine worker's network overlay (NOT a standalone per-repo worker anymore — DX-1734 retired per-repo worker containers) | yes |
 | `<repo>/.danxbot/config/overview.md` + `workflow.md` + `tools.md` | Repo context for dispatched agents | yes |
 | `<repo>/.danxbot/.env` | Secrets + per-repo toggles, `DANX_*` prefix, `DANXBOT_WORKER_PORT` | gitignored |
 | `<repo>/.danxbot/.env.<target>` | Per-deploy-target overlay | gitignored |

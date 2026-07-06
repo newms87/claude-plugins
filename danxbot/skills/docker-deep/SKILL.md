@@ -72,9 +72,11 @@ Every dispatched agent (poller, HTTP `/api/launch`, Slack) runs with `cwd` = an 
 
 DX-1740: the `dashboard` service mirrors the worker's claude-auth split mount (file-bind `.claude.json` + dir-bind `.claude/`), required vars via the `:?...` compose syntax. Without it, `scripts/claude-auth-setup.sh` never finds `$CLAUDE_AUTH_DIR/.claude/plugins` to copy into the container's `$HOME/.claude/plugins`, and the dashboard's boot-time `ensureCatalog()` (`src/dashboard-boot.ts`, DX-1226/DX-1509) ENOENTs reading plugin-skill artifact sources — a CP1 fail-loud, all-or-nothing seed transaction, so `config_catalog` silently never picks up newly-added required artifacts on every dashboard restart. **`dashboard-dev` does NOT need this mount** — its command (`npm run dashboard:dev` → `cd dashboard && npm run dev`) is a pure Vite dev server; it never runs `src/index.ts` / `src/dashboard-boot.ts` / `ensureCatalog()`.
 
-**Worker container:**
+**Worker container (DX-1734 — ONE machine-level container, not one per repo):**
 
 | Host | Container |
 |------|-----------|
-| `<repo>/` | `/danxbot/repos/<name>/` |
+| `<repo>/` (bind-mounted per connected repo, generated into `docker-compose.worker.networks.generated.yml` by `src/cli/generate-worker-networks-override.ts`) | `/danxbot/repos/<name>/` |
 | `./claude-auth/` | `/danxbot/app/claude-auth/` |
+
+A single worker container joins every connected repo's Docker network and dispatches agents across all of them — there is no longer a dedicated worker container per repo.
