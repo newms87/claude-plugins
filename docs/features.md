@@ -37,6 +37,7 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 | `plugin-skill-mandate.sh` hook wiring | **Incomplete** | Script header says "Fires on SessionStart and UserPromptSubmit" and has UserPromptSubmit stdin-drain code, but base/hooks.json wires it SessionStart-ONLY (UserPromptSubmit runs inject-time only). The load-first mandate never re-fires per prompt; UserPromptSubmit branch is dead code. ICE 280 (I5×C7×E8). Carded → CP-20. |
 | Hook-script behavioral tests | **Incomplete** | Zero tests for the runtime logic of deny-destructive-db / investigation-gate / human-loop-mandate / inject-time. CP-7 validates structure, not behavior. No `.bats` suite exists. Silent-regression risk on safety-critical hooks. ICE 245 (I7×C7×E5). Carded → CP-21 Epic (CP-22 harness+deny / CP-23 gates / CP-24 inject-time). |
 | `inject-time.sh` /tmp state cleanup | **Upgradeable** | Writes `/tmp/claude-time-hook-${SID}` per session, never pruned → unbounded accumulation on long-lived hosts/workers. Fix: age-based prune on each fire. ICE 168 (I3×C8×E7). Carded → CP-25. |
+| Base mandate-script event-wiring drift (`convey-mandate.sh` + `tool-discipline-mandate.sh`) | **Incomplete** | Both headers claim "Fires on SessionStart AND UserPromptSubmit" (tool-discipline L4-5 even states the intent: reinforce "every session AND every turn so they survive context compression") and both carry a `[ "$EVENT" = "UserPromptSubmit" ] && cat >/dev/null` stdin-drain branch — but `base/hooks.json` wires BOTH SessionStart-ONLY (only `inject-time` fires on UserPromptSubmit). So the designed per-turn reinforcement never happens (decays after compression — the exact failure the header cites) and the drain branch is dead code. Same defect CLASS as CP-20 (plugin-skill-mandate) but DIFFERENT files → not a dup. ICE 280 (I5×C7×E8). Carded run 4. |
 
 ---
 
@@ -54,33 +55,47 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 - **[Carded CP-21 Epic] bats hook test suite** — Maintenance — 245 (7×7×5) — CP-22 harness+deny-db, CP-23 prompt gates, CP-24 inject-time format/state.
 - **[Carded CP-25] inject-time /tmp leak** — Maintenance — 168 (3×8×7) — age-based prune of claude-time-hook-* files.
 - **[Uncarded] Plugin description single-source-of-truth** — Maintenance — 144 (4×6×6) — reconcile marketplace.json ↔ plugin.json descriptions + drift check; low value, adjacency to CP-8. README `pipeline` row (`flow-*`, "human-in-loop") is stale → flag for CP-5's implementer, not a new card.
-- **[Uncarded] investigation-gate ↔ human-loop-mandate double-fire** — Maintenance/Exploratory — 120 (4×5×6) — when both plugins installed, a "why…?" prompt injects BOTH gates (investigate=gather with tools vs human-loop=STOP all work), contradictory. May be intentional; needs a precedence decision before carding.
+- **[Carded run 4] Base mandate-script per-turn wiring drift** — Maintenance — 280 (5×7×8) — reconcile `convey-mandate.sh` + `tool-discipline-mandate.sh` header/dead-drain-branch vs SessionStart-only `hooks.json` wiring; resolve consistently with CP-20 (same decision: fire per-turn vs align headers down).
+- **[Carded run 4] investigation-gate ↔ human-loop-mandate double-fire** — Maintenance — 144 (4×6×6) — re-confirmed mechanically (run 4): `investigate/scripts/investigation-gate.sh` fires on "why"/"how does"/etc. → gate says load investigate + gather evidence with Bash/Read/Grep; `human-collaboration/scripts/human-loop-mandate.sh` fires on ANY `?` → gate says "STOP all work — no tool calls except Read." A "why…?" prompt injects BOTH, giving opposite tool-permission instructions in the same turn. Both are read-only, so the clash is narrow (read-only Bash/Grep) but real for co-installed human sessions. Carded to force the precedence decision (likely human-loop answer-first wins).
 - **[Uncarded] jq/deps preflight for hooks** — Maintenance — ~125 (5×5×5) — hooks assume `jq` present; if missing under `set -euo pipefail` the deny guard may fail-open. Verify Claude Code fail-open/closed behavior first (base:docs-first). Exploratory until confirmed.
+- **[Uncarded] Hook invocation-form inconsistency** — Maintenance — ~168 (3×7×8) — `investigate` + `human-collaboration` hooks.json call their scripts by bare path (`${CLAUDE_PLUGIN_ROOT}/scripts/x.sh`, relying on the +x bit) while base/dev/danxbot use `bash ${CLAUDE_PLUGIN_ROOT}/scripts/x.sh`. Exec bits ARE currently set (100755 in git) so no live bug — purely defensive normalization against a future lost +x bit on the two discipline gates. Below bar given queue depth; fold into CP-8 validate (assert one invocation form) rather than a standalone card.
 - **[Exploratory] Split `danxbot` plugin (25 skills)** — Maintenance — not scored/carded — largest plugin; possible sub-plugin split, but big blast radius + unclear payoff. Revisit only when no clearer work remains.
 
 ---
 
 ## Session Log (overwrite each session)
 
-**2026-07-08 (run 3)** — Third ideator run. Prior CP-2..CP-18 all still open at Review;
-scratchpad from run 2 was fully carded, so this run mined the plugin HOOK SCRIPTS (previously
-uninspected) for new work. Created 4 NEW non-duplicate cards:
-- **CP-19 (Bug)** — `deny-destructive-db.sh` regex omits `dropAllTables/dropAllViews/dropAllTypes`
-  that its own comment + deny REASON claim are blocked → silent bypass of the top data-loss
-  guard. ICE 448. Highest-value find this run.
-- **CP-20 (Bug)** — `plugin-skill-mandate.sh` documents + codes a UserPromptSubmit path but
-  base/hooks.json wires it SessionStart-only; load-first mandate never re-fires per prompt. ICE 280.
-- **CP-21 (Epic)** — bats behavioral test suite for hook scripts → CP-22 (harness + deny-db
-  cases), CP-23 (investigation-gate + human-loop gates), CP-24 (inject-time format/state). ICE 245.
-- **CP-25 (Bug)** — `inject-time.sh` leaks per-session `/tmp/claude-time-hook-*` state, never
-  pruned. ICE 168 (low but trivial, easy maintenance).
-Uncarded this run (scratchpad): investigation-gate ↔ human-loop double-fire on "why…?" prompts
-(needs precedence decision, may be intentional, ICE 120); jq/deps preflight/fail-open check
-(needs docs-first verification of hook fail behavior, ~125).
-Mechanics (re-verified): MCP dashboard tools NOT wired into this harness — my available tools
-are Bash/Read/Edit/Write only. Create via `POST $DANXBOT_DASHBOARD_URL/api/issues` with
-`Authorization: Bearer $DANXBOT_DISPATCH_TOKEN`, `board` in the BODY. AC items `{title,checked}`.
-`phase_children[]` is Epic-ONLY AND each child needs an explicit `type` (Story) — omitting it 400s
-`phase_children[0].type invalid`. 201 response nests `{issue:{issue:{id}}}`; children don't come
-back in that payload → re-list to read child ids. All cards Maintenance (dev-tooling repo, no
-end-user surface). Next: when CP-5 lands, flag stale `pipeline` README row (`flow-*`→`pipe-*`).
+**2026-07-08 (run 4)** — Fourth ideator run. CP-2..CP-25 all still open at Review (24 cards).
+This run inspected surfaces prior runs skipped: ALL mandate scripts (convey / tool-discipline /
+current-time / danxbot-skill / ideal-solution — prior runs only read plugin-skill / deny-db /
+inject-time / investigation-gate / human-loop), SKILL.md frontmatter (all 51 skills — consistent,
+name+description present, all under 300 LOC; max dispatch-deep 281), marketplace.json (CORRECT —
+lists all 6 plugins, unlike README/CP-5), plugin.json set, hooks.json invocation forms, exec bits.
+
+Re-verified prior findings still hold: CP-5 (README stale), CP-6 (REFACTOR_* still at root +
+also duplicated in 3 worktrees but those sync with main), CP-11 (danx-ideate SKILL L62 still flat
+`type:'Feature'|'Bug'`+`ac` only), CP-19 (deny-db PATTERN L36 still omits dropAllTables/Views/Types
+despite L35 comment + REASON claiming them), CP-20 (plugin-skill-mandate header/drain vs SessionStart-
+only wiring).
+
+RETURNED 2 draft cards to main agent (deliberately NOT padding to 5 — 24 open + dev-tooling repo):
+1. **Bug — base mandate per-turn wiring drift (convey + tool-discipline)** — ICE 280 (5×7×8).
+   SAME defect class as CP-20 but different files (base/scripts/convey-mandate.sh L4 +
+   tool-discipline-mandate.sh L4-5 headers claim UserPromptSubmit firing + carry dead drain
+   branches, base/hooks.json wires SessionStart-only). Strongest new find. Note in card: resolve
+   consistently with CP-20.
+2. **Bug — investigation-gate ↔ human-loop double-fire** — ICE 144 (4×6×6). Promoted from
+   3-run-old scratchpad; now with file:line evidence both gates fire on overlapping "why…?"
+   triggers with opposite tool-permission instructions. Carded to force the precedence decision.
+
+Uncarded (below bar, in scratchpad): hook invocation-form inconsistency (bare-path vs bash-prefix
+in investigate/human-collaboration hooks.json — exec bits currently set so no live bug; fold into
+CP-8 validate); jq/fail-open preflight (needs docs-first on Claude Code hook fail semantics);
+marketplace.json↔plugin.json description drift (cosmetic, 144); danxbot split (exploratory).
+
+Mechanics: I have NO MCP/dashboard/curl access this run — I EXPLORE + SCORE + UPDATE MEMORY and
+RETURN draft cards to the MAIN agent, who holds `issue_create` and assigns CP ids. Feature/Epic are
+containers requiring phase_children[] child Stories; standalone fixes are Bug. All cards Maintenance
+(dev-tooling repo, no direct end-user surface — the mandate-wiring bug is the closest to user value:
+it degrades agent behavior quality for the operator). Next: when CP-5 lands, flag stale `pipeline`
+README row (`flow-*`→`pipe-*`).
