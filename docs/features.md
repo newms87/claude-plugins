@@ -33,6 +33,10 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 | Skill catalog / index | **Incomplete** | 30+ skills across 6 plugins, no single index; no authoring-invariants guide (LOC cap, mandatory bump, frontmatter, hook `${CLAUDE_PLUGIN_ROOT}` pattern, no rules/ dir). ICE 210 (I5×C7×E6). Carded → CP-12 Epic (CP-13 generator / CP-14 commit+link / CP-15 authoring guide). |
 | `scripts/publish.sh` UX/safety | **Upgradeable** | No `--dry-run` preview (first happy-path action is a commit); no guard against no-op version-only bumps. ICE 196 (I4×C7×E7). Carded → CP-16 Epic (CP-17 dry-run / CP-18 no-op guard). |
 | Plugin description drift (README table / marketplace.json / plugin.json) | **Upgradeable** | Three description sources diverge (danxbot marketplace desc detailed vs plugin.json short; README `pipeline` row says stale `flow-*`/"human-in-loop"). README fixes belong to CP-5; marketplace↔plugin.json single-source not yet carded (low value, adjacency to CP-8). ICE 144 (I4×C6×E6). Scratchpad only. |
+| `deny-destructive-db.sh` pattern coverage | **Incomplete** | Header comment (L34-35) + deny REASON claim `dropAllTables/dropAllViews/dropAllTypes` schema-builder APIs are blocked, but the actual regex (L36) blocks only `migrate:fresh/refresh/reset`, `db:wipe`, `DROP DATABASE/SCHEMA`. `Schema::dropAllTables()` passes through — silent bypass of the repo's top data-loss guard. Doc/code drift. ICE 448 (I8×C8×E7). Carded → CP-19. |
+| `plugin-skill-mandate.sh` hook wiring | **Incomplete** | Script header says "Fires on SessionStart and UserPromptSubmit" and has UserPromptSubmit stdin-drain code, but base/hooks.json wires it SessionStart-ONLY (UserPromptSubmit runs inject-time only). The load-first mandate never re-fires per prompt; UserPromptSubmit branch is dead code. ICE 280 (I5×C7×E8). Carded → CP-20. |
+| Hook-script behavioral tests | **Incomplete** | Zero tests for the runtime logic of deny-destructive-db / investigation-gate / human-loop-mandate / inject-time. CP-7 validates structure, not behavior. No `.bats` suite exists. Silent-regression risk on safety-critical hooks. ICE 245 (I7×C7×E5). Carded → CP-21 Epic (CP-22 harness+deny / CP-23 gates / CP-24 inject-time). |
+| `inject-time.sh` /tmp state cleanup | **Upgradeable** | Writes `/tmp/claude-time-hook-${SID}` per session, never pruned → unbounded accumulation on long-lived hosts/workers. Fix: age-based prune on each fire. ICE 168 (I3×C8×E7). Carded → CP-25. |
 
 ---
 
@@ -45,31 +49,38 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 - **[Carded CP-11] Fix danx-ideate SKILL container doctrine** — Maintenance — 384 (6×8×8) — align step-2 create guidance with container/phase_children-Epic-only rules.
 - **[Carded CP-12 Epic] Skill catalog + authoring guide** — Maintenance — 210 (5×7×6) — gen-skill-index.sh (CP-13), commit+README link (CP-14), docs/authoring-plugins.md (CP-15).
 - **[Carded CP-16 Epic] publish.sh dry-run + no-op guard** — Maintenance — 196 (4×7×7) — CP-17 --dry-run, CP-18 skip version-only bumps.
+- **[Carded CP-19] deny-destructive-db regex gap** — Maintenance — 448 (8×8×7) — add dropAllTables/Views/Types to the PATTERN so code matches its own doc.
+- **[Carded CP-20] plugin-skill-mandate SessionStart-only wiring** — Maintenance — 280 (5×7×8) — align header/code/wiring (prefer wiring on UserPromptSubmit).
+- **[Carded CP-21 Epic] bats hook test suite** — Maintenance — 245 (7×7×5) — CP-22 harness+deny-db, CP-23 prompt gates, CP-24 inject-time format/state.
+- **[Carded CP-25] inject-time /tmp leak** — Maintenance — 168 (3×8×7) — age-based prune of claude-time-hook-* files.
 - **[Uncarded] Plugin description single-source-of-truth** — Maintenance — 144 (4×6×6) — reconcile marketplace.json ↔ plugin.json descriptions + drift check; low value, adjacency to CP-8. README `pipeline` row (`flow-*`, "human-in-loop") is stale → flag for CP-5's implementer, not a new card.
+- **[Uncarded] investigation-gate ↔ human-loop-mandate double-fire** — Maintenance/Exploratory — 120 (4×5×6) — when both plugins installed, a "why…?" prompt injects BOTH gates (investigate=gather with tools vs human-loop=STOP all work), contradictory. May be intentional; needs a precedence decision before carding.
+- **[Uncarded] jq/deps preflight for hooks** — Maintenance — ~125 (5×5×5) — hooks assume `jq` present; if missing under `set -euo pipefail` the deny guard may fail-open. Verify Claude Code fail-open/closed behavior first (base:docs-first). Exploratory until confirmed.
 - **[Exploratory] Split `danxbot` plugin (25 skills)** — Maintenance — not scored/carded — largest plugin; possible sub-plugin split, but big blast radius + unclear payoff. Revisit only when no clearer work remains.
 
 ---
 
 ## Session Log (overwrite each session)
 
-**2026-07-08 (run 2)** — Second ideator run. Prior run's CP-5..CP-10 confirmed still open
-(README fix, stale-artifact removal, repo-integrity Epic + 3 children). Board now CP-2..CP-18.
-Created 3 NEW non-duplicate cards this run:
-- **CP-11 (Bug)** — danx-ideate SKILL step-2 contradicts the plugin's own container doctrine
-  (frames flat Feature/Bug + ac[], omits phase_children-Epic-only). ICE 384.
-- **CP-12 (Epic)** — skill catalog + authoring guide → CP-13 (gen-skill-index.sh),
-  CP-14 (commit+README link), CP-15 (docs/authoring-plugins.md). ICE 210.
-- **CP-16 (Epic)** — publish.sh hardening → CP-17 (--dry-run), CP-18 (no-op/version-only
-  bump guard). ICE 196.
-No Danxbot knowledge-doc edits (scope=repo; ideator agent def is NOT shipped by this repo's
-plugins — it's injected by the orchestrator, so CP-11's fix targets the in-repo
-`danxbot/skills/danx-ideate/SKILL.md`, the only shippable surface).
-Mechanics reminders (unchanged, verified again): MCP dashboard tools NOT wired into this
-harness → use `curl` POST to `$DANXBOT_DASHBOARD_URL/api/issues` with `Authorization: Bearer
-$DANXBOT_DISPATCH_TOKEN`; `board` MUST be in the POST BODY; AC items are `{title,checked}`;
-`phase_children[]` is Epic-ONLY (Feature 400s) — so container-with-atomic-children = Epic here.
-POST 201 response nests as `{issue:{issue:{id,...}}}` — re-list to read the assigned id.
-Everything here is developer/maintenance value (no end-user surface); cards skew Maintenance
-by domain. Next: when CP-5 lands, note the `pipeline` README row (`flow-*` → `pipe-*`,
-"human-in-loop" → autonomous) was also stale. Uncarded scratchpad item: plugin-description
-single-source-of-truth (ICE 144, low value).
+**2026-07-08 (run 3)** — Third ideator run. Prior CP-2..CP-18 all still open at Review;
+scratchpad from run 2 was fully carded, so this run mined the plugin HOOK SCRIPTS (previously
+uninspected) for new work. Created 4 NEW non-duplicate cards:
+- **CP-19 (Bug)** — `deny-destructive-db.sh` regex omits `dropAllTables/dropAllViews/dropAllTypes`
+  that its own comment + deny REASON claim are blocked → silent bypass of the top data-loss
+  guard. ICE 448. Highest-value find this run.
+- **CP-20 (Bug)** — `plugin-skill-mandate.sh` documents + codes a UserPromptSubmit path but
+  base/hooks.json wires it SessionStart-only; load-first mandate never re-fires per prompt. ICE 280.
+- **CP-21 (Epic)** — bats behavioral test suite for hook scripts → CP-22 (harness + deny-db
+  cases), CP-23 (investigation-gate + human-loop gates), CP-24 (inject-time format/state). ICE 245.
+- **CP-25 (Bug)** — `inject-time.sh` leaks per-session `/tmp/claude-time-hook-*` state, never
+  pruned. ICE 168 (low but trivial, easy maintenance).
+Uncarded this run (scratchpad): investigation-gate ↔ human-loop double-fire on "why…?" prompts
+(needs precedence decision, may be intentional, ICE 120); jq/deps preflight/fail-open check
+(needs docs-first verification of hook fail behavior, ~125).
+Mechanics (re-verified): MCP dashboard tools NOT wired into this harness — my available tools
+are Bash/Read/Edit/Write only. Create via `POST $DANXBOT_DASHBOARD_URL/api/issues` with
+`Authorization: Bearer $DANXBOT_DISPATCH_TOKEN`, `board` in the BODY. AC items `{title,checked}`.
+`phase_children[]` is Epic-ONLY AND each child needs an explicit `type` (Story) — omitting it 400s
+`phase_children[0].type invalid`. 201 response nests `{issue:{issue:{id}}}`; children don't come
+back in that payload → re-list to read child ids. All cards Maintenance (dev-tooling repo, no
+end-user surface). Next: when CP-5 lands, flag stale `pipeline` README row (`flow-*`→`pipe-*`).
