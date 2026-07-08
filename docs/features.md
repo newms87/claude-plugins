@@ -25,7 +25,9 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 | `scripts/publish.sh` version-bump automation | Complete | Auto-detects changed plugin trees, bumps semver, commits per-plugin, worktree-aware push (defers to agent-finalize.sh inside agent worktrees). |
 | Per-plugin hook mandate system | Complete | SessionStart/UserPromptSubmit/PreToolUse hooks; every referenced `scripts/*.sh` currently resolves. |
 | Skill LOC refactor (epic DX-795/796) | Complete | Delivered; matrix + phase-7 report are now stale artifacts (see below). |
-| README.md accuracy | **Incomplete** | Lists REMOVED plugins `issues` + `issue-worker` (folded into `danxbot`), OMITS `human-collaboration`. Plugin table + install matrix both wrong. Misleads install. ICE 405 (I5×C9×E9). Carded → CP-5. |
+| README.md accuracy | **Incomplete** | Lists REMOVED plugins `issues` + `issue-worker` (folded into `danxbot`), OMITS `human-collaboration`. Plugin table + install matrix both wrong. Misleads install. README L12 `pipeline` row also carries stale `flow-*`/"Human-in-loop" wording (fold into this fix). ICE 405 (I5×C9×E9). Carded → CP-5. |
+| `dev:git-discipline` mandates dead `/flow-commit` command | **Incomplete** | git-discipline/SKILL.md L48/L50/L159 tell every code-writer to invoke `/flow-commit` — no such command exists; pipeline was renamed `flow-*`→`pipe-*` (real cmd `/pipe-commit`, correct in 12 other refs). Core "never manual git add/commit" rule points at a dead command → agents fall back to the exact manual git it forbids. flow→pipe rename debt = README row (CP-5) + this skill only (grepped; no other dangling flow-* refs). ICE 486 (I6×C9×E9). Carded → CP-44. |
+| `deny-destructive-db` docker-volume vector | **Incomplete** | Guard header L18-19 + REASON L44 explicitly promise "recreating the docker volume … will be blocked" but PATTERN L36 has ZERO docker coverage — `docker compose down -v`/`--volumes`, `docker volume rm`/`prune` sail through and destroy the DB volume (same loss as the migrate:fresh incident, which itself ran in docker). Distinct vector from CP-19 (schema APIs) + CP-42 (raw SQL DROP/TRUNCATE); same PATTERN line → implement together. Exclude bare `docker compose down` (legit stop). ICE 448 (I8×C7×E8). Carded → CP-45. |
 | Repo integrity validation (manifests / frontmatter / hook-refs / marketplace sources) | **Incomplete** | Nothing validates plugin.json shape+semver, SKILL.md required frontmatter, hook `scripts/*.sh` existence, marketplace `source` dirs, or LOC caps. No CI (`.github/workflows` absent). Broken plugin can ship to all consumers. ICE 336 (I7×C8×E6). Carded → CP-7 Epic / CP-8. |
 | Version-bump enforcement | **Incomplete** | README declares the bump MANDATORY but nothing enforces it — a plugin tree can change with a static version and silently never reach consumers (the #1 documented failure mode). No pre-commit hook / CI gate. ICE 240 (I8×C6×E5). Carded → CP-9 (child of CP-7 Epic). |
 | Stale root artifacts (`REFACTOR_MATRIX.md` 205L, `REFACTOR_PHASE7_REPORT.md`) | **Removeable** | Completed-epic deliverables, last touched 2026-06-07, cluttering repo root. ICE 243 (I3×C9×E9). Carded → CP-6. |
@@ -77,43 +79,54 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 - **[Uncarded, Dependent] config.yml empty test/lint** — Maintenance — dependent on CP-8/CP-22 — `.danxbot/config/config.yml` declares `commands.test/lint/type_check: ""`, so danx-next Step 5 quality gate runs nothing even once CP-8's validate.sh / CP-22's bats exist. Complements CP-10 (GitHub CI) with the agent-side gate. Card only after CP-8 lands (don't promote a Dependent early).
 - **[Verified NOT a defect this run]** — pipeline plugin having ZERO hooks is INTENTIONAL (danx-next step-procedures.md L84 explicitly `/pipe-start`); missing root `.claude/rules/danx-repo-config.md` is MATERIALIZED at dispatch (docker-deep), not committed (CP-31 handles ideator's missing-file fallback); all SKILL.md have name+description; no broken/orphan `references/` links; no real TODO/FIXME; LOC caps hold (max 281 dispatch-deep); `current-time-mandate.sh` header matches its SessionStart-only wiring (unlike CP-20/CP-26).
 - **[TRIAGE — CANCEL CP-29]** — the "hyphen namespace" bug is a false positive; underscore prefix is correct per docker-deep L56. Not re-carded (would duplicate/contradict). Flag to operator for Cancel.
+- **[Carded CP-44] git-discipline dead `/flow-commit`** — Maintenance — 486 (6×9×9) — rename 3 refs → `/pipe-commit` in dev/skills/git-discipline/SKILL.md + version bump. flow→pipe rename debt fully accounted: README row (CP-5) + this skill; no other dangling flow-* refs (grepped).
+- **[Carded CP-45] deny-db docker-volume gap** — Maintenance — 448 (8×7×8) — add `docker compose down -v`/`--volumes`, `docker volume rm`/`prune` to PATTERN; same regex line as CP-19/CP-42; exclude bare `down`. Guard's own REASON/header already promise this route is blocked (doc/code drift).
+- **[Uncarded, Exploratory] human-collaboration on autonomous workers deadlocks** — ~120 (5×4×6) — marketplace.json explicitly warns "Do NOT install on autonomous dispatched workers (diagnostic-mode-on-question would deadlock)": human-loop-mandate STOPs on any `?`, so a dispatched worker with no human hangs. Nothing DETECTS/PREVENTS the misconfig. Possible defensive fix: human-loop-mandate.sh no-ops when an autonomous-dispatch env (DANXBOT_DISPATCH_TOKEN / DANX_RUNTIME=container, no human) is detected. Fuzzy detection → low conf; correct install already excludes it. Scratchpad only. DISTINCT from CP-27 (that's investigate↔human-collaboration double-fire in HUMAN sessions).
 - **[Note] Divergent ideator memory** — a parallel narrow-scope (ideator-subtree-only) session created CP-28..CP-32 (ideator plugin self-defects) using a SEPARATE clean-room `docs/features.md` that was never merged here. Those cards are real on the board; this canonical file now records them. CP-29 among them is the false positive above.
 
 ---
 
 ## Session Log (overwrite each session)
 
-**2026-07-08 (run 6)** — Board now CP-2..CP-43. ALL 42 cards still at Review — 6 runs in, nothing
-has ever moved to ToDo/In Progress. The Review queue is the bottleneck, NOT ideation. Repo source
-unchanged since run 5 (only feature-note commits + a +61-line UNCOMMITTED diff sitting in
-`.danxbot/scripts/agent-finalize.sh` working tree — flag to operator).
+**2026-07-08 (run 7)** — Board now CP-2..CP-45 (44 cards). ALL still at Review — 7 runs in, nothing
+has EVER moved to ToDo/In Progress. Repo source unchanged since run 6 (HEAD = run-6 feature-note
+commit; last real source change was `danxbot v0.3.95`). The Review queue remains the sole bottleneck;
+ideation is NOT.
 
-This run did a fresh full sweep of `/danxbot/app/repos/claude-plugins` (`$DANX_REPO_ROOT`) hunting
-for GENUINELY NEW, non-overlapping findings. Repo is exceptionally clean: no broken/orphan
-`references/` links, no real TODO/FIXME, LOC caps hold (max 281), all SKILL.md carry name+desc,
-pipeline's zero-hooks is intentional (danx-next `/pipe-start`), missing root danx-repo-config.md is
-materialized at dispatch not committed. So most structural defects were already carded run 1-5.
+Fresh exhaustive sweep this run, deliberately targeting the LEAST-scrutinized plugins (`dev`,
+`pipeline`, `investigate`, `human-collaboration` — prior runs concentrated on danxbot+base hooks).
+Verified clean: ALL hook `scripts/*.sh` refs resolve; ALL `plugin:skill` cross-refs resolve
+(base:convey, base:fail-loudly, pipeline:pipe-plan, etc. all exist); no broken `references/` links;
+LOC caps hold (max 281 dispatch-deep); dev/danxbot mandate-script headers MATCH their SessionStart
+wiring (no CP-20/CP-26-class drift there); all marketplace-named danxbot skills exist.
 
-Three NEW grounded cards created (all Bug, all ICE-justified, all file:line-anchored):
-1. **CP-41** (405, 5×9×9) — retired `danx_issue_create` in FOUR files CP-34/CP-35 missed:
-   issue-card-workflow/references/lifecycle-states.md L25 (the CANONICAL lifecycle ref),
-   danx-flesh-out/references/overview.md L5, no-false-blockers L36, issue-blocker L235. `slack-agent`
-   L58 `mcp__danxbot__link_thread_to_issue` verified LEGIT (runtime tool, not the retired server).
-2. **CP-42** (392, 8×7×7) — deny-destructive-db misses raw `DROP TABLE`/`TRUNCATE`/`psql -c` drops
-   (DIFFERENT vector than CP-19's schema-builder API names; same PATTERN line → do together;
-   exclude bare DELETE FROM to avoid false positives).
-3. **CP-43** (160, 4×5×8) — inject-time injects a stamp after EVERY PostToolUse; throttle to delta
-   ≥ ~30s (keep UserPromptSubmit unconditional). Sibling QoS to CP-25.
+TWO NEW grounded cards created (both Bug, ICE-justified, file:line-anchored). Only two because the
+repo is genuinely clean — did NOT pad to the 3-5 ask with filler (Critical Rule: no duplicates / no
+generic filler; 6 prior runs already carded every structural defect):
+1. **CP-44** (486, 6×9×9) — `dev:git-discipline` L48/L50/L159 mandate the DEAD command `/flow-commit`;
+   pipeline was renamed `flow-*`→`pipe-*` (real `/pipe-commit`, correct in 12 other refs). Highest-ICE
+   find this run. Grep confirms flow→pipe debt is ONLY this skill + README row (CP-5); no others.
+2. **CP-45** (448, 8×7×8) — `deny-destructive-db` PATTERN has ZERO docker coverage yet its own header
+   (L18-19) + REASON (L44) promise "recreating the docker volume … will be blocked". `docker compose
+   down -v`, `docker volume rm/prune` destroy the DB volume unblocked. Distinct vector from CP-19
+   (schema APIs) + CP-42 (raw SQL) but SAME PATTERN line → implement all three together; exclude bare
+   `docker compose down` (legit stop).
 
-Uncarded/deferred this run: `argument-hint`/`audience` non-standard SKILL.md frontmatter (low conf →
-fold into CP-8 validation); config.yml empty test/lint commands (Dependent on CP-8/CP-22 — don't
-promote early). CP-29 STILL a false positive → operator should Cancel it.
+Investigated but REJECTED as false positives (verification held): suspicious `/danx-no-false-blockers`,
+`/danx-effort-policy`, `/danx-prep`, `/danx-repo-config`, `/danx-issue-mcp` "command" refs are all
+`.claude/rules/*.md` FILE paths or the retired MCP inside the to-be-deleted `REFACTOR_MATRIX.md`
+(CP-6) — NOT dead commands. `comment-style` "YAML" mention = markdown formatting guidance, not the
+retired card model. human-collaboration-on-autonomous-worker deadlock = real (marketplace warns) but
+Exploratory/low-conf → scratchpad, not carded.
 
-API mechanics (correction for next run): on **POST** `/api/issues`, `board` must be in the JSON
-BODY (`"board":"claude-plugins:claude-plugins-main"`) — the `?board=` query param is honored on GET
-but a POST without body board → 400 "board is required". Success response does NOT echo id/title in
-the shape run-5 assumed; re-query the list and take max CP-N to confirm. `ac[]` keyed by `title`.
-Subagent still lacks `mcp__danx_dashboard__*` tools → used curl/urllib against the REST API.
+API mechanics (confirmed this run): auth is `Authorization: Bearer $DANXBOT_DISPATCH_TOKEN` against
+`$DANXBOT_DASHBOARD_URL` (`http://host.docker.internal:5555`). GET `/api/issues?board=<qualified-id>`
+(board in query, REQUIRED — omit → 400). POST `/api/issues?board=…` with `board` ALSO in the JSON
+body; returns **HTTP 201** with `{issue:{issue:{id,…}}}` (id IS echoed — run-6 note was wrong).
+`ac[]` items keyed by `title`. gate_decisions NOT required for `Bug` on this board (201 without it).
+Subagent still lacks `mcp__danx_dashboard__*` tools → used curl against the REST API.
 
-Process note for operator: 42 cards unactioned at Review after 6 ideation runs. The marginal value
-of MORE cards is near zero; value is now entirely in TRIAGE (start: Cancel CP-29) + DISPATCH.
+Process note for operator: 44 cards unactioned at Review after 7 ideation runs. Marginal value of
+MORE cards is now effectively zero — the constraint is entirely TRIAGE + DISPATCH throughput, not
+idea supply. Suggested first triage actions: Cancel CP-29 (false positive); batch the deny-db regex
+work CP-19 + CP-42 + CP-45 into ONE dispatch (same PATTERN line).
