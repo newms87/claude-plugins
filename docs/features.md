@@ -38,6 +38,10 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 | Hook-script behavioral tests | **Incomplete** | Zero tests for the runtime logic of deny-destructive-db / investigation-gate / human-loop-mandate / inject-time. CP-7 validates structure, not behavior. No `.bats` suite exists. Silent-regression risk on safety-critical hooks. ICE 245 (I7×C7×E5). Carded → CP-21 Epic (CP-22 harness+deny / CP-23 gates / CP-24 inject-time). |
 | `inject-time.sh` /tmp state cleanup | **Upgradeable** | Writes `/tmp/claude-time-hook-${SID}` per session, never pruned → unbounded accumulation on long-lived hosts/workers. Fix: age-based prune on each fire. ICE 168 (I3×C8×E7). Carded → CP-25. |
 | Base mandate-script event-wiring drift (`convey-mandate.sh` + `tool-discipline-mandate.sh`) | **Incomplete** | Both headers claim "Fires on SessionStart AND UserPromptSubmit" (tool-discipline L4-5 even states the intent: reinforce "every session AND every turn so they survive context compression") and both carry a `[ "$EVENT" = "UserPromptSubmit" ] && cat >/dev/null` stdin-drain branch — but `base/hooks.json` wires BOTH SessionStart-ONLY (only `inject-time` fires on UserPromptSubmit). So the designed per-turn reinforcement never happens (decays after compression — the exact failure the header cites) and the drain branch is dead code. Same defect CLASS as CP-20 (plugin-skill-mandate) but DIFFERENT files → not a dup. ICE 280 (I5×C7×E8). Carded → CP-26. |
+| Post-DB-migration stale references (db-reset tool ref / marketplace.json desc / safe-terminate pkgs) | **Incomplete** | Three assets still name the RETIRED `danx-issue` MCP + YAML card model (docker-deep L56 "the legacy danx-issue server is gone"; pipe-commit "there is NO YAML file"): `danxbot/skills/db-reset/SKILL.md` L135 calls non-existent `mcp__danxbot__danx_issue_create` (should be `mcp__danx_dashboard__issue_create`); `.claude-plugin/marketplace.json` danxbot desc says "issue-card workflow (YAML schema … danx-issue MCP)"; `human-collaboration/skills/safe-terminate/SKILL.md` item 5 lists retired `danx-issue-mcp/` pkg (actual packages/ tree = `danx-dashboard-mcp`). ICE 360 (I5×C8×E9). Carded → CP-34 Epic (CP-35 db-reset / CP-36 marketplace / CP-37 safe-terminate). |
+| Root `.gitignore` absent | **Incomplete** | Repo has NO top-level `.gitignore` (only `.danxbot/.gitignore` scoping that subtree); untracked root-owned `claude-projects/` sits uncovered and `git status` is noisy. ICE 270 (I3×C9×E10). Carded → CP-33. |
+| Per-plugin CHANGELOG / release notes | **Incomplete** | Distribution is version-driven; autoUpdate swaps the cache on any `plugin.json` bump with ZERO record of what changed. No CHANGELOG at any level; `publish.sh` emits no release notes → consumers get new behavior blind. ICE 150 (I5×C6×E5). Carded → CP-38 Epic (CP-39 gen-changelog.sh / CP-40 publish.sh wiring + README link). |
+| MCP tool namespace `mcp__danx_dashboard__` (underscore) | **Complete — NOT a defect** | `danxbot/skills/docker-deep/SKILL.md` L56 authoritatively states the live agent-facing server `@thehammer/danx-dashboard-mcp` has "tools prefixed `mcp__danx_dashboard__`" (underscore), used uniformly across 16+ production skills that demonstrably work. **CP-29's premise (live namespace is the hyphen form `mcp__danx-dashboard__`) is FALSE** — Claude Code sanitizes hyphens in an MCP server name to underscores in the tool prefix. CP-29 should be triaged → Cancel (verified this session via the plugins' own docs + the danx-dashboard-mcp entrypoint). |
 
 ---
 
@@ -60,42 +64,48 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 - **[Uncarded] jq/deps preflight for hooks** — Maintenance — ~125 (5×5×5) — hooks assume `jq` present; if missing under `set -euo pipefail` the deny guard may fail-open. Verify Claude Code fail-open/closed behavior first (base:docs-first). Exploratory until confirmed.
 - **[Uncarded] Hook invocation-form inconsistency** — Maintenance — ~168 (3×7×8) — `investigate` + `human-collaboration` hooks.json call their scripts by bare path (`${CLAUDE_PLUGIN_ROOT}/scripts/x.sh`, relying on the +x bit) while base/dev/danxbot use `bash ${CLAUDE_PLUGIN_ROOT}/scripts/x.sh`. Exec bits ARE currently set (100755 in git) so no live bug — purely defensive normalization against a future lost +x bit on the two discipline gates. Below bar given queue depth; fold into CP-8 validate (assert one invocation form) rather than a standalone card.
 - **[Exploratory] Split `danxbot` plugin (25 skills)** — Maintenance — not scored/carded — largest plugin; possible sub-plugin split, but big blast radius + unclear payoff. Revisit only when no clearer work remains.
+- **[Carded CP-34 Epic] Purge post-DB-migration stale refs** — Maintenance — 360 (5×8×9) — CP-35 db-reset tool ref, CP-36 marketplace.json desc, CP-37 safe-terminate pkg names.
+- **[Carded CP-33] Add root `.gitignore`** — Maintenance — 270 (3×9×10).
+- **[Carded CP-38 Epic] Per-plugin CHANGELOG** — Maintenance — 150 (5×6×5) — CP-39 gen-changelog.sh, CP-40 publish.sh wiring + README link.
+- **[TRIAGE — CANCEL CP-29]** — the "hyphen namespace" bug is a false positive; underscore prefix is correct per docker-deep L56. Not re-carded (would duplicate/contradict). Flag to operator for Cancel.
+- **[Note] Divergent ideator memory** — a parallel narrow-scope (ideator-subtree-only) session created CP-28..CP-32 (ideator plugin self-defects) using a SEPARATE clean-room `docs/features.md` that was never merged here. Those cards are real on the board; this canonical file now records them. CP-29 among them is the false positive above.
 
 ---
 
 ## Session Log (overwrite each session)
 
-**2026-07-08 (run 4)** — Fourth ideator run. CP-2..CP-25 all still open at Review (24 cards).
-This run inspected surfaces prior runs skipped: ALL mandate scripts (convey / tool-discipline /
-current-time / danxbot-skill / ideal-solution — prior runs only read plugin-skill / deny-db /
-inject-time / investigation-gate / human-loop), SKILL.md frontmatter (all 51 skills — consistent,
-name+description present, all under 300 LOC; max dispatch-deep 281), marketplace.json (CORRECT —
-lists all 6 plugins, unlike README/CP-5), plugin.json set, hooks.json invocation forms, exec bits.
+**2026-07-08 (run 5)** — Board grew to CP-2..CP-32 (31 cards, ALL still at Review — nothing has
+progressed to ToDo/In Progress across 5 runs; the Review queue is backing up). This run explored
+the FULL repo (`/home/newms/web/claude-plugins` via `DANX_REPO_ROOT`, not just the clean-room
+subtree) and found the canonical `docs/features.md` had DIVERGED from a parallel narrow-scope
+session that created CP-28..CP-32 (ideator self-defects) in a separate clean-room copy; merged that
+knowledge back here.
 
-Re-verified prior findings still hold: CP-5 (README stale), CP-6 (REFACTOR_* still at root +
-also duplicated in 3 worktrees but those sync with main), CP-11 (danx-ideate SKILL L62 still flat
-`type:'Feature'|'Bug'`+`ac` only), CP-19 (deny-db PATTERN L36 still omits dropAllTables/Views/Types
-despite L35 comment + REASON claiming them), CP-20 (plugin-skill-mandate header/drain vs SessionStart-
-only wiring).
+Key new evidence this run (grounded, file:line):
+- `db-reset/SKILL.md` L135 uniquely calls `mcp__danxbot__danx_issue_create` — no such tool; 16+
+  sibling skills use `mcp__danx_dashboard__issue_create`. Hard runtime failure on that branch.
+- `.claude-plugin/marketplace.json` danxbot desc still says "(YAML schema … danx-issue MCP)" —
+  both retired (docker-deep L56, pipe-commit). User-facing marketplace listing.
+- `safe-terminate/SKILL.md` item 5 lists retired `danx-issue-mcp/`; packages/ tree = `danx-dashboard-mcp`.
+- **CP-29 is a FALSE positive.** docker-deep L56 states the live namespace IS `mcp__danx_dashboard__`
+  (underscore). CP-29 claims it should be the hyphen form — wrong. Flag CP-29 for Cancel.
 
-RETURNED 2 draft cards to main agent (deliberately NOT padding to 5 — 24 open + dev-tooling repo):
-1. **Bug — base mandate per-turn wiring drift (convey + tool-discipline)** — ICE 280 (5×7×8).
-   SAME defect class as CP-20 but different files (base/scripts/convey-mandate.sh L4 +
-   tool-discipline-mandate.sh L4-5 headers claim UserPromptSubmit firing + carry dead drain
-   branches, base/hooks.json wires SessionStart-only). Strongest new find. Note in card: resolve
-   consistently with CP-20.
-2. **Bug — investigation-gate ↔ human-loop double-fire** — ICE 144 (4×6×6). Promoted from
-   3-run-old scratchpad; now with file:line evidence both gates fire on overlapping "why…?"
-   triggers with opposite tool-permission instructions. Carded to force the precedence decision.
+CREATED 3 top-level cards this run (I had curl access to the dashboard HTTP API — replicated the
+MCP contract directly since the subagent lacks `mcp__danx_dashboard__*` tools, CP-28):
+1. **CP-33** Bug — add root `.gitignore` (ICE 270, 3×9×10).
+2. **CP-34** Epic — purge post-DB-migration stale refs → children **CP-35** (db-reset tool ref, 360),
+   **CP-36** (marketplace.json desc, 450), **CP-37** (safe-terminate pkg names, 210). Epic ICE 360.
+3. **CP-38** Epic — per-plugin CHANGELOG → children **CP-39** (gen-changelog.sh), **CP-40**
+   (publish.sh wiring + README link). Epic ICE 150.
 
-Uncarded (below bar, in scratchpad): hook invocation-form inconsistency (bare-path vs bash-prefix
-in investigate/human-collaboration hooks.json — exec bits currently set so no live bug; fold into
-CP-8 validate); jq/fail-open preflight (needs docs-first on Claude Code hook fail semantics);
-marketplace.json↔plugin.json description drift (cosmetic, 144); danxbot split (exploratory).
+API mechanics learned (for next run): dashboard REST base is `${DANXBOT_DASHBOARD_URL}/api/issues`,
+Bearer `$DANXBOT_DISPATCH_TOKEN`, `?board=claude-plugins:claude-plugins-main` (bare slug is
+ambiguous → 400). `ac[]` items are keyed by **`title`** (not `text`). `phase_children[]` is accepted
+ONLY on `type=Epic` (Feature → 400 "phase_children[] is only valid for type=Epic"); children need
+explicit `type:"Story"`. This contradicts the ideator/danx-ideate doctrine that "Feature and Epic
+both take phase_children" — real containers must be Epic. (Adjacent to CP-11; not re-carded.)
 
-Mechanics: I have NO MCP/dashboard/curl access this run — I EXPLORE + SCORE + UPDATE MEMORY and
-RETURN draft cards to the MAIN agent, who holds `issue_create` and assigns CP ids. Feature/Epic are
-containers requiring phase_children[] child Stories; standalone fixes are Bug. All cards Maintenance
-(dev-tooling repo, no direct end-user surface — the mandate-wiring bug is the closest to user value:
-it degrades agent behavior quality for the operator). Next: when CP-5 lands, flag stale `pipeline`
-README row (`flow-*`→`pipe-*`).
+Uncarded / deferred: danxbot split (exploratory); marketplace↔plugin.json single-source (144);
+hook invocation-form normalization (fold into CP-8); jq/fail-open preflight (needs docs-first).
+Process observation for operator: 31 cards sit unactioned at Review — value is now in TRIAGING
+(start with Cancel CP-29) and DISPATCHING, not generating more.
