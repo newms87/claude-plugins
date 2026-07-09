@@ -25,6 +25,15 @@
 #   65 — wrong branch: invoked from a worktree whose HEAD is not on `<agent>`.
 #        Distinct from 1 because the recovery is "investigate the worktree",
 #        NOT "git rebase --continue".
+#   66 — generation superseded (DX-1665 arm b): the worker's pre-push
+#        generation-check (`$DANXBOT_GENERATION_CHECK_URL`) reported this
+#        dispatch was superseded by a higher-generation re-dispatch. The push
+#        is ABORTED — a zombie/partitioned worker must not double-merge. NOT a
+#        recoverable error: the card is already owned by the newer dispatch;
+#        this dispatch should terminate without retrying. The check is
+#        fail-OPEN — an absent/empty URL, unreachable worker, non-200, or
+#        unparseable body all PROCEED to the push (the dashboard reject is the
+#        second gate), so 66 fires ONLY on a reachable, explicit superseded:true.
 #
 # Worktree-safety design (do NOT change without reading this paragraph):
 # Each agent owns ONE worktree at <repo>/.danxbot/worktrees/<agent>/ with
@@ -50,6 +59,25 @@ card="$2"
 title="$3"
 shift 3
 bullets=("$@")
+
+# DX-1511 — run EVERY git op against the agent's worktree explicitly via
+# `git -C "$WT"`, never bare `git` relying on the process cwd being inside the
+# worktree. The clean-room launch path (DX-1511) spawns the agent in an
+# EXTERNAL cwd (`/var/tmp/danxbot-clean-room/<install-hash>/<key>/`, outside any repo), so a bare
+# `git` here would target the wrong tree (or fail with "not a git repository").
+# `$DANX_AGENT_WORKTREE` is set by the dispatch layer for every agent-bound
+# dispatch (the same path the worktree-guard hook enforces). This is SAFE on
+# the OLD in-worktree path too: `git -C <worktree>` when already inside that
+# worktree is a no-op. Fall back to the process cwd ("") only when the env var
+# is unset (non-agent dispatch) — there the agent already runs inside its tree.
+WT="${DANX_AGENT_WORKTREE:-}"
+git() {
+  if [[ -n "$WT" ]]; then
+    command git -C "$WT" "$@"
+  else
+    command git "$@"
+  fi
+}
 
 # Card id shape — `<PREFIX>-<N>` (e.g. `DX-162`). The id lands inside the
 # Conventional Commits scope `feat(<card>):`; an unconstrained value could
@@ -125,6 +153,39 @@ for b in "${bullets[@]}"; do
   msg_args+=(-m "- $b")
 done
 git commit "${msg_args[@]}"
+
+# 3b. DX-1665 arm (b) — split-brain fence: consult the dispatch's generation
+#     BEFORE pushing. If this dispatch was superseded (a higher-generation
+#     re-dispatch exists for the card after a worker-death re-queue), a
+#     partitioned/zombie worker must NOT push blind — abort with exit 66.
+#     Fail-OPEN by design (every branch except a reachable {superseded:true}
+#     proceeds to the push), so a missing/empty URL, an unreachable worker, a
+#     non-200, or unparseable JSON never wedges a legitimate finalize — the
+#     dashboard-side reject (arm a) is the second gate. Every curl exit is
+#     captured (`|| true`) so `set -euo pipefail` (line 41) can't kill us on a
+#     transient.
+#       env absent OR empty  -> skip check, push (legacy + THIS dispatch's own
+#                               finalize; resolveInfraEnv ""-fills the key)
+#       reachable + true     -> abort, exit 66 (do NOT push)
+#       reachable + false    -> push
+#       unreachable/non-200/unparseable -> push (gate 2 covers a real zombie)
+if [[ -n "${DANXBOT_GENERATION_CHECK_URL:-}" ]]; then
+  # NO `-f`: the `http_code == 200` check below is the SINGLE source of truth for
+  # "the worker answered authoritatively". `-f` is redundant with that AND on some
+  # curl builds suppresses the body that `-w` appends on a non-2xx — which would
+  # turn a parseable non-200 into an empty body. Keeping `-sS` (quiet, but show
+  # connect errors on stderr) + `|| true` keeps every branch fail-open.
+  gen_body=""
+  gen_http=""
+  gen_body="$(curl -sS -m 10 -w $'\n%{http_code}' "$DANXBOT_GENERATION_CHECK_URL" 2>/dev/null || true)"
+  gen_http="${gen_body##*$'\n'}"
+  gen_json="${gen_body%$'\n'*}"
+  if [[ "$gen_http" == "200" && "$gen_json" == *'"superseded":true'* ]]; then
+    echo "GENERATION_SUPERSEDED: this dispatch was superseded by a higher-generation" \
+         "re-dispatch — aborting the HEAD:main push (no double-merge). Exit 66." >&2
+    exit 66
+  fi
+fi
 
 # 4. Push the squash commit to origin/main with a rebase-loop on race.
 #    `git push origin HEAD:main` fast-forwards origin/main to our
