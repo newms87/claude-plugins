@@ -42,6 +42,8 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 |---|---|
 | `make launch-worker BOARD=<board-name>` | Starts a docker worker → poller dispatches ToDo cards |
 | `make launch-worker-host BOARD=<board-name>` | Starts a host worker → poller dispatches ToDo cards in interactive terminals |
+| `make launch-worker-remote TARGET=<t> BOARD=<board-name>` | DX-1802 — docker worker pointed at a REMOTE dashboard (pulls SSM secrets itself). Same prohibition as `launch-worker` — remote target makes an unauthorized launch WORSE, not safer. |
+| `make launch-worker-host-remote TARGET=<t> BOARD=<board-name>` | DX-1802 — host worker pointed at a REMOTE dashboard. Same prohibition as `launch-worker-host`, PLUS this one still trips `NestedClaudePreflightError` if run from inside a Claude Code session (see `dispatch-deep` skill) — an agent can never self-launch it regardless of authorization. |
 | `make launch-all-workers` | Starts every configured worker. Worse than above. |
 | `make launch-infra` | Starts shared MySQL + dashboard. Dashboard alone is mostly safe; if the user wants ONLY the dashboard, they will say so. |
 | `make launch-dashboard-host` | Same — operator-driven only. |
