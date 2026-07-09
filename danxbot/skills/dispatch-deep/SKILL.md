@@ -254,6 +254,35 @@ Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`)
 
 `MAX_RECOVERS = 3` is hardcoded in `attach-monitoring-stack.ts`. Changing it requires updating unit + integration tests in the same commit. 3 × ~5s window is enough to ride out the API stutter the feature was built for; more would burn tokens during sustained outages before falling through to operator intervention.
 
+## Launching a worker — two live footguns (DX-1763 / DX-1801, live-verified 2026-07-08)
+
+Both bite AFTER authorization is granted (see `no-unauthorized-worker-launch`) — they're about getting the launch command itself right, not about whether you're allowed to run it.
+
+### 1. `export VAR=...; make target` does NOT reliably override — use `make VAR=... target`
+
+The danxbot Makefile does `-include .env` near the top. GNU Make's variable-resolution order gives a **file-defined** variable (from `-include`d `.env`) precedence over a **shell-exported** variable of the same name for recipe execution — the opposite of what most people assume. Root `.env` unconditionally defines `DANXBOT_DASHBOARD_URL` and `DANXBOT_DISPATCH_TOKEN` (local-dev defaults). If you `export DANXBOT_DISPATCH_TOKEN=<prod-token>` and then run `make launch-worker BOARD=...`, the exported value is silently discarded — the recipe sees `.env`'s local-dev value instead. Symptom: worker registers fine (enrollment secret usually matches by design), but every dispatch-push from the dashboard 401s, because the pushed bearer doesn't match what the worker actually holds.
+
+**The only reliable override is the `make` command-line form:**
+```bash
+make DANXBOT_DISPATCH_TOKEN="$TOKEN" DANXBOT_WORKER_ENROLLMENT_SECRET="$SECRET" launch-worker BOARD=<board>
+```
+not:
+```bash
+export DANXBOT_DISPATCH_TOKEN="$TOKEN"   # WRONG — .env silently wins inside the recipe
+make launch-worker BOARD=<board>
+```
+This bit BOTH the host-mode path (`scripts/worker-env.sh`, fixed in DX-1763 with an explicit preset/restore pattern around its OWN `.env` re-sourcing) and the docker path (`docker-compose.worker.yml`'s `${VAR}` substitution, which reads whatever the recipe shell ultimately exports). The `${VAR}` substitution mechanism itself is NOT the bug here — it's the `-include .env` vs. shell-export precedence one level up, in the Makefile.
+
+**Corollary for adding a NEW overridable var to `docker-compose.worker.yml`:** if root `.env` ever defines a variable of the same name for a DIFFERENT purpose (e.g. `DANXBOT_DASHBOARD_URL` is `.env`'s HOST-mode default), do not reuse that name for the docker path's `${VAR:-default}` — the `.env`-defined value will always win over the compose-file default, and swapping in `${VAR:-default}` reproduces the original bug it looks like it fixes. Give the docker path a genuinely distinct variable name that root `.env` never defines (see `DANXBOT_DOCKER_DASHBOARD_URL` in `docker-compose.worker.yml`) so there's no name to collide on.
+
+### 2. Host-mode worker refuses to boot when launched from inside a Claude Code session
+
+`src/worker-boot.ts` preflights for `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_CODE_CHILD_SESSION` in its own process env and throws `NestedClaudePreflightError` if any are present — i.e., if the host-mode worker itself was spawned via a Claude Code session's Bash tool (nested). This is intentional (DX-1801): every `claude` process a nested worker spawns is ALSO a nested Claude Code session, and Claude Code's nested-session handling silently drops JSONL transcript persistence — tokens/tool-calls/shipped-logs all read zero with no visible error, which is exactly the failure DX-1801 root-caused after chasing a phantom log-shipping bug for hours.
+
+**Consequence: an agent (including this one) can never launch `make launch-worker-host` on its own behalf** — the Bash tool that would run it is itself inside a Claude Code session, guaranteeing the preflight trips. The operator must run the host-mode launch command from a plain terminal / shell outside any Claude Code session. An agent that needs a host-mode worker running should hand the operator the exact command (Make command-line `VAR=` form, per above) and wait — this is a hard mechanical wall, not a permissions question, so it applies even with full launch authorization granted.
+
+The DOCKER worker path has no such restriction — `docker compose up -d` backgrounds the container regardless of the invoking shell's nesting, so an authorized agent CAN launch the docker path from inside its own session. Prefer the docker path when an agent (rather than the operator) needs to bring a worker up.
+
 ## syncWorktree ff-only abort — never work around with ref/index/tree mutation (DX-340)
 
 `syncWorktree` (`src/agent/worktree-manager.ts:447-496`, per DX-293) is intentionally strict: `git pull --ff-only origin/main` aborts on any dirty / divergent working tree, and `dispatchWithRecovery` (`src/dispatch/recovery-mode.ts:65-84`) escalates that abort to `agents.<name>.broken` quarantine. The strictness is the feature — it surfaces writer-vs-git contention loudly instead of silently destroying work.
