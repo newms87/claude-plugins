@@ -47,3 +47,7 @@ long_cmd > /tmp/log 2>&1 && echo "OK" || (echo "FAIL"; tail -30 /tmp/log; exit 1
 - Never end chain with tail/grep/head/cat.
 - Pattern `; echo EXIT=$?; tail` = red flag → search-and-replace.
 - Don't trust `EXIT=0` without pointing to `RC=$?` line.
+
+## Redirect to a file FIRST if you'll need to search it after
+
+Before running, ask: will I need to grep/search the FULL output afterward (e.g. every FAIL line in a test run), not just the tail? If yes → redirect to a file (`cmd > /tmp/scratch/out.log 2>&1; RC=$?`) and `Read`/`grep` the file as many times as needed. Piping through `tail -N`/`head -N` at capture time discards everything past N lines — if a full-content search turns out to be needed later, the whole run must be redone. Decide this BEFORE running, not after seeing truncated results.
