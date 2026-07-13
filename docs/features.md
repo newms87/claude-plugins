@@ -47,6 +47,9 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 | Root `.gitignore` absent | **Incomplete** | Repo has NO top-level `.gitignore` (only `.danxbot/.gitignore` scoping that subtree); untracked root-owned `claude-projects/` sits uncovered and `git status` is noisy. ICE 270 (I3×C9×E10). Carded → CP-33. |
 | Per-plugin CHANGELOG / release notes | **Incomplete** | Distribution is version-driven; autoUpdate swaps the cache on any `plugin.json` bump with ZERO record of what changed. No CHANGELOG at any level; `publish.sh` emits no release notes → consumers get new behavior blind. ICE 150 (I5×C6×E5). Carded → CP-38 Epic (CP-39 gen-changelog.sh / CP-40 publish.sh wiring + README link). |
 | MCP tool namespace `mcp__danx_dashboard__` (underscore) | **Complete — NOT a defect** | `danxbot/skills/docker-deep/SKILL.md` L56 authoritatively states the live agent-facing server `@thehammer/danx-dashboard-mcp` has "tools prefixed `mcp__danx_dashboard__`" (underscore), used uniformly across 16+ production skills that demonstrably work. **CP-29's premise (live namespace is the hyphen form `mcp__danx-dashboard__`) is FALSE** — Claude Code sanitizes hyphens in an MCP server name to underscores in the tool prefix. CP-29 should be triaged → Cancel (verified this session via the plugins' own docs + the danx-dashboard-mcp entrypoint). |
+| `dispatch-deep/SKILL.md` LOC cap | **Incomplete** | Grew 281→310 lines (DX-1763/DX-1801 "worker-launch footguns" section added 2026-07-08) — breaches the repo's own documented 300-LOC cap (REFACTOR_MATRIX.md L16). Fresh regression this session; CP-8's future validator would have caught it but hasn't landed. ICE 432 (I6×C9×E8). Carded → CP-52. |
+| `agent-finalize.sh` exit 66 undocumented in danx-next recovery table | **Incomplete** | Script gained a new terminal exit code 66 (DX-1665 arm b, generation-superseded split-brain fence) fully documented in its own header, but `danx-next/references/step-procedures.md` Step 7a's "Read exit code" list still only enumerates 0/1/2/64/65 — verified via grep, 66 absent. An agent hitting this live code path has no documented recovery step. ICE 504 (I7×C8×E9). Carded → CP-53. |
+| `danxbot` skill "Local vs Deployed" table completeness | **Incomplete** | Self-described "single source of truth" quick-reference table lists only `make launch-worker` + `make deploy`/`make publish-mcp` — omits `make launch-worker-host` and the two new DX-1802 remote variants (`launch-worker-remote`/`launch-worker-host-remote`), both already documented consistently in `dispatch-deep` + `no-unauthorized-worker-launch`. Redundancy/completeness gap, not a blocking one (info exists elsewhere). ICE 252 (I4×C7×E9). Carded → CP-54. |
 
 ---
 
@@ -83,50 +86,76 @@ Plugins: `base` (universal discipline), `investigate` (read-only diagnosis), `de
 - **[Carded CP-45] deny-db docker-volume gap** — Maintenance — 448 (8×7×8) — add `docker compose down -v`/`--volumes`, `docker volume rm`/`prune` to PATTERN; same regex line as CP-19/CP-42; exclude bare `down`. Guard's own REASON/header already promise this route is blocked (doc/code drift).
 - **[Uncarded, Exploratory] human-collaboration on autonomous workers deadlocks** — ~120 (5×4×6) — marketplace.json explicitly warns "Do NOT install on autonomous dispatched workers (diagnostic-mode-on-question would deadlock)": human-loop-mandate STOPs on any `?`, so a dispatched worker with no human hangs. Nothing DETECTS/PREVENTS the misconfig. Possible defensive fix: human-loop-mandate.sh no-ops when an autonomous-dispatch env (DANXBOT_DISPATCH_TOKEN / DANX_RUNTIME=container, no human) is detected. Fuzzy detection → low conf; correct install already excludes it. Scratchpad only. DISTINCT from CP-27 (that's investigate↔human-collaboration double-fire in HUMAN sessions).
 - **[Note] Divergent ideator memory** — a parallel narrow-scope (ideator-subtree-only) session created CP-28..CP-32 (ideator plugin self-defects) using a SEPARATE clean-room `docs/features.md` that was never merged here. Those cards are real on the board; this canonical file now records them. CP-29 among them is the false positive above.
+- **[Carded CP-52]** — dispatch-deep LOC cap breach (310>300) — Maintenance — 432 (6×9×8) — split DX-1763/DX-1801 footguns section into a references/ file.
+- **[Carded CP-53]** — agent-finalize.sh exit 66 missing from danx-next recovery table — Maintenance — 504 (7×8×9) — add Exit 66 bullet mirroring existing 0/1/2/64/65 format.
+- **[Carded CP-54]** — danxbot skill "Local vs Deployed" table missing launch-worker-host + DX-1802 remote variants — Maintenance — 252 (4×7×9) — add 3 rows, transcribe from dispatch-deep/no-unauthorized-worker-launch.
+- **[Note] Board has NO MCP tools this session either** — `mcp__danx_dashboard__*` tools were not present in this dispatch's tool list (same gap CP-28/CP-46/CP-47/CP-48/CP-49/CP-50/CP-51 already describe). Used the documented curl-against-REST-API fallback (session log below has full mechanics). One operational lesson for next session: **the API has no dry-run/validate-only mode** — a test POST to `issue_create` creates a REAL card immediately (learned the hard way this run: an exploratory POST with placeholder description created CP-52 for real; immediately PATCHed it with the full intended content rather than leaving a placeholder card live). Future sessions: compose the FULL description+ac payload before the first POST for a given card; do not "test the shape" with a throwaway body.
 
 ---
 
 ## Session Log (overwrite each session)
 
-**2026-07-08 (run 7)** — Board now CP-2..CP-45 (44 cards). ALL still at Review — 7 runs in, nothing
-has EVER moved to ToDo/In Progress. Repo source unchanged since run 6 (HEAD = run-6 feature-note
-commit; last real source change was `danxbot v0.3.95`). The Review queue remains the sole bottleneck;
-ideation is NOT.
+**2026-07-13 (run 8)** — Board now CP-2..CP-54 (51 cards, up from 50 including the CP-46..CP-51
+"ideator has no MCP tools" cluster from a session between run 7 and this one). ALL still at Review —
+8 runs in, nothing has EVER moved to ToDo/In Progress. Confirmed again this run: board's derived
+status for Review/ToDo/InProgress all return the SAME 50 rows (i.e. literally zero cards in ToDo or
+In Progress) — the Review queue remains the sole bottleneck; ideation supply is not.
 
-Fresh exhaustive sweep this run, deliberately targeting the LEAST-scrutinized plugins (`dev`,
-`pipeline`, `investigate`, `human-collaboration` — prior runs concentrated on danxbot+base hooks).
-Verified clean: ALL hook `scripts/*.sh` refs resolve; ALL `plugin:skill` cross-refs resolve
-(base:convey, base:fail-loudly, pipeline:pipe-plan, etc. all exist); no broken `references/` links;
-LOC caps hold (max 281 dispatch-deep); dev/danxbot mandate-script headers MATCH their SessionStart
-wiring (no CP-20/CP-26-class drift there); all marketplace-named danxbot skills exist.
+This dispatch itself hit the exact bug CP-28/CP-46..CP-51 describe: no `mcp__danx_dashboard__*` tools
+in the tool list. Worked around via the documented curl-against-REST-API fallback (mechanics below).
+Did NOT re-card this — already thoroughly covered by 6 existing Review cards.
 
-TWO NEW grounded cards created (both Bug, ICE-justified, file:line-anchored). Only two because the
-repo is genuinely clean — did NOT pad to the 3-5 ask with filler (Critical Rule: no duplicates / no
-generic filler; 6 prior runs already carded every structural defect):
-1. **CP-44** (486, 6×9×9) — `dev:git-discipline` L48/L50/L159 mandate the DEAD command `/flow-commit`;
-   pipeline was renamed `flow-*`→`pipe-*` (real `/pipe-commit`, correct in 12 other refs). Highest-ICE
-   find this run. Grep confirms flow→pipe debt is ONLY this skill + README row (CP-5); no others.
-2. **CP-45** (448, 8×7×8) — `deny-destructive-db` PATTERN has ZERO docker coverage yet its own header
-   (L18-19) + REASON (L44) promise "recreating the docker volume … will be blocked". `docker compose
-   down -v`, `docker volume rm/prune` destroy the DB volume unblocked. Distinct vector from CP-19
-   (schema APIs) + CP-42 (raw SQL) but SAME PATTERN line → implement all three together; exclude bare
-   `docker compose down` (legit stop).
+Repo source changed materially since run 7 (`cc7dbef`→`148d4a2`, 7 new commits): `base v0.3.23`
+(bash-exit-capture redirect-to-file guidance), `danxbot v0.3.96/97/98` (dispatch-deep worker-launch
+footguns section, no-unauthorized-worker-launch DX-1802 remote-variant rows, issue-card-workflow
+manual-session-finalization section), plus an out-of-band commit to `.danxbot/scripts/agent-finalize.sh`
+(DX-1511 worktree-safety `git()` wrapper + DX-1665 arm-b generation-supersede exit 66). Targeted the
+diff since run 7 rather than re-sweeping the whole repo (already exhaustively covered 7 times) —
+found genuine, fresh regressions/gaps introduced BY that diff:
 
-Investigated but REJECTED as false positives (verification held): suspicious `/danx-no-false-blockers`,
-`/danx-effort-policy`, `/danx-prep`, `/danx-repo-config`, `/danx-issue-mcp` "command" refs are all
-`.claude/rules/*.md` FILE paths or the retired MCP inside the to-be-deleted `REFACTOR_MATRIX.md`
-(CP-6) — NOT dead commands. `comment-style` "YAML" mention = markdown formatting guidance, not the
-retired card model. human-collaboration-on-autonomous-worker deadlock = real (marketplace warns) but
-Exploratory/low-conf → scratchpad, not carded.
+1. **CP-52** (432, 6×9×8) — `dispatch-deep/SKILL.md` grew 281→310 lines from the new footguns section,
+   breaching the repo's own documented 300-LOC cap (REFACTOR_MATRIX.md L16; was clean at 281 per run 7's
+   own note). No CI catches this yet (CP-8 still Review) — exactly the risk class CP-7/CP-8 exist for.
+2. **CP-53** (504, 7×8×9) — highest-ICE find this run. `agent-finalize.sh`'s new exit code 66 is fully
+   documented in the script's own header but ABSENT from `danx-next/references/step-procedures.md`'s
+   exit-code recovery table (0/1/2/64/65 present, 66 missing — verified via grep). A dispatched agent
+   hitting this live split-brain-fence code path has zero documented recovery step.
+3. **CP-54** (252, 4×7×9) — `danxbot` skill's "Local vs Deployed" table (self-described single source
+   of truth) omits `launch-worker-host` and the two new DX-1802 remote variants, both already documented
+   consistently in `dispatch-deep` + `no-unauthorized-worker-launch`. Lower severity (info exists
+   elsewhere) but a real completeness gap in the canonical doc.
 
-API mechanics (confirmed this run): auth is `Authorization: Bearer $DANXBOT_DISPATCH_TOKEN` against
-`$DANXBOT_DASHBOARD_URL` (`http://host.docker.internal:5555`). GET `/api/issues?board=<qualified-id>`
-(board in query, REQUIRED — omit → 400). POST `/api/issues?board=…` with `board` ALSO in the JSON
-body; returns **HTTP 201** with `{issue:{issue:{id,…}}}` (id IS echoed — run-6 note was wrong).
-`ac[]` items keyed by `title`. gate_decisions NOT required for `Bug` on this board (201 without it).
-Subagent still lacks `mcp__danx_dashboard__*` tools → used curl against the REST API.
+Investigated but found CLEAN / no new defect: `scripts/publish.sh` (matches `.danxbot/config/workflow.md`
+exactly); `agent-finalize.sh`'s new `git()` wrapper + curl generation-check parsing (correct bash
+parameter-expansion for last-line extraction, fail-open branches all correct per its own header);
+`deny-destructive-db.sh` PATTERN unchanged (CP-19/42/45 still valid, not re-carded); all hooks.json
+files unchanged; no new dead `/flow-*` refs; no new `danx_issue_create` refs; root `.gitignore` still
+absent (CP-33 still valid); `REFACTOR_MATRIX.md`/`REFACTOR_PHASE7_REPORT.md` still present (CP-6 still
+valid); `docs/skills-index.md` / `docs/authoring-plugins.md` still don't exist (CP-13/14/15 still
+valid); all 6 plugin.json versions present and consistent with recent commits; pipeline/dev/investigate/
+human-collaboration skill files (least-recently-touched plugins) show no new drift.
 
-Process note for operator: 44 cards unactioned at Review after 7 ideation runs. Marginal value of
-MORE cards is now effectively zero — the constraint is entirely TRIAGE + DISPATCH throughput, not
-idea supply. Suggested first triage actions: Cancel CP-29 (false positive); batch the deny-db regex
-work CP-19 + CP-42 + CP-45 into ONE dispatch (same PATTERN line).
+**Operational lesson (see scratchpad note above):** the dashboard REST API has NO dry-run/validate-only
+mode — a test POST to `issue_create` creates a real card immediately. Learned this the hard way: an
+exploratory POST with a placeholder description created CP-52 for real; immediately PATCHed it with the
+full intended content (verified PATCH does NOT accept a `board` field in the body — 400 `Unknown
+field(s): board` — omit it, board is query-string only for PATCH). Compose the full payload BEFORE the
+first POST next time.
+
+API mechanics (reconfirmed + extended this run): auth `Authorization: Bearer $DANXBOT_DISPATCH_TOKEN`
+against `$DANXBOT_DASHBOARD_URL`. GET `/api/issues?board=<qualified-id>&status=<Status>` — board in
+query, REQUIRED. POST `/api/issues?board=…` with `board` ALSO in the JSON body → **201** with
+`{issue:{issue:{id,…}},checklists:...}`. **PATCH `/api/issues/<ID>?board=…`** — board in query ONLY,
+including it in the JSON body → 400 `Unknown field(s): board`; `description` and `ac[]` (re-sent) both
+update correctly, `ac[]` items keyed by `title`, returns 200 with the full issue + `checklists[]`
+reflecting the new AC items. Single-issue GET (`/api/issues/<ID>?board=…`) returns the issue flat (no
+`{issue:{issue:{...}}}` nesting — that nesting is POST/PATCH-response-only). `gate_decisions` NOT
+required for `Bug`/`Feature` on this board (201 without it, both types this run).
+
+Process note for operator: 51 cards unactioned at Review after 8 ideation runs (some spanning parallel
+clean-room sessions — CP-46..CP-51 came from a session this run's log has no direct visibility into).
+Marginal value of MORE cards remains near zero — the constraint is entirely TRIAGE + DISPATCH
+throughput, not idea supply. This run intentionally used a targeted diff-since-last-run strategy
+(rather than a full re-sweep) specifically because 7 prior full sweeps had already exhausted the
+low-hanging structural defects; all 3 new cards trace directly to lines added in the 7-commit diff since
+run 7, none are re-discoveries.
