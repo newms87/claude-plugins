@@ -1,6 +1,6 @@
 ---
 name: slack-agent
-description: 'Slack-worker dispatch contract: danxbot_slack_reply once + danxbot_complete; intermediate update discipline; thread-scope invariant.'
+description: 'Slack-worker dispatch contract: danxbot_slack_reply required for questions, forbidden for tasks; danxbot_complete always; emoji reaction + card-view update for tasks.'
 audience: worker
 ---
 
@@ -31,23 +31,40 @@ If this dispatch touches code, the issue-ref comment convention applies exactly 
 
 ## Required tool calls
 
-1. **`danxbot_slack_reply`** — call this exactly ONCE, after you have
-   finished investigating and have a final answer. The `text` parameter
-   IS the user's reply; write it as if you are the one person in the
-   thread answering their question. Format with Slack mrkdwn
-   (`*bold*` / `_italic_` / `\`code\``), keep it focused, and do not
-   hedge with meta-commentary like "I'll go check X" — that belongs in a
+Split by dispatch type:
+
+### Questions — User wants information back
+
+1. **`danxbot_slack_reply`** — REQUIRED. Call after you have finished
+   investigating and have a final answer. The `text` parameter IS the
+   user's reply; write it as if you are the one person in the thread
+   answering their question. Format with Slack mrkdwn (`*bold*` /
+   `_italic_` / `\`code\``), keep it focused, and do not hedge with
+   meta-commentary like "I'll go check X" — that belongs in a
    `danxbot_slack_post_update`, not the final reply.
 
-2. **`danxbot_complete`** — call this IMMEDIATELY after
+2. **`danxbot_complete`** — REQUIRED. Call immediately after
    `danxbot_slack_reply`, with `status: "complete"` and a short
    `summary` (one sentence, for the dispatches dashboard — NOT for the
    Slack user). Never exit without calling this.
 
-If something went wrong and you cannot produce a useful reply, still
-post a `danxbot_slack_reply` explaining what you couldn't answer and
-why, then call `danxbot_complete` with `status: "failed"` and the
-failure reason.
+### Tasks — Act on a card / do something (do not reply)
+
+1. **`danxbot_slack_reply`** — FORBIDDEN for successful tasks. The 🧠→✅
+   reaction (stamped by the listener when `danxbot_complete` exits with
+   `status: "complete"`) and the in-place card-view re-render are the
+   confirmation. The user sees the card update, not a prose reply.
+
+2. **`danxbot_complete`** — REQUIRED. Always call with `status:
+   "complete"` after the task finishes successfully. Never exit without
+   calling this.
+
+3. **Failed task** — the ONE task exception that posts a reply. If the
+   task fails, post exactly ONE short prose line explaining the failure
+   via `danxbot_slack_reply`, then call `danxbot_complete` with `status:
+   "failed"` and the failure reason. Coordinate with the listener's own
+   failure line (which fires when the dispatch exits non-completed) so
+   the two do not duplicate.
 
 ## Created or identified a card for this thread → LINK it (MANDATORY)
 
@@ -82,22 +99,27 @@ a card from a thread without linking it is an incomplete dispatch.
   **one** the thread is primarily tracking (usually the parent/epic, or
   the single card the user asked for).
 
-## Intermediate updates — use sparingly
+## Intermediate updates — use sparingly (default: zero for tasks)
 
 **`danxbot_slack_post_update`** posts a status line into the same
 thread while you're still working. Use it ONLY for updates the user
 cares about:
 
-- "Reading the campaign schema now" — yes
-- "Found the failing test — it's a stale fixture" — yes
+- "Reading the campaign schema now" — yes (questions)
+- "Found the failing test — it's a stale fixture" — yes (questions)
 - "Running Read on src/foo.ts" — NO, the user doesn't care
 - Any progress-bar-style spam — NO
 
-A good dispatch has zero to two intermediate updates. If you catch
-yourself posting every file read, stop — noise erodes trust and the
-user will mute the bot. The canonical pattern is: post one update when
-you've identified the investigation plan, finish the work silently,
-post the final `danxbot_slack_reply`, and `danxbot_complete`.
+**For questions:** a good dispatch has zero to two intermediate updates.
+
+**For tasks:** zero intermediate updates is the norm. Post nothing while
+working — the action is the answer. Do not post updates for every file
+edit or step. If you catch yourself posting, stop — noise erodes trust
+and the user will mute the bot.
+
+The canonical pattern is: post one update when you've identified the
+investigation plan (questions only), finish the work silently, post the
+final `danxbot_slack_reply` (questions only), and `danxbot_complete`.
 
 ## Thread scope is automatic
 
