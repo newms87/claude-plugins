@@ -16,6 +16,18 @@ Statuses are computed from lifecycle triggers via `deriveStatus()` in `src/issue
 
 Precedence: 1 > 2 > 3 > 4 > 5 > 6 > 7. First matching rule wins. **Agents NEVER write `status:` directly** — timestamp triggers + gate fields drive state.
 
+## Rule 4 ("In Progress") has three causes — verify before declaring health, never trust the count
+
+`dispatch !== null` collapses three distinct real states into one displayed status. An aggregate count of "N cards In Progress," or a dashboard "Agents Broken" banner, is a symptom pointer — not proof of health OR proof of a specific cause. Before declaring the system healthy, or diagnosing what's wrong, resolve EVERY `In Progress` card to one of:
+
+1. **Container rollup** — an Epic/Feature parent derives `In Progress` because a child does (see Container Status below). No action; the container's own `dispatch` field is null, only the derivation cascades.
+2. **Legitimate manual/operator pickup** — `dispatch.kind === 'manual'`. Owned by whoever picked it up; not the poller's concern, no self-heal applies.
+3. **Genuinely stranded** — `dispatch` is non-null but the underlying process is dead (worker restart, crash, or a failed dispatch that cleared its own `dispatch_id` without the derived status recomputing). This is the only case that needs recovery.
+
+**Mechanical check before saying "N In Progress is healthy" or before diagnosing why:** for EACH In Progress card, read `dispatch_id` / `started_at` / `dispatch_kind`, AND cross-reference the real dispatch-tracking table's running/queued rows against the worker's actual concurrent-dispatch capacity. A count of In Progress cards that exceeds worker slots, or that doesn't reconcile 1:1 against live dispatch rows, means some fraction is stranded — the aggregate number alone cannot tell you which fraction. Same discipline applies to an agent-profile "broken" flag / banner: clearing it is a fresh start, not a diagnosis — check the profile's strike history (which card, which failure reason) before assuming the same failure won't immediately re-trip it.
+
+This corrects a real mistake: declaring "8 In Progress on one board + 2 on another = 10, all healthy, nothing stuck" from the counts alone, when only 1 card had a real live dispatch behind it — the other 9 were a mix of container rollups and stranded cards that looked identical in the aggregate.
+
 ## Status on Creation — ALWAYS start in Review
 
 **Every newly created card MUST start with `status: "Review"`** — without exception. Review is the holding pen for un-audited cards. The per-card triage agent is the only mover from `Review` → `ToDo` (stamps `ready_at`).
