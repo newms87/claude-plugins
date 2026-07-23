@@ -12,6 +12,16 @@ Out-of-scope: `waiting_on == null` AND `blocked == null` AND `status_derived ∈
 
 ## Status = Review
 
+### Investigation Gate (MANDATORY, before ICE-scoring)
+
+Real investigation, not a description re-read. Every one of these three checks runs before you write an ICE score — this is the load-bearing step; a Keep/Approve verdict reached without it is not a valid triage.
+
+1. **Already implemented?** Identify the concrete files/functions/routes the card's description or AC names or clearly implies. `Grep`/`Read` them. If the described behavior already exists in the current code — fully or substantially — that is a **Cancel** (superseded by reality), not a Keep, however well-written the card is. Cite the file:line that proves it either way.
+2. **Still relevant?** Re-check the premise against the CURRENT architecture, not the architecture the card was written against. `git log`/`git blame` the relevant area if the card references something that may have since changed direction. A card can be internally coherent and still describe a world that no longer exists (an inverted decision, a retired subsystem, a superseding redesign already shipped).
+3. **Duplicate or already-decided sibling?** Search for a same/near-identical-title card (`mcp__danx_dashboard__issue_list({q: "<distinctive phrase from the title>"})`), including `-IMPORTED` / `-IMPORTED-2`-style variant ids of the same underlying card. If a sibling covering the same ground is already `Cancelled` or `Done`, that disposition almost always transfers — Cancel this one too and say why in `reason`, unless you find concrete evidence the sibling's cancellation reasoning does NOT apply here.
+
+A card that passes all three (not implemented, still relevant, no superseding sibling) earns real Confidence in the ICE score. A card that fails any one of them is a Cancel candidate regardless of how good its Impact/Ease would otherwise look — a well-written description of unnecessary work is still unnecessary work.
+
 **Decide one of four outcomes:**
 
 | Outcome | Action | MCP triage call | Terminal call |
@@ -24,10 +34,10 @@ Out-of-scope: `waiting_on == null` AND `blocked == null` AND `status_derived ∈
 **Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite.
 
 **Distinguish Keep vs Approve vs Park vs Cancel:**
-- Competent agent finish without asking human? → Keep.
-- Implementable but direction needs sanity-check? → Approve.
-- On hold, revisit later, not cancelled? → Park (new).
-- No longer desired / superseded / duplicate? → Cancel.
+- Investigation confirms not-yet-done, still relevant, no superseding sibling, AND a competent agent can finish without asking human? → Keep.
+- Investigation confirms it's real + relevant, but direction needs sanity-check? → Approve.
+- Investigation inconclusive or genuinely on hold, revisit later, not cancelled? → Park (new).
+- Investigation finds it's already implemented, no longer relevant, or duplicates/is-superseded-by an already-Cancelled/Done sibling? → Cancel.
 
 ## Status = Blocked
 
