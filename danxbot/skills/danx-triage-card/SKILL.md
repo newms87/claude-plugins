@@ -42,11 +42,7 @@ Out-of-scope refuse: `waiting_on == null` AND `blocked == null` AND `status_deri
    - `reason` = substantive, evidence-backed reasoning (NOT a 1-2 sentence label) — for Review/Keep/Approve/Cancel this MUST include: what you checked (files/functions read), what you found (implemented already? still relevant? duplicate?), and the ICE breakdown with the file:line evidence behind each axis. A `reason` that could have been written without reading any code is a rejected triage, redo it.
    - `ttl_seconds` = 86400 (Review), 10800 (Blocked), 3600 (Waiting On)
 5. **Append comment** — call `mcp__danx_dashboard__issue_comment({id, action: 'add', text: "## Triage — <date>\n..."})` with markdown body containing `**Status:** <from> → <to>`, `**Decision:** <Keep|Cancel|Approve|Park|Demote|Confirm-Block|Unblock>`, `**ICE:** <total> (<I>×<C>×<E>)` (Review/Keep/Approve only), `**Investigation:** <files/functions checked + what you found>`, `**Reason:** <reason>`.
-6. **Complete** — per decision (server auto-routes):
-   - Keep / Approve / Demote → `danxbot_complete({status: "ready"})`
-   - Cancel → `danxbot_complete({status: "cancelled"})`
-   - Park (defer) → `danxbot_complete({status: "archive"})`
-   - Confirm-Block / Unblock → `danxbot_complete({status: "complete"})`
+6. **Complete** — `danxbot_complete({status: "complete", summary})` ALWAYS, regardless of verdict. The card's fate is already fully driven by `issue_triage` (step 4) — DX-835 split card lifecycle (`issue_triage`/`issue_transition`) from dispatch finalization (`danxbot_complete`); the worker no longer infers card moves from `danxbot_complete.status`. `danxbot_complete`'s status is ONLY "did this dispatch itself succeed" — a triage agent that read the card and posted a verdict succeeded, no matter which verdict it reached. Calling it with `status: "ready"` / `"cancelled"` / `"archive"` (the pre-DX-835 contract) makes the worker stamp the DISPATCH row `failed` (only literal `"complete"` counts as dispatch success, `src/mcp/danxbot-server.ts` `isCompleteSuccess` / `src/worker/dispatch.ts:2701`) — a fully successful triage run then reads as a failure and feeds the auto-triage breaker's failure count (DX-1904/DX-1809), tripping unrelated backoffs for zero reason. Use `status: "failed"` (with a real ≥30-char reason) ONLY when the dispatch itself couldn't complete — e.g. the card was unreadable, an MCP call errored, you genuinely could not reach a verdict.
 
 ## ICE Rubric (Review only)
 
@@ -72,14 +68,15 @@ A Confidence score above 2 with no cited file:line evidence in `last_explain` is
 
 ## Terminal Calls
 
-Only `ready`, `cancelled`, `archive`, `complete` valid.
+Card lifecycle is driven ENTIRELY by `issue_triage`'s `verdict` (step 4) — the server routes each verdict to the right card-side transition. `danxbot_complete` (step 6) is dispatch-only and always `status: "complete"` on a successful triage run, independent of verdict.
 
-| Decision | Terminal status | Derived status |
-|---|---|---|
-| Keep / Approve / Demote | `ready` | `ToDo` |
-| Cancel | `cancelled` | `Cancelled` |
-| Park | `archive` | `Backlog` |
-| Confirm-Block / Unblock | `complete` | unchanged |
+| Decision | `issue_triage` verdict | Resulting card status | `danxbot_complete` status |
+|---|---|---|---|
+| Keep / Approve / Demote | `keep` / `approve` | `ToDo` | `complete` |
+| Cancel | `cancel` | `Cancelled` | `complete` |
+| Park | `defer` | `Backlog` | `complete` |
+| Confirm-Block / Unblock | (per Blocked/Waiting-On path) | unchanged | `complete` |
+| Dispatch itself failed (unreadable card, MCP error, no verdict reached) | — | unchanged | `failed` (real ≥30-char reason) |
 
 ## Boundaries
 

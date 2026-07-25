@@ -26,10 +26,12 @@ A card that passes all three (not implemented, still relevant, no superseding si
 
 | Outcome | Action | MCP triage call | Terminal call |
 |---|---|---|---|
-| **Keep** | Promote to dispatch queue | `issue_triage({verdict: "keep", ice: {i,c,e}, reason})` | `danxbot_complete({status: "ready"})` — server stamps `ready_at` |
-| **Cancel** | Obsolete/superseded/unwanted | `issue_triage({verdict: "cancel", reason})` + `issue_retro({good, bad})` | `danxbot_complete({status: "cancelled"})` — server stamps `cancelled_at` + renders `## Retro` |
-| **Park** | On hold, revisit later (NEW, DX-739) | `issue_triage({verdict: "defer", reason})` | `danxbot_complete({status: "archive"})` — server stamps `archived_at` (→ Backlog) |
-| **Approve** | Implementable but direction needs sign-off | `issue_requires_human({set: true, reason, steps[]})` + `issue_triage({verdict: "approve", ice, reason})` | `danxbot_complete({status: "ready"})` — server stamps `ready_at`; `requires_human` gate keeps picker off until human clears |
+| **Keep** | Promote to dispatch queue | `issue_triage({verdict: "keep", ice: {i,c,e}, reason})` — server stamps `ready_at` | `danxbot_complete({status: "complete"})` |
+| **Cancel** | Obsolete/superseded/unwanted | `issue_triage({verdict: "cancel", reason})` + `issue_retro({good, bad})` — server stamps `cancelled_at` + renders `## Retro` | `danxbot_complete({status: "complete"})` |
+| **Park** | On hold, revisit later (NEW, DX-739) | `issue_triage({verdict: "defer", reason})` — server stamps `archived_at` (→ Backlog) | `danxbot_complete({status: "complete"})` |
+| **Approve** | Implementable but direction needs sign-off | `issue_requires_human({set: true, reason, steps[]})` + `issue_triage({verdict: "approve", ice, reason})` — server stamps `ready_at`; `requires_human` gate keeps picker off until human clears | `danxbot_complete({status: "complete"})` |
+
+`danxbot_complete` is ALWAYS `status: "complete"` on a successful triage run, regardless of verdict — DX-835 already moved the card via `issue_triage` above; `danxbot_complete` only reports whether the dispatch itself succeeded. Using `"ready"`/`"cancelled"`/`"archive"` here (pre-DX-835 contract) makes the worker stamp the DISPATCH row `failed`, poisoning the auto-triage breaker's failure count for a run that actually succeeded (DX-1810).
 
 **Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite.
 
@@ -47,7 +49,7 @@ A card that passes all three (not implemented, still relevant, no superseding si
 
 | Outcome | Action | MCP triage call | Terminal call |
 |---|---|---|---|
-| **Every step locally executable** — wrongly punted | **Demote** to ToDo | `issue_transition({action: "unblock"})` + `issue_triage({verdict: "keep", reason})` | `danxbot_complete({status: "ready"})` — server stamps `ready_at` + clears `blocked` |
+| **Every step locally executable** — wrongly punted | **Demote** to ToDo | `issue_transition({action: "unblock"})` + `issue_triage({verdict: "keep", reason})` — server stamps `ready_at` + clears `blocked` | `danxbot_complete({status: "complete"})` |
 | **At least one step genuinely human-only** | **Confirm** Blocked | `issue_triage({verdict: "keep", reason})` | `danxbot_complete({status: "complete"})` — triage recorded; card remains Blocked |
 | **Mixed** (some local, some human-only) | Confirm, but note next worker dispatch should execute local steps before re-confirming | `issue_triage({verdict: "keep", reason})` noting local steps needed | `danxbot_complete({status: "complete"})` |
 
