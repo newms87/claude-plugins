@@ -38,10 +38,12 @@ A card that passes all three (not implemented, still relevant, no superseding si
 **Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite.
 
 **Distinguish Keep vs Approve vs Park vs Cancel:**
-- Investigation confirms not-yet-done, still relevant, no superseding sibling, AND a competent agent can finish without asking human? → Keep.
-- Investigation confirms it's real + relevant, but direction needs sanity-check? → Approve.
+- Investigation confirms it's real, still relevant, no superseding sibling, AND a competent agent could pick it up and finish RIGHT NOW without a human decision first? → **Approve.** This is the ONLY Review-path verdict that stamps `ready_at` and moves the card toward `ToDo` — if the card is genuinely ready, Approve is the correct call, not Keep.
+- Still worth keeping but not yet actionable/urgent, missing info, or waiting on a human sanity-check before it should be worked? → **Keep.** `keep` refreshes the re-triage TTL ONLY — `ready_at` is untouched, the card stays in `Review` and will simply be re-evaluated later. Keep is a "not yet", never a "yes, promote".
 - Investigation inconclusive or genuinely on hold, revisit later, not cancelled? → Park (new).
 - Investigation finds it's already implemented, no longer relevant, or duplicates/is-superseded-by an already-Cancelled/Done sibling? → Cancel.
+
+**Do not default to Keep out of habit or caution.** Keep is the safest-*feeling* verdict but it is a no-op on dispatchability — a card that is actually ready and gets Keep'd anyway never reaches `ToDo` no matter how many triage passes it survives. Confirmed on prod board `danxbot:danxbot-main` (DX-1960): Review count dropped 212→177 over ~2.5h of active, healthy triage (9+ clean dispatches) while `ToDo` stayed flat at 2 the entire window, because the large majority of verdicts landed on Keep when Approve was the call that would have actually moved the card. If your investigation would let a competent agent start work immediately, use Approve.
 
 ## Status = Blocked
 

@@ -72,11 +72,17 @@ Card lifecycle is driven ENTIRELY by `issue_triage`'s `verdict` (step 4) — the
 
 | Decision | `issue_triage` verdict | Resulting card status | `danxbot_complete` status |
 |---|---|---|---|
-| Keep / Approve / Demote | `keep` / `approve` | `ToDo` | `complete` |
-| Cancel | `cancel` | `Cancelled` | `complete` |
-| Park | `defer` | `Backlog` | `complete` |
-| Confirm-Block / Unblock | (per Blocked/Waiting-On path) | unchanged | `complete` |
+| Keep (Review) | `keep` | `Review` (unchanged — TTL refreshed, NOT a promotion) | `complete` |
+| Approve (Review) | `approve` | `ToDo` (stamps `ready_at`) | `complete` |
+| Cancel (Review) | `cancel` | `Cancelled` | `complete` |
+| Park (Review) | `defer` | `Backlog` | `complete` |
+| Demote (Blocked) | `issue_transition({action:"unblock"})` + `keep` | `ToDo` | `complete` |
+| Confirm-Block (Blocked) | `keep` | unchanged (`Blocked`) | `complete` |
+| Unblock (Waiting On) | `issue_transition({action:"unblock"})` + `keep` | unchanged (picker dispatches next tick) | `complete` |
+| Confirm-Block (Waiting On) | `keep` | unchanged (`Waiting On`) | `complete` |
 | Dispatch itself failed (unreadable card, MCP error, no verdict reached) | — | unchanged | `failed` (real ≥30-char reason) |
+
+**Keep ≠ promotion.** `keep` ONLY refreshes `triage_expires_at` — `ready_at` is never touched, so the card stays in `Review`. `approve` is the ONLY Review-path verdict that stamps `ready_at` and moves the card to `ToDo`. Reaching for Keep on a card that is actually ready to work — out of habit, or because Keep "feels" like the safe default — silently starves `ToDo`: prod evidence (DX-1960) showed Review draining 212→177 over 2.5h of healthy triage while ToDo stayed flat at 2, because verdicts kept landing on Keep. See references/triage-paths.md "Distinguish Keep vs Approve" before defaulting to Keep.
 
 ## Boundaries
 
