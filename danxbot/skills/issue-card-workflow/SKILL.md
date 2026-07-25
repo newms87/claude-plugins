@@ -155,6 +155,14 @@ Each line MUST name a concrete user-observable result; a line with no see/do ans
 
 **Post-`issue_create` DEPENDENCY-WIRING gate (MANDATORY, same turn as creating an Epic/Feature with `phase_children[]`):** `phase_children[]` sets `parent_id` ONLY — it wires ZERO ordering. Sequentially-dependent phases dispatch in PARALLEL the instant they are readied. So immediately after the create, for EVERY phase that needs an earlier phase done first, call `issue_dependency({id: <later-phase>, action: 'add', kind: 'depends_on', target_id: <predecessor>})` — BEFORE readying any phase. Relying on Review-status to hold order is the exact failure this gate blocks: the operator's `ready` bypasses it and the poller fans out every dispatchable phase at once. "I'll add the edges when I ready them later" is the deferral that ships an unguarded epic — wire them at creation or the ordering does not exist.
 
+**Sequencing decided AFTER creation, or a staged rollout (MANDATORY — same gate, no time-of-decision exception):** The gate above is not scoped to "same turn as create," it is scoped to "the moment you know a later phase must wait." Deciding the ordering only after the containers already exist, or readying phases one at a time over a session (or across sessions), does not relax it.
+
+Leaving a later phase un-readied in `Review` is **NOT a hold.** It is zero mechanical protection — nothing prevents a future triage pass or a manual `ready` from promoting it independently of whether its prerequisite ever shipped. Why: the PRE-work `plan-dependency` gate only compares a candidate against the LIVE Ready + In-Progress set (see "Known dependency / conflict edges" above) — a prerequisite still sitting in Review is invisible to it and passes with zero edges recorded. Once both cards get readied without an edge between them, nothing stops them dispatching concurrently, out of order.
+
+Correct pattern, always: the moment you know phase B needs phase A done first, call `issue_dependency({id: B, action:'add', kind:'depends_on', target_id: A})` — same turn if both cards already exist, immediately upon deciding it later otherwise. THEN ready phase B whenever convenient — now, or held un-readied — either is safe once the edge exists, because the edge (`waiting_on`) is what protects ordering, not the status.
+
+`issue_triage({verdict:'keep'})` refreshes the re-triage TTL and leaves the card at Review — it is NOT a cross-card ordering primitive and must never be used as a substitute for a `depends_on` edge.
+
 See references/phases-epics.md for the split walkthrough, epic mechanics, phase creation, and completion contract.
 
 ## Quality-Gate Decisions at Card Creation (decide, don't review)

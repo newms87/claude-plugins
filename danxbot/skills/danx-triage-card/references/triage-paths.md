@@ -22,11 +22,13 @@ Real investigation, not a description re-read. Every one of these three checks r
 
 A card that passes all three (not implemented, still relevant, no superseding sibling) earns real Confidence in the ICE score. A card that fails any one of them is a Cancel candidate regardless of how good its Impact/Ease would otherwise look — a well-written description of unnecessary work is still unnecessary work.
 
+**Ordering check (MANDATORY, separate from the three above — run before picking a verdict):** If this card should not be worked before a sibling/prerequisite card completes, do NOT encode that via a Keep-and-revisit-later judgment call — `issue_triage({verdict:'keep'})` gives zero ordering guarantee (see the Keep row below: it only refreshes the re-triage TTL). Instead check `issue_get`'s edges for an existing `depends_on` on the prerequisite; if missing, add it now via `issue_dependency({id, action:'add', kind:'depends_on', target_id: <prerequisite>})` BEFORE deciding the verdict. Once the edge exists, the card is safe to Approve (or leave as Keep) — `waiting_on` holds the picker off regardless of triage verdict or status.
+
 **Decide one of four outcomes:**
 
 | Outcome | Action | MCP triage call | Terminal call |
 |---|---|---|---|
-| **Keep** | Promote to dispatch queue | `issue_triage({verdict: "keep", ice: {i,c,e}, reason})` — server stamps `ready_at` | `danxbot_complete({status: "complete"})` |
+| **Keep** | Leave in Review, refresh re-triage TTL (NOT a promotion) | `issue_triage({verdict: "keep", ice: {i,c,e}, reason})` — server refreshes `triage_expires_at` only; `ready_at` is untouched, card stays `Review` | `danxbot_complete({status: "complete"})` |
 | **Cancel** | Obsolete/superseded/unwanted | `issue_triage({verdict: "cancel", reason})` + `issue_retro({good, bad})` — server stamps `cancelled_at` + renders `## Retro` | `danxbot_complete({status: "complete"})` |
 | **Park** | On hold, revisit later (NEW, DX-739) | `issue_triage({verdict: "defer", reason})` — server stamps `archived_at` (→ Backlog) | `danxbot_complete({status: "complete"})` |
 | **Approve** | Implementable but direction needs sign-off | `issue_requires_human({set: true, reason, steps[]})` + `issue_triage({verdict: "approve", ice, reason})` — server stamps `ready_at`; `requires_human` gate keeps picker off until human clears | `danxbot_complete({status: "complete"})` |
@@ -86,7 +88,7 @@ Only `complete`, `ready`, `cancelled`, `archive` valid from triage.
 
 | Triage decision | Terminal status | Server side-effect | Derived status |
 |---|---|---|---|
-| Keep | `ready` | server stamps `ready_at = now` + clears `blocked` | `ToDo` |
+| Keep | *(no transition — stays Review)* | server refreshes `triage_expires_at` only (re-triage TTL); `ready_at` untouched | `Review` (unchanged) |
 | Approve | `ready` (after setting `requires_human`) | server stamps `ready_at`; picker stays parked until human clears `requires_human` | gated `ToDo` |
 | Cancel | `cancelled` | server stamps `cancelled_at` + clears `dispatch` + renders `## Retro` | `Cancelled` |
 | Park | `archive` | server stamps `archived_at` + clears `ready_at` | `Backlog` |
