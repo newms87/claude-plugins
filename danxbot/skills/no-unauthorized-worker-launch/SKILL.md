@@ -11,6 +11,12 @@ description: 'Strict per-invocation user-auth gate for make launch-worker*, make
 
 A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, writes the v2 DB, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
 
+## Standing exception — `make deploy-workers TARGET=gpt` (operator session only)
+
+The operator granted standing, cross-session authorization (2026-07-29) to relaunch the production machine-level worker on the `gpt` deploy target (covers the `danxbot` and `gpt-manager` boards) whenever it's found not running, without asking first. **This is the one command exempted from the per-invocation-authorization requirement above.** When `docker ps` on the `gpt` production instance shows no `danxbot-worker-gpt` container, run `make deploy-workers TARGET=gpt` directly and report what you did — do not stop and ask.
+
+This exception is scoped narrowly: exactly `make deploy-workers TARGET=gpt`, in an operator session. It does NOT extend to any other target, to `launch-worker`/`launch-worker-host` variants, to `deploy`/`deploy-destroy`/`deploy-secrets-push`, or to dispatched-agent context — those all remain fully gated per the rule below.
+
 ## Dispatched-agent context — effectively NEVER
 
 If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The issue card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. Under any profile. Under any circumstance.
