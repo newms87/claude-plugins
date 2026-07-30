@@ -5,6 +5,14 @@ description: 'Git safety: never destroy work, never delete repos, NEVER create o
 
 # Git Operations
 
+## Commit Proactively — Don't Wait to Be Asked
+
+The harness default of "only commit when explicitly asked" is OVERRIDDEN here. Once a change is a coherent, verified unit of work — tests pass, behavior confirmed, or the equivalent for the task at hand — commit it. This applies equally to an interactive operator session and a dispatched worker; do not add a "should I commit this?" round-trip that the operator never asked for.
+
+**Why:** the operator (Dan) explicitly said the "ask before every commit" gate is unwanted friction and told Claude Code to use judgment instead of asking permission on every commit, across every repo he works in — not a one-off approval for a single change.
+
+**Scope — this does NOT relax anything else in this file.** Every destructive-operation gate above and below (force-push, `reset --hard`, checkout/restore/revert, cherry-pick, stash, branch creation, etc.) still requires explicit request exactly as written. This section removes ONLY the "may I commit this?" question for a normal, safe, forward-only commit of your own verified work — it is not license to skip the "Check for Other Agents' Staged Work" / "Mixed-State Files: ASK" gates below, which still apply.
+
 ## ABSOLUTE: Never Destroy Work. Ever.
 
 Work exists because someone put it there. Wiping is not a primitive.
