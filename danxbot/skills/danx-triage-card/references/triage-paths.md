@@ -1,82 +1,50 @@
 # Triage Paths & Decision Trees
 
-Triage agent triages ONE card per dispatch. Three in-scope paths. Right path decided by `waiting_on` + `blocked` fields FIRST, then `status`.
+Triage agent triages ONE card per dispatch. Path is decided by `waiting_on` + `blocked` FIRST, then `status_derived` — `blocked` is a gate that can sit on top of ANY status, it is NOT itself a status value (`status_derived` never reads `blocked_at`, see "Status = Blocked" below).
 
 | Card state | Path |
 |---|---|
 | `waiting_on != null` (any status) | **Waiting On** — re-check `waiting_on.by[]` |
-| `waiting_on == null` AND `status_derived === "Review"` | **Review** — ICE-score |
-| `waiting_on == null` AND `status_derived === "Blocked"` | **Blocked** — Hard Gate audit |
+| `waiting_on == null` AND `blocked != null` AND `blocked.reason` starts with `"Triage: "` | **Out of scope** — a confidence-gate checkpoint stamped by the Review-path routing below; a human clears it via the dashboard |
+| `waiting_on == null` AND `blocked != null` (any other reason) | **Blocked** — Hard Gate audit |
+| `waiting_on == null` AND `blocked == null` AND `status_derived === "Review"` | **Review** — Confidence-score |
 
-Out-of-scope: `waiting_on == null` AND `blocked == null` AND `status_derived ∈ {ToDo, In Progress, Done, Cancelled}` (dispatchable/active/terminal cards don't need triage).
+Out-of-scope: `waiting_on == null` AND `blocked == null` AND `status_derived ∈ {ToDo, In Progress, Done, Cancelled}` (dispatchable/active/terminal cards don't need triage). On any out-of-scope match (including the `"Triage: "`-prefixed Blocked case above): make no `issue_triage`/`issue_transition` call, `danxbot_complete({status: "complete", summary: "out of scope: <reason>"})`, stop.
 
 ## Status = Review
 
-### Investigation Gate (MANDATORY, before ICE-scoring)
+### Investigation Gate (MANDATORY, before scoring)
 
-Real investigation, not a description re-read. Every one of these three checks runs before you write an ICE score — this is the load-bearing step; a Keep/Approve verdict reached without it is not a valid triage.
+Real investigation, not a description re-read. Every one of these four checks runs before you assign a confidence score — this is the load-bearing step; a score reached without it is not a valid triage.
 
-1. **Already implemented?** Identify the concrete files/functions/routes the card's description or AC names or clearly implies. `Grep`/`Read` them. If the described behavior already exists in the current code — fully or substantially — that is a **Cancel** (superseded by reality), not a Keep, however well-written the card is. Cite the file:line that proves it either way.
+1. **Already implemented?** Identify the concrete files/functions/routes the card's description or AC names or clearly implies. `Grep`/`Read` them. If the described behavior already exists in the current code — fully or substantially — that is a specific, evidenced doubt (score 0-2 depending on how completely it's already covered), however well-written the card is. Cite the file:line that proves it either way.
 2. **Still relevant?** Re-check the premise against the CURRENT architecture, not the architecture the card was written against. `git log`/`git blame` the relevant area if the card references something that may have since changed direction. A card can be internally coherent and still describe a world that no longer exists (an inverted decision, a retired subsystem, a superseding redesign already shipped).
-3. **Duplicate or already-decided sibling?** Search for a same/near-identical-title card (`mcp__danx_dashboard__issue_list({q: "<distinctive phrase from the title>"})`), including `-IMPORTED` / `-IMPORTED-2`-style variant ids of the same underlying card. If a sibling covering the same ground is already `Cancelled` or `Done`, that disposition almost always transfers — Cancel this one too and say why in `reason`, unless you find concrete evidence the sibling's cancellation reasoning does NOT apply here.
+3. **Duplicate or already-decided sibling?** Search for a same/near-identical-title card (`mcp__danx_dashboard__issue_list({q: "<distinctive phrase from the title>"})`), including `-IMPORTED` / `-IMPORTED-2`-style variant ids of the same underlying card. If a sibling covering the same ground is already `Cancelled` or `Done`, that disposition almost always transfers — score this one the same way and say why in `reason`, unless you find concrete evidence the sibling's disposition does NOT apply here.
+4. **Conforms to the Master Plan?** Read `.claude/rules/danx-master-plan.md` (force-loaded rule, always in context for triage dispatches — no extra call). Where the index references deeper content, `Read`/`Grep` the matching `.claude/master-plan/<slug>.md` page(s) on demand. Does the card fit something the plan describes? A card the plan is simply silent on is NOT itself a doubt — only an ACTUAL conflict with the plan (the plan describes a different direction, or explicitly excludes this) counts as evidence against.
 
-A card that passes all three (not implemented, still relevant, no superseding sibling) earns real Confidence in the ICE score. A card that fails any one of them is a Cancel candidate regardless of how good its Impact/Ease would otherwise look — a well-written description of unnecessary work is still unnecessary work.
+A card that passes all four (not implemented, still relevant, no superseding sibling, conforms to or is unaddressed by the Master Plan) earns the default score of 5. A card that fails any one of them, with cited evidence, is scored below 5 — the lower the score, the more conclusive and evidenced the doubt (see Confidence Rubric in SKILL.md).
 
-**Ordering check (MANDATORY, separate from the three above — run before picking a verdict):** If this card should not be worked before a sibling/prerequisite card completes, do NOT encode that via a Keep-and-revisit-later judgment call — `issue_triage({verdict:'keep'})` gives zero ordering guarantee (see the Keep row below: it only refreshes the re-triage TTL). Instead check `issue_get`'s edges for an existing `depends_on` on the prerequisite; if missing, add it now via `issue_dependency({id, action:'add', kind:'depends_on', target_id: <prerequisite>})` BEFORE deciding the verdict. Once the edge exists, the card is safe to Approve (or leave as Keep) — `waiting_on` holds the picker off regardless of triage verdict or status.
+**Ordering check (MANDATORY, separate from the four above — run before scoring):** If this card should not be worked before a sibling/prerequisite card completes, do NOT encode that via a mid-range confidence score hoping the card "sits and gets revisited" — confidence bands below Approve now BLOCK the card (`blocked_at` stamped) for a HUMAN to clear via the dashboard, they are not a scheduling mechanism, and they carry zero ordering guarantee against a sibling. Instead check `issue_get`'s edges for an existing `depends_on` on the prerequisite; if missing, add it now via `issue_dependency({id, action:'add', kind:'depends_on', target_id: <prerequisite>})` BEFORE scoring. Once the edge exists, the card is safe to score high (or low, on its own merits) — `waiting_on` holds the picker off regardless of triage confidence or status.
 
-**Decide one of four outcomes:**
+**Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite. Do this regardless of what score you land on — it is bookkeeping on the card, not part of the confidence decision.
 
-| Outcome | Action | MCP triage call | Terminal call |
-|---|---|---|---|
-| **Keep** | Leave in Review, refresh re-triage TTL (NOT a promotion) | `issue_triage({verdict: "keep", ice: {i,c,e}, reason})` — server refreshes `triage_expires_at` only; `ready_at` is untouched, card stays `Review` | `danxbot_complete({status: "complete"})` |
-| **Cancel** | Obsolete/superseded/unwanted | `issue_triage({verdict: "cancel", reason})` + `issue_retro({good, bad})` — server stamps `cancelled_at` + renders `## Retro` | `danxbot_complete({status: "complete"})` |
-| **Park** | On hold, revisit later (NEW, DX-739) | `issue_triage({verdict: "defer", reason})` — server stamps `archived_at` (→ Backlog) | `danxbot_complete({status: "complete"})` |
-| **Approve** | Implementable but direction needs sign-off | `issue_requires_human({set: true, reason, steps[]})` + `issue_triage({verdict: "approve", ice, reason})` — server stamps `ready_at`; `requires_human` gate keeps picker off until human clears | `danxbot_complete({status: "complete"})` |
-
-`danxbot_complete` is ALWAYS `status: "complete"` on a successful triage run, regardless of verdict — DX-835 already moved the card via `issue_triage` above; `danxbot_complete` only reports whether the dispatch itself succeeded. Using `"ready"`/`"cancelled"`/`"archive"` here (pre-DX-835 contract) makes the worker stamp the DISPATCH row `failed`, poisoning the auto-triage breaker's failure count for a run that actually succeeded (DX-1810).
-
-**Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite.
-
-**Distinguish Keep vs Approve vs Park vs Cancel:**
-- Investigation confirms it's real, still relevant, no superseding sibling, AND a competent agent could pick it up and finish RIGHT NOW without a human decision first? → **Approve.** This is the ONLY Review-path verdict that stamps `ready_at` and moves the card toward `ToDo` — if the card is genuinely ready, Approve is the correct call, not Keep.
-- Investigation was INCONCLUSIVE, genuinely missing information, or a human sanity-check is required before work should start? → **Keep.** `keep` refreshes the re-triage TTL ONLY — `ready_at` is untouched, the card stays in `Review` and will simply be re-evaluated later. Keep is a "not yet", never a "yes, promote".
-- Investigation inconclusive or genuinely on hold, revisit later, not cancelled? → Park (new).
-- Investigation finds it's already implemented, no longer relevant, or duplicates/is-superseded-by an already-Cancelled/Done sibling? → Cancel.
-
-**"Not urgent" is NEVER a valid reason to Keep.** Urgency/priority ordering is ICE's `Impact` axis plus the board's own sort — it decides WHEN a ready card gets picked up next, not WHETHER it is marked ready. A card that is real, relevant, non-duplicate, and implementable is ready regardless of how important it is. Do not withhold Approve because the work "isn't a priority right now" — that reasoning belongs nowhere in this decision; if you catch yourself writing it, the verdict is Approve.
-
-**HARD RULE (mechanical, no judgment call): Confidence ≥ 3 + a boundable scope disallows Keep.** If your investigation earned Confidence 3 or higher (per the rubric below — meaning you verified anchors against the current code and confirmed the card is not already done, not obsolete, and not a duplicate) AND the described work is something a competent agent could pick up and implement from the card as written (Ease 1-4; only a genuine "heavy refactor / rebuild, needs a rewrite first" caps Ease at 5 and can still block Approve) — **the verdict MUST be Approve, full stop.** A Keep verdict under these conditions is a malformed triage, exactly the same category of error as skipping the Investigation Gate. If you find yourself with Confidence ≥ 3 and are still reaching for Keep, stop and re-read this paragraph before submitting — name the SPECIFIC missing information or the SPECIFIC human sanity-check the card needs; "not urgent enough" or "let's revisit later" are not valid entries here.
-
-**Do not default to Keep out of habit or caution.** Keep is the safest-*feeling* verdict but it is a no-op on dispatchability — a card that is actually ready and gets Keep'd anyway never reaches `ToDo` no matter how many triage passes it survives. Confirmed on prod board `danxbot:danxbot-main` **twice**: (DX-1960) Review count dropped 212→177 over ~2.5h of active, healthy triage while `ToDo` stayed flat at 2, because the large majority of verdicts landed on Keep when Approve was the call that would have actually moved the card. (DX-2062-era regression, 2026-08-01) AFTER an API-level fix made `ice` mandatory for Keep/Approve — closing the "skip the Investigation Gate entirely" loophole — the SAME under-lying bias survived it: 6 consecutive triage dispatches against real cards, every one with a genuine, non-trivial ICE score (Confidence 4 on all six — real investigation, not a rubber stamp), and every single one still landed on Keep. Review count did not move. Making the agent investigate for real did not, by itself, make it commit to Approve — it just produced well-evidenced Keeps. That is why the HARD RULE above exists as a mechanical gate, not more prose: a well-justified Keep with Confidence ≥ 3 on an implementable card is still the wrong verdict.
-
-### Container cards (Epic/Feature) — different from leaf cards (DX-1992)
-
-Everything above (Investigation Gate, Ordering check, HARD RULE, Keep-bias warning) assumes a **leaf** card that can itself be dispatched. Epic/Feature cards are **containers**: they are never dispatched directly (CLAUDE.md Core Principle 2), and their `status_derived` is a pure rollup over their children's `status_derived` (`deriveContainerStatus`) — it never reads the container's own `ready_at`. Server-side (DX-1992), `issue_triage({verdict:"approve"})` now returns **400** on any Epic/Feature card instead of silently stamping a `ready_at` that `recomputeDerivedFields` would ignore. Treat that 400 as the guard working correctly, not a bug to route around, retry, or bypass.
-
-Run the same three-step Investigation Gate on a container as on a leaf (already implemented? still relevant? duplicate/superseded sibling?) — that part is unchanged. The verdict differs because "ready" means something different for a container:
-
-| Container finding | Verdict | Why |
-|---|---|---|
-| Still relevant; children exist and carry the actual dispatchable work | **Keep** | A container has no independent Approve action — its readiness is entirely its children's rollup. Keep here is not "unsure, revisit later"; it is the only structurally valid non-terminal verdict. The real readiness decision happens on each CHILD's own Review-path triage pass, not on the parent. |
-| No longer relevant, superseded, or fully covered by an already-Cancelled/Done sibling | **Cancel** | Same rule as leaf cards |
-| Genuinely on hold pending a decision | **Park** | Same rule as leaf cards |
-| Every child already terminal (Done/Cancelled) but the container itself is still non-terminal | Note it in `reason` and Keep, don't loop silently | The rollup should have already closed the container; a stuck all-terminal-children container is a `recomputeDerivedFields` anomaly worth flagging, not something to paper over with a forced Approve (which will 400 anyway) |
-
-**The HARD RULE above (Confidence ≥ 3 + boundable scope forces Approve) applies to leaf cards only.** For Epic/Feature cards, Approve is never a legal outcome regardless of Confidence — high Confidence on a container just means the Keep-and-route-through-children verdict above is well-evidenced, not that Approve becomes available.
+**If you expect an Approve-band score:** call `mcp__danx_dashboard__issue_requires_human({set: true, reason, steps[]})` BEFORE `issue_triage`, same as before — every Approve still needs a human sign-off before the card is picked up for autonomous work, independent of how the score was computed. If the server's actual routing lands somewhere else (e.g. your 5 nonetheless resolves to Keep under a board's stricter thresholds), the `requires_human` flag on a non-`ToDo` card is inert — harmless, not wrong.
 
 ## Status = Blocked
 
-**Hard Gate audit:** Read most recent `author: danxbot` comment containing `## Blocked` / "operator must" section. For each "operator must" step, classify:
+**Hard Gate audit (unchanged):** Read most recent `author: danxbot` comment containing `## Blocked` / "operator must" section. For each "operator must" step, classify:
 - **Locally executable** = edit config, `artisan`, `make`, `yarn`, `npm`, `composer`, log tail/grep, test re-run, restart Octane/queue/Horizon, session JSONL, git commands, code read.
 - **Human-only** = ONLY: credential/secret rotation, deploy/SSM access, write-only repo, design/product decision, physical/OOB action (per `issue-card-workflow` "Hard Gate" table).
 
-| Outcome | Action | MCP triage call | Terminal call |
-|---|---|---|---|
-| **Every step locally executable** — wrongly punted | **Demote** to ToDo | `issue_transition({action: "unblock"})` + `issue_triage({verdict: "keep", reason})` — server stamps `ready_at` + clears `blocked` | `danxbot_complete({status: "complete"})` |
-| **At least one step genuinely human-only** | **Confirm** Blocked | `issue_triage({verdict: "keep", reason})` | `danxbot_complete({status: "complete"})` — triage recorded; card remains Blocked |
-| **Mixed** (some local, some human-only) | Confirm, but note next worker dispatch should execute local steps before re-confirming | `issue_triage({verdict: "keep", reason})` noting local steps needed | `danxbot_complete({status: "complete"})` |
+There is no confidence question here — a Hard Gate audit is a mechanical classification of escalation steps, not a value judgment on the card, so it does NOT call `issue_triage`. Only the transition, if any, changes the card.
 
-**Rationalisation detector — refuse to Confirm if comment contains any of:**
+| Outcome | Action | Terminal call |
+|---|---|---|
+| **Every step locally executable** — wrongly punted | **Demote**: `issue_transition({action: "unblock"})` — clears `blocked_at`/`blocked_reason`, card reverts to whatever status it held before the block (its own `ready_at`/etc. are untouched by `unblock`) | `danxbot_complete({status: "complete"})` |
+| **At least one step genuinely human-only** | **Confirm**: leave the block exactly as-is (no MCP mutation) | `danxbot_complete({status: "complete"})` — triage recorded in the comment only; card remains Blocked |
+| **Mixed** (some local, some human-only) | Confirm (as above), but note in the comment that the next worker dispatch should execute the local steps before re-confirming | `danxbot_complete({status: "complete"})` |
+
+**Rationalisation detector — refuse to Confirm if the escalation comment contains any of:**
 - "operator-driven verification"
 - "production-shaped infra"
 - "honest way to verify"
@@ -88,31 +56,28 @@ If found, Demote instead.
 ## Status = Waiting On
 
 **Re-check `waiting_on.by[]`.** For each blocker id:
-- Query the v2 DB via `mcp__danx_dashboard__issue_get({issue_id: "<PREFIX>-N"})`.
+- Query the v2 DB via `mcp__danx_dashboard__issue_get({id: "<PREFIX>-N"})`.
 - Note its derived `status`. Terminal = `Done` or `Cancelled`. Non-terminal = anything else.
 
-| Outcome | Action | MCP triage call | Terminal call |
+As with Blocked, this is a mechanical re-check of dependency state, not a value judgment — it does NOT call `issue_triage`.
+
+| Outcome | Action | Terminal call |
+|---|---|---|
+| **Every blocker terminal** | **Unblock**: `issue_transition({action: "unblock"})` | `danxbot_complete({status: "complete"})` — picker will dispatch next tick |
+| **At least one blocker non-terminal** | **Confirm-Block**: leave as-is (no MCP mutation) | `danxbot_complete({status: "complete"})` — card remains Waiting On |
+
+**Edge case — blocker not found.** If `issue_get` fails for a blocker id, treat as **Cancelled** (non-existent card cannot block). Note in the comment: "Blocker <PREFIX>-N not found — treated as Cancelled."
+
+## Terminal-Call Summary
+
+| Path | Decision | MCP call(s) | `danxbot_complete` |
 |---|---|---|---|
-| **Every blocker terminal** | **Unblock** (cleared) | `issue_transition({action: "unblock"})` + `issue_triage({verdict: "keep", reason})` | `danxbot_complete({status: "complete"})` — picker will dispatch next tick |
-| **At least one blocker non-terminal** | **Confirm-Block** waiting | `issue_triage({verdict: "keep", reason})` | `danxbot_complete({status: "complete"})` — card remains Waiting On |
+| Review | (any) | `issue_triage({id, confidence, reason})` — read `body.issue.triage_last_status` for the outcome the server picked | `{status: "complete"}` always |
+| Blocked | Demote | `issue_transition({action: "unblock"})` | `{status: "complete"}` |
+| Blocked | Confirm-Block | none | `{status: "complete"}` |
+| Waiting On | Unblock | `issue_transition({action: "unblock"})` | `{status: "complete"}` |
+| Waiting On | Confirm-Block | none | `{status: "complete"}` |
+| Out of scope | — | none | `{status: "complete", summary: "out of scope: <reason>"}` |
+| Dispatch itself failed (unreadable card, MCP error, no decision reached) | — | — | `{status: "failed"}` (real ≥30-char reason) |
 
-**Edge case — blocker not found.** If both `Read` calls fail for a blocker id, treat as **Cancelled** (non-existent card cannot block). Note in `last_explain`: "Blocker <PREFIX>-N not found — treated as Cancelled."
-
-**TTLs per status:**
-- Review: 24h
-- Blocked: 3h (human checks fast)
-- Waiting On: 1h (blockers may flip terminal any minute)
-
-## Per-Decision Terminal-Status Table
-
-Only `complete`, `ready`, `cancelled`, `archive` valid from triage.
-
-| Triage decision | Terminal status | Server side-effect | Derived status |
-|---|---|---|---|
-| Keep | *(no transition — stays Review)* | server refreshes `triage_expires_at` only (re-triage TTL); `ready_at` untouched | `Review` (unchanged) |
-| Approve | `ready` (after setting `requires_human`) | server stamps `ready_at`; picker stays parked until human clears `requires_human` | gated `ToDo` |
-| Cancel | `cancelled` | server stamps `cancelled_at` + clears `dispatch` + renders `## Retro` | `Cancelled` |
-| Park | `archive` | server stamps `archived_at` + clears `ready_at` | `Backlog` |
-| Demote | `ready` | server stamps `ready_at` + clears `blocked` | `ToDo` |
-| Confirm-Block | `complete` | triage recorded; card status unchanged | unchanged |
-| Unblock | `complete` | server clears `waiting_on: null` (same) | unchanged |
+`danxbot_complete` is ALWAYS `status: "complete"` on a successful triage run, regardless of outcome — DX-835 already moves the card via the MCP call(s) above; `danxbot_complete` only reports whether the dispatch itself succeeded. Using `"ready"`/`"cancelled"`/`"archive"` here (pre-DX-835 contract) makes the worker stamp the DISPATCH row `failed`, poisoning the auto-triage breaker's failure count for a run that actually succeeded (DX-1810).
