@@ -49,6 +49,21 @@ A card that passes all three (not implemented, still relevant, no superseding si
 
 **Do not default to Keep out of habit or caution.** Keep is the safest-*feeling* verdict but it is a no-op on dispatchability — a card that is actually ready and gets Keep'd anyway never reaches `ToDo` no matter how many triage passes it survives. Confirmed on prod board `danxbot:danxbot-main` **twice**: (DX-1960) Review count dropped 212→177 over ~2.5h of active, healthy triage while `ToDo` stayed flat at 2, because the large majority of verdicts landed on Keep when Approve was the call that would have actually moved the card. (DX-2062-era regression, 2026-08-01) AFTER an API-level fix made `ice` mandatory for Keep/Approve — closing the "skip the Investigation Gate entirely" loophole — the SAME under-lying bias survived it: 6 consecutive triage dispatches against real cards, every one with a genuine, non-trivial ICE score (Confidence 4 on all six — real investigation, not a rubber stamp), and every single one still landed on Keep. Review count did not move. Making the agent investigate for real did not, by itself, make it commit to Approve — it just produced well-evidenced Keeps. That is why the HARD RULE above exists as a mechanical gate, not more prose: a well-justified Keep with Confidence ≥ 3 on an implementable card is still the wrong verdict.
 
+### Container cards (Epic/Feature) — different from leaf cards (DX-1992)
+
+Everything above (Investigation Gate, Ordering check, HARD RULE, Keep-bias warning) assumes a **leaf** card that can itself be dispatched. Epic/Feature cards are **containers**: they are never dispatched directly (CLAUDE.md Core Principle 2), and their `status_derived` is a pure rollup over their children's `status_derived` (`deriveContainerStatus`) — it never reads the container's own `ready_at`. Server-side (DX-1992), `issue_triage({verdict:"approve"})` now returns **400** on any Epic/Feature card instead of silently stamping a `ready_at` that `recomputeDerivedFields` would ignore. Treat that 400 as the guard working correctly, not a bug to route around, retry, or bypass.
+
+Run the same three-step Investigation Gate on a container as on a leaf (already implemented? still relevant? duplicate/superseded sibling?) — that part is unchanged. The verdict differs because "ready" means something different for a container:
+
+| Container finding | Verdict | Why |
+|---|---|---|
+| Still relevant; children exist and carry the actual dispatchable work | **Keep** | A container has no independent Approve action — its readiness is entirely its children's rollup. Keep here is not "unsure, revisit later"; it is the only structurally valid non-terminal verdict. The real readiness decision happens on each CHILD's own Review-path triage pass, not on the parent. |
+| No longer relevant, superseded, or fully covered by an already-Cancelled/Done sibling | **Cancel** | Same rule as leaf cards |
+| Genuinely on hold pending a decision | **Park** | Same rule as leaf cards |
+| Every child already terminal (Done/Cancelled) but the container itself is still non-terminal | Note it in `reason` and Keep, don't loop silently | The rollup should have already closed the container; a stuck all-terminal-children container is a `recomputeDerivedFields` anomaly worth flagging, not something to paper over with a forced Approve (which will 400 anyway) |
+
+**The HARD RULE above (Confidence ≥ 3 + boundable scope forces Approve) applies to leaf cards only.** For Epic/Feature cards, Approve is never a legal outcome regardless of Confidence — high Confidence on a container just means the Keep-and-route-through-children verdict above is well-evidenced, not that Approve becomes available.
+
 ## Status = Blocked
 
 **Hard Gate audit:** Read most recent `author: danxbot` comment containing `## Blocked` / "operator must" section. For each "operator must" step, classify:
