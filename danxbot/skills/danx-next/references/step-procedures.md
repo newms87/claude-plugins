@@ -102,12 +102,13 @@ If NOT splitting, skip to Step 4.
 ## Step 3.2 — Perform the Split
 
 1. Call `mcp__danx_dashboard__issue_edit({id, type: "Epic"})` to promote the parent. Keep it `In Progress`. Add a comment via `issue_comment` summarizing the split. Don't worry about `children[]` yet — you don't have phase ids until each `issue_create` returns.
-2. For each phase, call `mcp__danx_dashboard__issue_create({type, title, description, parent_id, ac?, effort_level?})`:
+2. For each phase, call `mcp__danx_dashboard__issue_create({type, title, description, parent_id, ac?, effort_level?, triage_enabled})`:
    - `type` — a **dispatchable leaf**: `"Story"`, `"Bug"`, or `"Chore"`. NOT `Epic` and NOT `Feature` — both are containers, never worked directly; a Feature phase-child would itself need child Story cards. If a phase is genuinely a few-slice capability, create it as a `Feature` container WITH its own child Story cards in the same pass (never a bare dispatchable Feature).
    - `title` — `"<Epic Title> > Phase N: Description"`.
    - `description` — full markdown body.
    - `parent_id` — the epic's `id` (e.g. `ISS-12`).
    - `ac` — `[{title: "...", checked: false}, ...]` if known; the server allocates `check_item_id`.
+   - `triage_enabled` — EXPLICIT per card (server default `false` = never auto-triaged; explicit-only per the `issue-card-workflow` "Auto-Triage Opt-In" rule). Phases you are about to `ready` yourself need no auto-triage → `false`; pass `true` only when a phase is deliberately left in Review for the automatic triage pipeline to evaluate.
    - The server allocates the next `<PREFIX>-N` and returns it in `body.id`. There is NO filename, NO slug, NO rename step. Capture the returned `id`. `{ok: false, body: {error}}` → fix the args, retry.
 3. Create the phases in intended phase order; the `parent_id` you passed links each to the epic, and the epic's `children[]` reflects creation order automatically (server-maintained from each child's `parent_id`).
 4. **Set `waiting_on` on phase 2..N for serial ordering.** For each phase whose index ≥ 1, call `mcp__danx_dashboard__issue_dependency({id: <phase-i>, action: 'add', kind: 'depends_on', target_id: <children[i-1]>, reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete."})`:

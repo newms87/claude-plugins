@@ -53,6 +53,8 @@ This applies to:
 
 The triage block on each card is owned by the **per-card triage agent** dispatched by poller. Poller picks one card per tick whose `triage.expires_at <= now` and dispatches `/danx-triage-card <PREFIX>-N`. One card per dispatch — bulk-orchestrator retired.
 
+**Auto-triage is EXPLICIT opt-in per card (`triage_enabled`, default `false`).** The automatic dispatcher's eligibility query only ever selects cards with `triage_enabled: true` — a card created without an explicit `triage_enabled: true` sits in Review untouched by automatic triage forever (operator directive 2026-08-09, reverting DX-1928's true-default; auto-created cards must never silently enter the dispatch pipeline). Every `issue_create` passes the flag explicitly — see the "Auto-Triage Opt-In" section in SKILL.md. Operator-directed triage (`/danx-triage-card`, `POST /api/triage`, direct `issue_triage`) is NOT gated by this flag.
+
 **Cadence per status (TTL the agent stamps on `triage.expires_at`):**
 
 | Derived status | Triage decision | Trigger write | Default TTL |

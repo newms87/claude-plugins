@@ -12,7 +12,7 @@ If you arrive here having ALREADY decided the card TYPE (epic/feature/story), th
 **PRE-`issue_create` TRANSCRIPT CHECKLIST — this MUST appear visibly in your message before ANY Feature/Epic `issue_create` call (N containers = N plans):**
 1. **Slice Plan** (Feature/Epic) — the numbered Story breakdown.
 
-Missing it = do not call `issue_create`. (Quality-gate decisions are a server-enforced REQUIRED `issue_create` field — see "Quality-Gate Decisions" below — so they need no separate transcript emission.)
+Missing it = do not call `issue_create`. (Quality-gate decisions are a server-enforced REQUIRED `issue_create` field — see "Quality-Gate Decisions" below — so they need no separate transcript emission. `triage_enabled` is ALSO decided on every create — see "Auto-Triage Opt-In" below.)
 
 Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
 
@@ -89,7 +89,7 @@ Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
 
 | Tool | Purpose |
 |---|---|
-| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
+| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?, triage_enabled})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions` AND its OWN `triage_enabled`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). `triage_enabled` MUST be passed explicitly on EVERY create (root + each phase child) — absent → false, the card is never auto-triaged (see "Auto-Triage Opt-In"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
 | `mcp__danx_dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
 | `mcp__danx_dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
 | `mcp__danx_dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
@@ -189,6 +189,17 @@ Reasoning hint for choosing `enabled` per gate (registry names — the names the
 
 Post-create, flip a per-card gate with `issue_quality_gate({id, gate, required})` (the PRE/plan- gates run before the work dispatch; the POST/code- gates block `issue_transition complete`).
 
+## Auto-Triage Opt-In — `triage_enabled` is an EXPLICIT per-card decision (MANDATORY on every `issue_create`)
+
+**Every `issue_create` call MUST pass `triage_enabled` explicitly — root card AND every `phase_children[]` entry (each child carries its OWN flag, never inherited).** The server default is `false` (explicit-only — operator directive 2026-08-09 reverting DX-1928): a card without an explicit `triage_enabled: true` is NEVER selected by the automatic triage dispatcher, no matter how long it sits in Review. Deciding it explicitly per card is the contract — never rely on the default silently.
+
+- `triage_enabled: true` — ONLY when you intend the card to enter the automatic triage/dispatch pipeline WITHOUT further human review (a fully-specified card you'd be comfortable seeing auto-readied and auto-dispatched).
+- `triage_enabled: false` — scoping/draft cards, operator-held cards, cards awaiting discussion, anything filed as a durable record rather than an immediate work request.
+
+Incident rationale: agent-created scoping cards were silently auto-triaged, auto-readied, and auto-dispatched against an explicit operator hold — auto-created cards must never silently enter the dispatch pipeline.
+
+This flag gates ONLY the automatic dispatcher trigger. Operator-directed triage (`POST /api/triage`, `/danx-triage-card`, direct `issue_triage` calls) remains flag-independent, and `issue_edit({triage_enabled})` is the post-create way to opt a card in or out.
+
 ## Known dependency / conflict edges at creation (opportunistic, never a search)
 
 When you ALREADY KNOW of a related in-progress / ToDo card in this moment (a sibling you just created, a card you read this session), record the edge:
@@ -227,6 +238,7 @@ Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx
 
 - One card at a time; no orchestrator, no subagents
 - Call MCP tools only for all card operations
+- **`triage_enabled` explicit on EVERY `issue_create`** (root + each phase child) — absent → false, never auto-triaged (see "Auto-Triage Opt-In" above)
 - `type:` ∈ `Epic` | `Feature` | `Story` | `Bug` | `Chore` — required (pick via the Card Taxonomy gate above)
 - Comments = markdown with `##` headers (set via `issue_comment`)
 - AC lives in `ac[]` (set via `issue_edit`) — never inline. Phases/sub-cards in `children[]` as `<PREFIX>-N`; each child has own DB record.

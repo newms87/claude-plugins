@@ -35,7 +35,7 @@ See references/overview.md for full contract + probe rules + card edit checklist
    - **Many slices / spans domains / >500 LOC → Epic** — `issue_create({type: 'Epic', phase_children: [...]})`.
    Then `issue_edit` to wire `parent_id` on any manual children, and set `waiting_on` chains via `issue_dependency`. **Forbidden end-state:** a fleshed-out Feature holding the work in its own body / `ac[]` with no child cards.
 
-**Quality gates + known dependency edges:** for deciding which `required_gates` to flag on the card(s) and recording any already-known `depends_on` / `conflict_on` edges, consult `issue-card-workflow` (single source of truth) — do NOT review or board-scan; just decide + flag.
+**Quality gates + known dependency edges:** for deciding which `required_gates` to flag on the card(s) and recording any already-known `depends_on` / `conflict_on` edges, consult `issue-card-workflow` (single source of truth) — do NOT review or board-scan; just decide + flag. Every `issue_create` in the split also passes `triage_enabled` EXPLICITLY per card (server default `false` = never auto-triaged) — see `issue-card-workflow` "Auto-Triage Opt-In".
 6. **Save changes** — call `issue_edit({id, description, ac})` to persist the prose changes. If sentinel-blocked, call `issue_transition({id, action: 'unblock'})` to clear the block.
 7. **Append comment** — call `issue_comment({id, action: 'add', text: "## Flesh-out — <date>\n..."})` with markdown body.
 8. **Complete** — `danxbot_complete({status: "ready"})` (default).
