@@ -154,6 +154,68 @@ for b in "${bullets[@]}"; do
 done
 git commit "${msg_args[@]}"
 
+# 3a. DX-1995 — dashboard production build gate. DX-1973 merged a required
+#     field onto a backend type (`src/system-repair/types.ts`) without
+#     updating dashboard fixtures; every quality gate passed because vitest
+#     never type-checks, and nothing here ran the dashboard's own build
+#     (`vue-tsc --noEmit && vite build`) — so `main` merged silently
+#     undeployable. `dashboard-build-gate.ts` decides, from the squashed
+#     diff against `$base`, whether this card's changes are dashboard-
+#     reachable (a `dashboard/` edit, or a backend file the dashboard
+#     imports via `@backend`); a pure-backend diff with no dashboard-
+#     reachable import is skipped so unrelated cards don't pay the build
+#     cost. All filesystem/git ops below run against "$WT" explicitly —
+#     see the worktree-safety note above; the process cwd is the external
+#     clean-room dir, not the worktree. Resolved via the worktree's own
+#     `node_modules/.bin/tsx` (never `npx`) so a repo/fixture without the
+#     gate script or a local tsx install (e.g. this script's own unit-test
+#     fixtures, which are bare tmp git repos with no `src/` or
+#     `node_modules/`) skips the check instead of falling through to a slow
+#     or network-dependent `npx` resolution.
+wt_dir="${WT:-$(pwd)}"
+gate_script="$wt_dir/src/dispatch/dashboard-build-gate.ts"
+tsx_bin="$wt_dir/node_modules/.bin/tsx"
+if [[ -f "$gate_script" && -x "$tsx_bin" ]]; then
+  if (cd "$wt_dir" && "$tsx_bin" src/dispatch/dashboard-build-gate.ts "$base" HEAD); then
+    echo "agent-finalize: diff touches dashboard-reachable code — running dashboard build" >&2
+    if ! (cd "$wt_dir/dashboard" && npm run build); then
+      echo "agent-finalize: dashboard build failed — fix before finalizing (DX-1995)" >&2
+      exit 1
+    fi
+  fi
+else
+  # Loud, not silent: a real worktree missing its own gate script or a
+  # working `tsx` install is itself a broken-checkout signal worth a
+  # breadcrumb, not a quiet no-op — the whole point of this gate is to
+  # never let "nothing ran the build" pass unnoticed again (DX-1973).
+  echo "agent-finalize: dashboard build gate skipped (gate_script=$([[ -f "$gate_script" ]] && echo present || echo missing), tsx=$([[ -x "$tsx_bin" ]] && echo present || echo missing))" >&2
+fi
+
+# 3a2. DX-2014 — backend `tsc --noEmit` gate. DX-2005 added required
+#      `Dispatch` fields (`bootFloorTokens`/`firstTurn*`) without updating 3
+#      backend test fixtures; every quality gate stayed green because
+#      `vitest` never type-checks and (until this step) nothing in the
+#      finalize/gate pipeline ran the backend's own `tsc --noEmit` — the
+#      same silent-escape class the 3a dashboard build gate above closes for
+#      the dashboard build, now closed for the backend type line. Scoped to
+#      diffs that touch `src/` (a docs/dashboard-only diff has no backend
+#      surface to break); resolved via the worktree's own
+#      `node_modules/.bin/tsc` (never `npx`) so a fixture tree without a
+#      `src/` or `node_modules/` skips the check instead of falling through
+#      to a slow or network-dependent resolution.
+tsc_bin="$wt_dir/node_modules/.bin/tsc"
+if [[ -x "$tsc_bin" ]]; then
+  if git diff --name-only "$base" HEAD | grep -q '^src/'; then
+    echo "agent-finalize: diff touches backend src/ — running tsc --noEmit" >&2
+    if ! (cd "$wt_dir" && "$tsc_bin" --noEmit); then
+      echo "agent-finalize: backend tsc --noEmit failed — fix before finalizing (DX-2014)" >&2
+      exit 1
+    fi
+  fi
+else
+  echo "agent-finalize: backend typecheck gate skipped (tsc=$([[ -x "$tsc_bin" ]] && echo present || echo missing))" >&2
+fi
+
 # 3b. DX-1665 arm (b) — split-brain fence: consult the dispatch's generation
 #     BEFORE pushing. If this dispatch was superseded (a higher-generation
 #     re-dispatch exists for the card after a worker-death re-queue), a
@@ -177,7 +239,13 @@ if [[ -n "${DANXBOT_GENERATION_CHECK_URL:-}" ]]; then
   # connect errors on stderr) + `|| true` keeps every branch fail-open.
   gen_body=""
   gen_http=""
-  gen_body="$(curl -sS -m 10 -w $'\n%{http_code}' "$DANXBOT_GENERATION_CHECK_URL" 2>/dev/null || true)"
+  # DX-925: dispatch-internal route now — the presented bearer must be THIS
+  # dispatch's own DANX_AGENT_TOKEN. An absent token still fails open (no
+  # header -> 401 -> non-200 -> "push", the same as the pre-existing
+  # unreachable/non-200 branches below), never a hard block.
+  gen_body="$(curl -sS -m 10 -w $'\n%{http_code}' \
+    -H "Authorization: Bearer ${DANX_AGENT_TOKEN:-}" \
+    "$DANXBOT_GENERATION_CHECK_URL" 2>/dev/null || true)"
   gen_http="${gen_body##*$'\n'}"
   gen_json="${gen_body%$'\n'*}"
   if [[ "$gen_http" == "200" && "$gen_json" == *'"superseded":true'* ]]; then
