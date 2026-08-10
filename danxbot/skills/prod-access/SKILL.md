@@ -22,6 +22,34 @@ When a user asks about a deployed job, dispatch, session, or container — go pu
 
 Per-target config: `<DANXBOT_REPO>/deploy/targets/<TARGET>.yml`. Each target = its own AWS account/region/resources, complete isolation, per-target SSM prefix (e.g. `/danxbot-<target>/...`), per-target EC2. Substitute `<TARGET>` (e.g. `gpt`) from the deployment the operator is asking about — `ls deploy/targets/` lists current targets.
 
+### Running `make deploy TARGET=<t>` — two environment gotchas before it even starts
+
+Both hit live (2026-08-10, DX-2133 deploy) and both fail FAST with a clear message once you know what they are — don't investigate further than this when you hit them:
+
+1. **Node version.** The deploy CLI (`deploy/cli.ts`) needs Node 22+ (see `.nvmrc`). The shell's default/system Node (commonly 18.x) fails immediately with `SyntaxError: Unexpected token 'with'` (the `cli-spinners` dependency uses import-attribute syntax Node 18 doesn't parse). Fix: `source ~/.nvm/nvm.sh && nvm use 22` before running `make deploy`.
+2. **`DANXBOT_TARGET` must match the `TARGET=` argument.** The repo's `.envrc` sets `DANXBOT_TARGET=local` on every shell start (direnv). Running `make deploy TARGET=gpt` without ALSO exporting `DANXBOT_TARGET=gpt` fails with `Deploy failed: Target mismatch: CLI argument is "gpt" but DANXBOT_TARGET env var is set to "local"`. A plain `unset DANXBOT_TARGET` does NOT fix it — direnv re-sets it on the next shell invocation. Fix: export it explicitly in the same command.
+
+Full working invocation:
+```bash
+cd <DANXBOT_REPO> && source ~/.nvm/nvm.sh && nvm use 22 && export DANXBOT_TARGET=<t> && make deploy TARGET=<t>
+```
+
+### Worker swap during deploy can abort on a drain-wait timeout — this is a known gap, not a bug to re-diagnose
+
+`deploy/steps/drain.ts` blocks the worker container swap behind a full in-flight-dispatch drain, capped at 15 minutes; on timeout it aborts the whole deploy and requires a literal interactive TTY confirmation (`--yes` is deliberately excluded from bypassing this specific step). If you hit `Drain wait timed out for <worker> with N dispatch(es) still in-flight`, that is expected current behavior, not a new failure to investigate — either wait for the in-flight dispatch(es) to finish naturally and re-run `make deploy` (image build is cached, it finishes in under a minute the second time), or check whether DX-2134 (redesign this to swap immediately and trust the container's existing `stop_grace_period` graceful-shutdown/autosave-resume path instead of blocking) has landed yet.
+
+### A deploy can succeed on the dashboard but leave the worker on the OLD image
+
+The dashboard and worker are separate EC2 instances, redeployed as separate steps in the same `make deploy` run. If the `drain` step times out (see above), the deploy aborts BEFORE the `workers` step runs — the dashboard is already on the new image, the worker is not. Check the deploy summary's per-step status (`✓`/`✗`/`⏭`) rather than assuming "deploy ran" means "both instances are updated."
+
+### After a worker container swap, the fix may not be live even though the deploy succeeded — check for a stale materialize cache
+
+If the deploy changed the config-MATERIALIZER's own logic (e.g. how `.claude/agents/*.md` gets written) without a corresponding content change to the underlying catalog artifacts in the DB, the worker's per-clean-room `.materialize-hash` cache can mask the fix — the cache key is computed from DB content only, not materializer code version, so an unchanged-content re-materialize after the deploy silently short-circuits and leaves the OLD (pre-fix) files on disk. Symptom: the exact same dispatch failure as before the fix, even though the new image is confirmed running.
+
+**Check:** does `.claude/.materialize-hash`'s mtime postdate the deploy, but the actual file under `.claude/agents/<name>.md` predate it? That's this bug, not a regression in the fix.
+
+**Workaround:** `rm` the stale clean-room's `.claude/.materialize-hash` on the worker to force a full rewrite on the next dispatch — path is `/var/lib/danxbot/worker/clean-room/<install-hash>/<repo>__<board>__<kind>__<profile>__<card>/.claude/.materialize-hash`. The real fix (bumping the materializer's own cache-invalidation version tag on a behavior change) is tracked as DX-2140 — check its status before re-diagnosing this from scratch.
+
 ## Reach paths
 
 ### 1. HTTP API (preferred for job/dispatch queries — no SSH, no streaming)
