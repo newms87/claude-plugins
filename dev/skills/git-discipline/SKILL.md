@@ -155,6 +155,10 @@ Most common rationalization into forbidden `git checkout`. Reasoning wrong:
 
 **Forked-Agent worktree trap:** dispatching Agent with `isolation: "worktree"` forks from parent HEAD AT FORK TIME. If main advances, integrating via cherry-pick replays onto HEAD the agent never saw. Don't use `isolation: "worktree"` for tasks overlapping recently-changed files — work inline or rebase worktree before commit.
 
+## Fetch Before Asserting Remote State
+
+Local `main` is not current — it moves only when YOU fetch/pull; other agents, workers, and pushes advance `origin/main` without your clone knowing, for hours or across a whole session. **Before any claim that a file/feature "exists," "is missing," or "isn't merged" on a branch — `git show HEAD:<path>`, `git log`, a bare existence check — run `git fetch origin` first and check `origin/<branch>`, never local `HEAD` alone.** This generalizes the cherry-pick staleness check above to EVERY remote-state assertion, not just before cherry-pick/rebase/merge. Local-only reads are fine for inspecting your own uncommitted work; never for asserting what is or isn't on a remote.
+
 ## All Code Is Your Code
 
 Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," "pre-existing," "out of scope." Every line your responsibility.
