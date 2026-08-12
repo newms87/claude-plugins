@@ -168,6 +168,7 @@ Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," 
 ## Git Operations Allowed
 
 - **Read-only:** `git status`, `git diff`, `git log` (anytime)
+- **`git fetch` / `git pull --ff-only` (no `--rebase`, no merge):** ALWAYS allowed, no ask — fast-forward-only sync of your own local clone to remote can never lose work. Never gate this behind a question; just run it whenever local state might be stale.
 - **Via pipeline:** `git add`/`commit`/`push` when running `/flow-commit`
 - **`git pull --rebase` on push rejection:** ONCE per rejection. Clean → re-push. Conflict → resolve in place by hand (per above). Abort + ask ONLY when outside both cards' scope. Interactive rebase, rebase onto arbitrary ref, `-X` strategy: not allowed without explicit user request.
 - **Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request.
