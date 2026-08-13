@@ -257,6 +257,18 @@ else
   fi
 fi
 
+# Move THIS machine's installed-plugin records onto the versions just
+# published. Without this the bump reaches GitHub and every local project
+# keeps loading whatever version it cached earlier — the failure this repo
+# hit for two months. See scripts/update-plugins.sh for why it can't be left
+# to Claude Code's own auto-update here.
+if [ -z "${DANX_AGENT_WORKTREE:-}" ] && [ -x "${REPO_ROOT}/scripts/update-plugins.sh" ]; then
+  info "Updating this machine's installed plugin records..."
+  if ! "${REPO_ROOT}/scripts/update-plugins.sh"; then
+    err "WARN: plugin update reported failures (above). The publish itself succeeded."
+  fi
+fi
+
 ok "Done:"
 for line in "${BUMPED[@]}"; do
   echo "  - $line"
