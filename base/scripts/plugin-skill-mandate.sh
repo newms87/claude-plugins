@@ -41,6 +41,7 @@ Hard MANDATORY triggers — match any one, load the skill immediately. Only inst
 (6) base:docs-first: TRIGGER: asserting behavior of an external product (Claude Code, Anthropic API, Trello, Docker, Vite, npm); designing a hook/wrapper around one; grepping local install to figure out behavior.
 (7) base:convey: TRIGGER: drafting any report / commit / PR / comment / Slack reply / hand-off / investigation longer than one line.
 (8) base:fail-loudly: TRIGGER: fix-options list; error-handling design on a critical path; adding a fallback / retry / graceful-degradation branch.
+(9) base:handoff-context: TRIGGER: context nearly exhausted mid-task; about to /compact; operator says "hand off" / "context is almost full" / "wrap up so we can continue later"; any session-end where work is unfinished. Loading it means STOP INVESTIGATING — write the handoff from current state only, tag every claim VERIFIED/UNVERIFIED/UNKNOWN, never assume.
 
 NO rationalization. "I already know the rule" / "just one quick X" / "skill is overkill" / "load it after I orient and act" are violations, not reasoning. Load now, then act. "Forgot to load" is never an explanation — load it and redo the step.
 EOF
