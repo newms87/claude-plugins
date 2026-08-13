@@ -22,6 +22,8 @@ Write the handoff from **what you already know right now**. Gaps are not yours t
 
 Exception, single: writing the handoff file itself. Nothing else.
 
+**Write section 1 (RESUME HERE) FIRST — before reading further into this skill.** This skill fires when context is nearly gone; if the budget dies mid-read, the load-bearing part is already on disk. Then come back and fill in the rest.
+
 ## RULE 1 — Two channels, both required
 
 | Channel | Content | Why |
@@ -29,7 +31,7 @@ Exception, single: writing the handoff file itself. Nothing else.
 | **Durable file** | Full handoff, all sections | Survives compaction intact |
 | **Chat tail** (last thing you emit) | ≤5-line recovery stub: file path + the ONE next action + the exact next command | Compaction keeps the tail; a path alone gets summarized into "a handoff file was written" and lost |
 
-**Path:** the session scratchpad dir if one exists, else `/tmp/claude-handoff-<cwd-basename>.md`. **ONE stable path — overwrite in place on every re-invoke.** Never accumulate timestamped handoffs; multiple files means resuming from the wrong one.
+**Path:** take the session scratchpad dir **from your system prompt if it is listed there — do NOT probe the filesystem for it**; if no scratchpad is listed, use `/tmp/claude-handoff-<cwd-basename>.md`. **ONE stable path — overwrite in place on every re-invoke.** Never accumulate timestamped handoffs; multiple files means resuming from the wrong one.
 
 If the session has a durable work-record surface (issue card, task tracker, PR body), mirror the handoff there too.
 
