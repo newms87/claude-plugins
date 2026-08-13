@@ -131,6 +131,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
   if [ "$THROTTLE" -gt 0 ] && [ -f "$STAMP_FILE" ]; then
     last="$(cat "$STAMP_FILE" 2>/dev/null || echo 0)"
     if [[ "$last" =~ ^[0-9]+$ ]] && [ $(( $(date +%s) - last )) -lt "$THROTTLE" ]; then
+      # Log the skip, not just the sweep. Without this line a throttled run
+      # leaves no trace at all, so "the hook never fired" and "the hook fired
+      # and correctly skipped" are indistinguishable — which is exactly the
+      # question the log has to be able to answer.
+      log "=== $(date -Is) update-plugins.sh SKIPPED (throttle ${THROTTLE}s, last ran $(( ($(date +%s) - last) / 60 ))m ago) ==="
       dim "Last update ran $(( ($(date +%s) - last) / 60 ))m ago (throttle ${THROTTLE}s) — skipping."
       exit 0
     fi
@@ -147,6 +152,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     rc=$?
     set -e
     if [ "$rc" -eq 75 ]; then
+      log "=== $(date -Is) update-plugins.sh SKIPPED (lock held by another run) ==="
       dim "Another plugin update is already running — skipping."
       exit 0
     fi
