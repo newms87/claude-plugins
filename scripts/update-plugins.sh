@@ -224,7 +224,7 @@ for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r plugin scope project version <<<"$row"
 
   target_dir="$HOME"
-  label="${plugin} [${scope}] ${version}"
+  where="${scope}"
   if [ "$project" != "-" ]; then
     if [ ! -d "$project" ]; then
       # The project directory is gone; its record can never resolve again.
@@ -232,8 +232,11 @@ for row in "${ROWS[@]}"; do
       continue
     fi
     target_dir="$project"
-    label="${plugin} [${scope} @ $(basename "$project")] ${version}"
+    # Two projects can hold rows for the same plugin at the same scope, so the
+    # project name has to be in every line that names a row.
+    where="${scope} @ $(basename "$project")"
   fi
+  label="${plugin} [${where}] ${version}"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     dim "  would update: ${label}"
@@ -244,13 +247,13 @@ for row in "${ROWS[@]}"; do
   if output="$(cd "$target_dir" && claude plugin update "$plugin" --scope "$scope" 2>&1)"; then
     log "  ok: ${label} :: ${output//$'\n'/ }"
     if grep -qiE 'updated from' <<<"$output"; then
-      UPDATED+=("${plugin} [${scope}] $(grep -oiE 'from [^ ]+ to [^ ]+' <<<"$output" | head -1)")
+      UPDATED+=("${plugin} [${where}] $(grep -oiE 'from [^ ]+ to [^ ]+' <<<"$output" | head -1)")
     else
-      CURRENT+=("${plugin} [${scope}]")
+      CURRENT+=("${plugin} [${where}]")
     fi
   else
     log "  FAILED: ${label} :: ${output//$'\n'/ }"
-    FAILED+=("${plugin} [${scope}] — ${output//$'\n'/ }")
+    FAILED+=("${plugin} [${where}] — ${output//$'\n'/ }")
   fi
 done
 
