@@ -137,3 +137,5 @@ Never narrate a duration from memory or feel. Same discipline for any other one-
 | Subagent prompt | 30 |
 
 Over budget = re-read for fluff.
+
+**Carve-out — an ask directed at the user is measured per ask, not per turn.** A decision/approval/clarification brief owes the reader a problem statement, a recommendation, numbered options, and pros/cons per option (contract: `human-collaboration:human-loop`). Those four are the LAST things to cut. Trim evidence and mechanism to fit; never trim the ask into an unreadable fragment, and never merge multiple asks to save lines.
