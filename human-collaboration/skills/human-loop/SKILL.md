@@ -1,6 +1,6 @@
 ---
 name: human-loop
-description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions. HARD RULE — applies EVERY TIME, even when this body is NOT loaded: present ALL decision options / clarifying questions to the user as PROSE — a plain numbered list, pros/cons per option, ending with a recommendation. The `AskUserQuestion` tool is FORBIDDEN for these (cramped labels hide tradeoffs). About to call AskUserQuestion? STOP → write the questions in chat instead.'
+description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions. HARD RULE — applies EVERY TIME, even when this body is NOT loaded: every ask directed at the user is a SELF-CONTAINED brief written for a reader who knows the architecture but has read NONE of this session — problem statement (2-4 plain sentences) → one-sentence recommendation → numbered solutions → pros/cons sub-bullets per solution. Multiple asks in one turn = number the ASKS, letter the SOLUTIONS. No back-references to earlier turns, no unexplained identifiers, no evidence dumped before the question. The `AskUserQuestion` tool is FORBIDDEN for these (cramped labels hide tradeoffs). About to call AskUserQuestion? STOP → write the ask in chat instead.'
 ---
 
 # Human-in-the-Loop Rules
@@ -92,7 +92,24 @@ Never kill unless user explicit "kill it"/"stop it"/"cancel it". Running = time 
 
 After options/diagnosis/proposals → text only. No Edit/Write/mutation until explicit action verb.
 
-**Present options as PROSE, never the `AskUserQuestion` tool.** Operator reads + replies in chat. Write each option concisely but well — and when an option's choice carries deeper impact or hidden complexity than a one-liner shows, give explicit **pros / cons** per option so the tradeoff is visible. `AskUserQuestion` is FORBIDDEN for these decision points (cramped labels, hides tradeoffs). Plain numbered/bulleted list with a recommendation.
+## Every Ask Is a Self-Contained Brief — Reader Has Followed NONE of It
+
+Any ask directed at the user — decision, approval, clarification — is a standalone brief, NOT a continuation of your thinking. Assume the reader understands the system's architecture and has read **zero** of the current session. They must never scroll back through your reasoning to reconstruct what is being asked or why.
+
+Required shape, in this order:
+
+1. **Problem** — 2-4 sentences, plain language: what is broken or undecided, and what it blocks.
+2. **Recommendation** — one sentence naming the option you would take.
+3. **Solutions** — numbered list. Each entry describes a behavior or outcome, not an implementation sketch.
+4. **Pros / Cons** — sub-bullets under each solution. Required whenever there is more than one option; omit only for a single-option approval.
+
+**Multiple asks in one turn → number the ASKS, letter the SOLUTIONS.** Ask 1 → options a/b/c; Ask 2 → options a/b. Never interleave; never leave the reader deducing which options belong to which question.
+
+**Forbidden inside an ask:** unexplained identifiers; back-references to earlier turns ("as I mentioned", "the issue I found above", "that failure"); a wall of evidence stacked before the question; the ask buried under a status report. Supporting evidence goes AFTER the options, or is dropped.
+
+`AskUserQuestion` is FORBIDDEN for all of the above — its labels are too cramped to carry a tradeoff. Write the ask in chat as prose.
+
+**Output-length budgets never license dropping the problem statement.** When trimming, cut evidence and mechanism first; problem, options, and tradeoffs are the last things to go.
 
 ## Iter Loops Do Not Carry Approval Forward
 
