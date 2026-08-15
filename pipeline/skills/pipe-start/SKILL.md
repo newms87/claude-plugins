@@ -95,7 +95,7 @@ Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` ->
 
 ### 10. Issue Card IS the Plan
 
-When an issue card is assigned (e.g. `<PREFIX>-N`), never use EnterPlanMode. The card (`description` + `ac[]` + child phase cards + `comments[]`) IS the plan. Read it with `mcp__danx_dashboard__issue_get({id})` before starting. Re-read after context compaction.
+When an issue card is assigned (e.g. `<PREFIX>-N`), never use EnterPlanMode. The card (`description` + `ac[]` + child phase cards + `comments[]`) IS the plan. Read it with `mcp__danx-dashboard__issue_get({id})` before starting. Re-read after context compaction.
 
 ### 11. Complete ALL Work
 

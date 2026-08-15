@@ -7,7 +7,7 @@ description: 'Card-overrides-plan-mode + prose-only plans + zero-context test + 
 
 ## Issue Card Overrides Plan Mode (default)
 
-Card assigned (`<PREFIX>-N`, lives in the dashboard DB) → DEFAULT is NEVER use EnterPlanMode. Card IS plan. Update it via `mcp__danx_dashboard__issue_edit` if the plan changes — the tool writes the DB directly (no file, no mirror). Trust spec, execute.
+Card assigned (`<PREFIX>-N`, lives in the dashboard DB) → DEFAULT is NEVER use EnterPlanMode. Card IS plan. Update it via `mcp__danx-dashboard__issue_edit` if the plan changes — the tool writes the DB directly (no file, no mirror). Trust spec, execute.
 
 ## Complex-Card Escape Hatch (rare)
 
@@ -26,7 +26,7 @@ Agent CAN make the decision but card needs detail.
 
 1. `EnterPlanMode` — prose only, zero code blocks
 2. `ExitPlanMode`
-3. Append resolved design to the card — via `mcp__danx_dashboard__issue_edit({id, description})` OR a timestamped Design Note via `mcp__danx_dashboard__issue_comment({id, action: 'add', text})`. Update child phase cards + `ac[]` if changed (`issue_edit`).
+3. Append resolved design to the card — via `mcp__danx-dashboard__issue_edit({id, description})` OR a timestamped Design Note via `mcp__danx-dashboard__issue_comment({id, action: 'add', text})`. Update child phase cards + `ac[]` if changed (`issue_edit`).
 4. Resume implementation
 
 ### Move B — Blocked escalation (out of scope)
@@ -38,7 +38,7 @@ Decision agent SHOULD NOT make alone:
 - Requires authoritative judgment (priority, scope, business preference)
 
 When any holds:
-1. Block the card via `mcp__danx_dashboard__issue_transition({id, action: 'block', reason})`. Reason = one paragraph naming the specific decision the human must make + agent's recommended option + tradeoffs. The server stamps `blocked: {at, reason}` and derives `status: Blocked` — no separate `status` write.
+1. Block the card via `mcp__danx-dashboard__issue_transition({id, action: 'block', reason})`. Reason = one paragraph naming the specific decision the human must make + agent's recommended option + tradeoffs. The server stamps `blocked: {at, reason}` and derives `status: Blocked` — no separate `status` write.
 2. Stop. `danxbot_complete({status: "failed", summary: "Escalated to Blocked — awaiting decision on <X>"})`
 3. NEVER speculatively implement against unclear option
 
@@ -54,7 +54,7 @@ Whenever you plan work — `EnterPlanMode` or not — the durable artifact is a 
 
 **Which repo (dynamic — resolve, don't assume):**
 1. Default = the repo this session is instantiated in (~99% of the time).
-2. Plan touches a DIFFERENT or additional repo? List danxbot's connected repos (`mcp__danx_dashboard__issue_list` accepts `repo`; the connected set = `REPOS`/dashboard repo selector) and pick the one the work belongs in — file the card THERE (`mcp__danx_dashboard__issue_create({repo})`).
+2. Plan touches a DIFFERENT or additional repo? List danxbot's connected repos (`mcp__danx-dashboard__issue_list` accepts `repo`; the connected set = `REPOS`/dashboard repo selector) and pick the one the work belongs in — file the card THERE (`mcp__danx-dashboard__issue_create({repo})`).
 3. Genuinely spans repos → a card per involved repo (or an Epic in the primary repo with a cross-repo note + sibling cards).
 
 **Mechanical gate before `ExitPlanMode`:** card(s) filed (Epic + phase children for ≥2 phases; reopen an existing id via `issue_transition` rather than re-create). Not filed → not done.

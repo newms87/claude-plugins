@@ -33,8 +33,8 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 **The durable record of review findings + the fix plan lives on the CARD, never a file** (card-first rule — see `pipe-plan` "EVERY plan lives in a card"). A `/tmp/*.md` revisions file is forbidden: the next agent and the human read the card, not your scratch dir.
 
-1. **Append a `## Code Review Revisions` comment to the active card** via `mcp__danx_dashboard__issue_comment`: paste ALL findings verbatim grouped by reviewer (test / code / architecture), then a concrete fix plan below them (phases with specific file paths + changes).
-2. **Findings that are substantial work outside this card's scope** → file a child or new card (`mcp__danx_dashboard__issue_create`) instead of cramming them in; link via `parent_id`/dependency as fits.
+1. **Append a `## Code Review Revisions` comment to the active card** via `mcp__danx-dashboard__issue_comment`: paste ALL findings verbatim grouped by reviewer (test / code / architecture), then a concrete fix plan below them (phases with specific file paths + changes).
+2. **Findings that are substantial work outside this card's scope** → file a child or new card (`mcp__danx-dashboard__issue_create`) instead of cramming them in; link via `parent_id`/dependency as fits.
 3. **Trivial** (renames, docs, small fixes) → one short phase. **Extensive** (many files, cross-domain) → multiple phases ordered by dependency.
 4. You MAY keep a throwaway inline checklist for your own momentary fix-loop tracking, but anything another agent or a human needs — or that you will reference later — MUST be on the card, not a file.
 
@@ -68,7 +68,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 ## Step 5: Create Action Items for Pattern-Worthy Findings
 
-If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx_dashboard__issue_create` (or append to the active card's `retro.action_items[]`). Don't defer to session end.
+If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx-dashboard__issue_create` (or append to the active card's `retro.action_items[]`). Don't defer to session end.
 
 ## Step 6: Run `/pipe-quality`
 
