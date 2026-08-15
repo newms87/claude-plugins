@@ -10,7 +10,7 @@ You process ONE card: **read card (`issue_get`) → plan → implement → quali
 ## Top-Level Flow
 
 0. Verify on latest `origin/main` (references/step-procedures.md § Step 0).
-1. Get the card body: if the dispatch prompt inlines a `## Card snapshot` block (DX-1675 — the worker inlines the current card body on a fresh work dispatch), use that block as the card body and SKIP the initial `issue_get`; otherwise (resume — no snapshot block) read the card via `mcp__danx_dashboard__issue_get` for the id the dispatch prompt named. Re-read via `issue_get` only when you need fresher than the snapshot (the snapshot is current at dispatch time; the DB stays canonical).
+1. Get the card body: if the dispatch prompt inlines a `## Card snapshot` block (DX-1675 — the worker inlines the current card body on a fresh work dispatch), use that block as the card body and SKIP the initial `issue_get`; otherwise (resume — no snapshot block) read the card via `mcp__danx-dashboard__issue_get` for the id the dispatch prompt named. Re-read via `issue_get` only when you need fresher than the snapshot (the snapshot is current at dispatch time; the DB stays canonical).
 1.1. **Resume self-check** — terminal state + checked ACs + filled retro → call `danxbot_complete`, stop. Don't redo.
 1.5. **You Fix What You Find** rule — internalize before proceeding (references/step-procedures.md § Step 1.5).
 2. Plan (references/step-procedures.md § Step 2).
@@ -27,7 +27,7 @@ Config references: `.claude/rules/danx-repo-config.md` for repo commands. Never 
 
 ## DB Schema
 
-All cards are in the DB, accessed via MCP tools (`mcp__danx_dashboard__issue_*`). Quick points:
+All cards are in the DB, accessed via MCP tools (`mcp__danx-dashboard__issue_*`). Quick points:
 
 - **`status` / `status_derived`** is **DERIVED** from lifecycle triggers — agents NEVER write via `issue_edit`. Pickup → `issue_transition({action: 'pickup'})` → rule 4 → `In Progress`. Approve → `issue_transition({action: 'ready'})` → rule 5 → `ToDo`. Complete → `issue_transition({action: 'complete', summary})` → rule 2 → `Done`. Cancel → `issue_transition({action: 'cancel'})` → rule 1 → `Cancelled`. Block → `issue_transition({action: 'block', reason})` → rule 3 → `Blocked`. Direct `status:` write FORBIDDEN.
 - **Use MCP tools for all mutations.** Call `issue_edit` for prose, `issue_transition` for lifecycle, `issue_comment` for comments, `issue_retro` for terminal retro.
@@ -36,7 +36,7 @@ All cards are in the DB, accessed via MCP tools (`mcp__danx_dashboard__issue_*`)
 
 ## Detailed Steps
 
-All step procedures (0–11) live in **references/step-procedures.md**. Each step reads the card (`issue_get`), makes decisions, mutates via the `mcp__danx_dashboard__issue_*` tools, and advances. Step 11 terminal call gates on all six prereqs holding.
+All step procedures (0–11) live in **references/step-procedures.md**. Each step reads the card (`issue_get`), makes decisions, mutates via the `mcp__danx-dashboard__issue_*` tools, and advances. Step 11 terminal call gates on all six prereqs holding.
 
 **Key gates:**
 - **Step 1.1:** Resume detection + validation (never trust prior claims).
@@ -63,7 +63,7 @@ Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; c
 
 - One card per dispatch.
 - No `AskUserQuestion` / plan-mode pause — decide unilaterally + document OR escalate Blocked.
-- Read + edit cards exclusively via `mcp__danx_dashboard__issue_*` tools; no tracker calls.
+- Read + edit cards exclusively via `mcp__danx-dashboard__issue_*` tools; no tracker calls.
 - Never write `status:` literals.
 - Never append `## Retro` to `comments[]` — worker auto-renders.
 - `/loop` ONLY for in-card async (triggered builds/tests); never wait for human, never wait for next card.

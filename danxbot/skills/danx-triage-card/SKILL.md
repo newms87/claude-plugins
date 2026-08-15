@@ -27,7 +27,7 @@ Out-of-scope refuse: `waiting_on == null` AND `blocked == null` AND `status_deri
 
 **This is NOT a lightweight pattern-match on the description text. Review triage is a real investigation** — you have full repo read access (`Read`/`Grep`/`Glob`/`Bash`/`git log`) and are expected to use it before every confidence score.
 
-1. **Read** — call `mcp__danx_dashboard__issue_get({id})` to load the card from DB.
+1. **Read** — call `mcp__danx-dashboard__issue_get({id})` to load the card from DB.
 2. **Investigate (Review path only, MANDATORY before scoring)** — see references/triage-paths.md "Investigation Gate":
    - Grep/read the actual source files the card's description/AC name or imply. Confirm whether the work is **already implemented** (partially or fully) — cite file:line either way.
    - Check whether the premise is **still true** against the CURRENT codebase/architecture (a card can be well-written and totally obsolete — code moves faster than the backlog).
@@ -39,12 +39,12 @@ Out-of-scope refuse: `waiting_on == null` AND `blocked == null` AND `status_deri
    - **Blocked** → Hard Gate audit → Demote / Confirm-Block (unchanged from before — see references/triage-paths.md "Status = Blocked")
    - **Waiting On** → re-check `waiting_on.by[]` → Unblock / Confirm-Block (unchanged — see references/triage-paths.md "Status = Waiting On")
 4. **Act:**
-   - **Review** → call `mcp__danx_dashboard__issue_triage({id, confidence, reason})`:
+   - **Review** → call `mcp__danx-dashboard__issue_triage({id, confidence, reason})`:
      - `confidence` = integer 0–5, **relevance/utility ONLY** — never effort, ease, or implementation cost (see Confidence Rubric below).
      - `reason` = substantive, evidence-backed reasoning (NOT a 1-2 sentence label) — MUST include: what you checked (files/functions read), what you found (implemented already? still relevant? duplicate? Master-Plan fit?), and the specific evidence behind the score. A `reason` that could have been written without reading any code is a rejected triage, redo it.
      - Read the response's `body.issue.triage_last_status` — one of `cancel` / `defer` / `keep` / `approve` — to know which band the server picked. That is what you report in your comment (step 5) as the Decision.
    - **Blocked / Waiting On** → no `issue_triage` call (there is no confidence question for an operator-escalation or dependency-wait audit — see references/triage-paths.md for the exact transition calls, unchanged from before).
-5. **Append comment** — call `mcp__danx_dashboard__issue_comment({id, action: 'add', text: "## Triage — <date>\n..."})` with markdown body containing `**Status:** <from> → <to>`, `**Decision:** <Cancel|Park|Keep|Approve|Demote|Confirm-Block|Unblock>`, `**Confidence:** <0-5>` (Review only), `**Investigation:** <files/functions checked + what you found, including the Master Plan check>`, `**Reason:** <reason>`.
+5. **Append comment** — call `mcp__danx-dashboard__issue_comment({id, action: 'add', text: "## Triage — <date>\n..."})` with markdown body containing `**Status:** <from> → <to>`, `**Decision:** <Cancel|Park|Keep|Approve|Demote|Confirm-Block|Unblock>`, `**Confidence:** <0-5>` (Review only), `**Investigation:** <files/functions checked + what you found, including the Master Plan check>`, `**Reason:** <reason>`.
 6. **Complete** — `danxbot_complete({status: "complete", summary})` ALWAYS, regardless of outcome. The card's fate is already fully driven by step 4 (`issue_triage` for Review, the noted transition calls for Blocked/Waiting On) — DX-835 split card lifecycle from dispatch finalization; the worker no longer infers card moves from `danxbot_complete.status`. `danxbot_complete`'s status is ONLY "did this dispatch itself succeed" — a triage agent that read the card and recorded a real, evidenced decision succeeded, no matter which outcome it reached. Calling it with `status: "ready"` / `"cancelled"` / `"archive"` (the pre-DX-835 contract) makes the worker stamp the DISPATCH row `failed` (only literal `"complete"` counts as dispatch success, `src/mcp/danxbot-server.ts` `isCompleteSuccess` / `src/worker/dispatch.ts:2701`) — a fully successful triage run then reads as a failure and feeds the auto-triage breaker's failure count (DX-1904/DX-1809), tripping unrelated backoffs for zero reason. Use `status: "failed"` (with a real ≥30-char reason) ONLY when the dispatch itself couldn't complete — e.g. the card was unreadable, an MCP call errored, you genuinely could not reach a decision.
 
 ## Confidence Rubric (Review only)

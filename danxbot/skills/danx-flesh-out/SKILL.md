@@ -25,7 +25,7 @@ See references/overview.md for full contract + probe rules + card edit checklist
 
 ## Workflow
 
-1. **Read** — call `mcp__danx_dashboard__issue_get({id})` to load the card from DB.
+1. **Read** — call `mcp__danx-dashboard__issue_get({id})` to load the card from DB.
 2. **Probe** (5–10 min, read-only) — `Read` / `Grep` / `Glob` / git bash only. No executions, no code edits, no MCP write calls.
 3. **Rewrite** — `description` per zero-context-test (Goal / Context / Solution / Key Files). Exact file paths, gotchas, verify command.
 4. **AC populate** — 3–8 verifiable items (imperative-verb prefix). Forbidden shapes: "Active sessions run /reload-plugins", "operator verifies in their environment", "manual UI smoke", "post-terminal-save auto-flip".
@@ -52,7 +52,7 @@ See references/overview.md for full contract + probe rules + card edit checklist
 
 - One card only (plus phase children if split).
 - Read-only probe (no code execution, no MCP reads beyond `issue_get`).
-- No backend-tracker calls (the agent path uses `mcp__danx_dashboard__issue_*` only).
+- No backend-tracker calls (the agent path uses `mcp__danx-dashboard__issue_*` only).
 - No subagents.
 - Do NOT implement the work — flesh-out is spec rewrite, not code change.
 - Do NOT alter `parent_id`, `blocked` (except DX-544 clear via `issue_transition`), `waiting_on` (except chains on epic split), `requires_human`, `retro`, `dispatch`.

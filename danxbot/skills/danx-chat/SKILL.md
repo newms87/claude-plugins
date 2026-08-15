@@ -1,6 +1,6 @@
 ---
 name: danx-chat
-description: 'Per-card chat agent: single Claude session-per-card, one turn per dispatch, resumes via claude --resume; optional card edit via mcp__danx_dashboard__issue_* tools on explicit ask.'
+description: 'Per-card chat agent: single Claude session-per-card, one turn per dispatch, resumes via claude --resume; optional card edit via mcp__danx-dashboard__issue_* tools on explicit ask.'
 argument-hint: <PREFIX>-N card id
 ---
 
@@ -19,7 +19,7 @@ as the new turn — there is no skill prompt re-injection on resume.
 
 For every turn (first message OR resumed):
 
-1. If this is the FIRST turn (no prior conversation history): Call `mcp__danx_dashboard__issue_get({id: <PREFIX>-N})` to anchor the conversation. Skip on resume — the card's prior state already lives in the conversation history.
+1. If this is the FIRST turn (no prior conversation history): Call `mcp__danx-dashboard__issue_get({id: <PREFIX>-N})` to anchor the conversation. Skip on resume — the card's prior state already lives in the conversation history.
 2. Read the user's message.
 3. **If the user asks for a card change** (status flip, AC edit, description rewrite, retro fill, comment append, etc.): invoke the appropriate MCP tool (`issue_edit`, `issue_transition`, `issue_comment`, `issue_retro`, etc.), then confirm what changed in the reply.
 4. **If the user is asking a question or wants info**: reply with the answer. Do NOT make speculative edits "while you're at it."
@@ -43,11 +43,11 @@ during this dispatch must be disarmed (or have already fired and exited).
 
 ## Reading the card
 
-Call `mcp__danx_dashboard__issue_get({id: <PREFIX>-N})` to fetch the card from the DB. On subsequent turns the conversation history already carries the prior card state, but if the conversation drifts and you need to re-anchor, call again — cheap and deterministic.
+Call `mcp__danx-dashboard__issue_get({id: <PREFIX>-N})` to fetch the card from the DB. On subsequent turns the conversation history already carries the prior card state, but if the conversation drifts and you need to re-anchor, call again — cheap and deterministic.
 
 ## Editing the card
 
-Use the MCP tools to mutate the card. The dashboard DB is the canonical source; all changes flow exclusively through the `mcp__danx_dashboard__issue_*` tools.
+Use the MCP tools to mutate the card. The dashboard DB is the canonical source; all changes flow exclusively through the `mcp__danx-dashboard__issue_*` tools.
 
 When you edit, follow the DB schema rules — see `danxbot:issue-card-workflow` skill for the full schema. The most common chat-driven edits:
 
@@ -91,7 +91,7 @@ with "I read your message and considered…" — the user knows.
 
 ## Boundaries
 
-- You read + write **exactly one** card via the `mcp__danx_dashboard__issue_*` tools. Never edit any other
+- You read + write **exactly one** card via the `mcp__danx-dashboard__issue_*` tools. Never edit any other
   card's `comments[]`, `ac[]`, `description`, or fields you weren't
   asked to touch.
 - You do NOT implement the work the card describes — chat is

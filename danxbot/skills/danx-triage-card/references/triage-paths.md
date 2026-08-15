@@ -19,7 +19,7 @@ Real investigation, not a description re-read. Every one of these four checks ru
 
 1. **Already implemented?** Identify the concrete files/functions/routes the card's description or AC names or clearly implies. `Grep`/`Read` them. If the described behavior already exists in the current code — fully or substantially — that is a specific, evidenced doubt (score 0-2 depending on how completely it's already covered), however well-written the card is. Cite the file:line that proves it either way.
 2. **Still relevant?** Re-check the premise against the CURRENT architecture, not the architecture the card was written against. `git log`/`git blame` the relevant area if the card references something that may have since changed direction. A card can be internally coherent and still describe a world that no longer exists (an inverted decision, a retired subsystem, a superseding redesign already shipped).
-3. **Duplicate or already-decided sibling?** Search for a same/near-identical-title card (`mcp__danx_dashboard__issue_list({q: "<distinctive phrase from the title>"})`), including `-IMPORTED` / `-IMPORTED-2`-style variant ids of the same underlying card. If a sibling covering the same ground is already `Cancelled` or `Done`, that disposition almost always transfers — score this one the same way and say why in `reason`, unless you find concrete evidence the sibling's disposition does NOT apply here.
+3. **Duplicate or already-decided sibling?** Search for a same/near-identical-title card (`mcp__danx-dashboard__issue_list({q: "<distinctive phrase from the title>"})`), including `-IMPORTED` / `-IMPORTED-2`-style variant ids of the same underlying card. If a sibling covering the same ground is already `Cancelled` or `Done`, that disposition almost always transfers — score this one the same way and say why in `reason`, unless you find concrete evidence the sibling's disposition does NOT apply here.
 4. **Conforms to the Master Plan?** Read `.claude/rules/danx-master-plan.md` (force-loaded rule, always in context for triage dispatches — no extra call). Where the index references deeper content, `Read`/`Grep` the matching `.claude/master-plan/<slug>.md` page(s) on demand. Does the card fit something the plan describes? A card the plan is simply silent on is NOT itself a doubt — only an ACTUAL conflict with the plan (the plan describes a different direction, or explicitly excludes this) counts as evidence against.
 
 A card that passes all four (not implemented, still relevant, no superseding sibling, conforms to or is unaddressed by the Master Plan) earns the default score of 5. A card that fails any one of them, with cited evidence, is scored below 5 — the lower the score, the more conclusive and evidenced the doubt (see Confidence Rubric in SKILL.md).
@@ -28,7 +28,7 @@ A card that passes all four (not implemented, still relevant, no superseding sib
 
 **Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite. Do this regardless of what score you land on — it is bookkeeping on the card, not part of the confidence decision.
 
-**If you expect an Approve-band score:** call `mcp__danx_dashboard__issue_requires_human({set: true, reason, steps[]})` BEFORE `issue_triage`, same as before — every Approve still needs a human sign-off before the card is picked up for autonomous work, independent of how the score was computed. If the server's actual routing lands somewhere else (e.g. your 5 nonetheless resolves to Keep under a board's stricter thresholds), the `requires_human` flag on a non-`ToDo` card is inert — harmless, not wrong.
+**If you expect an Approve-band score:** call `mcp__danx-dashboard__issue_requires_human({set: true, reason, steps[]})` BEFORE `issue_triage`, same as before — every Approve still needs a human sign-off before the card is picked up for autonomous work, independent of how the score was computed. If the server's actual routing lands somewhere else (e.g. your 5 nonetheless resolves to Keep under a board's stricter thresholds), the `requires_human` flag on a non-`ToDo` card is inert — harmless, not wrong.
 
 ## Status = Blocked
 
@@ -56,7 +56,7 @@ If found, Demote instead.
 ## Status = Waiting On
 
 **Re-check `waiting_on.by[]`.** For each blocker id:
-- Query the v2 DB via `mcp__danx_dashboard__issue_get({id: "<PREFIX>-N"})`.
+- Query the v2 DB via `mcp__danx-dashboard__issue_get({id: "<PREFIX>-N"})`.
 - Note its derived `status`. Terminal = `Done` or `Cancelled`. Non-terminal = anything else.
 
 As with Blocked, this is a mechanical re-check of dependency state, not a value judgment — it does NOT call `issue_triage`.

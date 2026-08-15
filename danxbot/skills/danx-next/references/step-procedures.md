@@ -20,9 +20,9 @@ This step is read-only — if `git status` shows uncommitted changes BEFORE you 
 
 ## Step 1 — Read the Issue and Set Effort Level
 
-Query the DB via `mcp__danx_dashboard__issue_get({id})` to fetch the card. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
+Query the DB via `mcp__danx-dashboard__issue_get({id})` to fetch the card. The worker auto-flipped the card to derived `In Progress` BEFORE spawning (DX-584: `dispatch != null` set before `spawnAgent`; rule 4 projects to `In Progress`). You do NOT write `status:` on pickup — the field is derived.
 
-**Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the clean-room's catalog-materialized policy carries operator-tunable assignment prompt + 7-rung level ladder. If the card's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set it via `mcp__danx_dashboard__issue_edit({id, effort_level: "<level>"})`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
+**Your first edit is `effort_level` if unset (DX-512).** Read `.claude/rules/danx-effort-policy.md` — the clean-room's catalog-materialized policy carries operator-tunable assignment prompt + 7-rung level ladder. If the card's `effort_level` is `null`, pick the lowest level plausible per policy (default `medium`; bump DOWN for mechanical/single-file/doc; bump UP for deep reasoning/multi-file/subtle concurrency). Set it via `mcp__danx-dashboard__issue_edit({id, effort_level: "<level>"})`. If already set, leave alone — triage owns it on Review cards; pickup only fills unset.
 
 **Resume detection:** if the card's `status_derived` is `In Progress` (i.e. `dispatch != null` AND no terminal trigger) AND prior session state exists (checked ACs, comments from earlier, `retro.commits[]`), treat as resumption → proceed to Step 1.1. Trust `status_derived`.
 
@@ -77,7 +77,7 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 ## Step 2 — Plan
 
 1. Read full `description`, all `comments[]`, all `ac[]` titles, existing `children[]` (call `issue_get` on each child id to see what's built).
-1.5. **Load issue-ref context from the code you'll touch (DEFAULT MODE).** Before designing changes, grep the files in scope for COMMENT-anchored card refs and load each one: `grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>` (anchor to comment markers — bare `[A-Z]+-[0-9]+` also hits test names / migration filenames / fixtures in this ref-dense repo) → for every UNIQUE id, `mcp__danx_dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]`. Those comments name standing constraints prior cards imposed on this code — editing past them without loading the card silently breaks original intent. (Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".)
+1.5. **Load issue-ref context from the code you'll touch (DEFAULT MODE).** Before designing changes, grep the files in scope for COMMENT-anchored card refs and load each one: `grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>` (anchor to comment markers — bare `[A-Z]+-[0-9]+` also hits test names / migration filenames / fixtures in this ref-dense repo) → for every UNIQUE id, `mcp__danx-dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]`. Those comments name standing constraints prior cards imposed on this code — editing past them without loading the card silently breaks original intent. (Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".)
 2. **Bug cards (`type: Bug`):** investigate root cause via `Read` / `Grep` / `Bash` before designing fix.
 3. **Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly. Step 10 (Blocked) ONLY for true human-action blockers (credentials, secret rotation, ambiguous spec, architectural ambiguity). **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required. Anything else → apply Step 1.5, fix yourself.
 4. Design approach in head. No code yet.
@@ -89,7 +89,7 @@ Check card's existing state. ANY condition = epic already split — DO NOT re-sp
 
 1. **Card's `children: []` is non-empty.** Container (Epic OR Feature) fully linked — a container is NEVER worked directly; descend to a child. `issue_get` each child id, identify first with `status_derived: ToDo` (or `In Progress` if resuming), treat THAT child as work. Re-fetch that child card, restart workflow at Step 1 using the child card.
 2. **Card's `type: Epic` AND `children: []` empty.** Epic created without children linked (or by human on tracker) — phase cards may exist but lack `parent_id` linkage. **Invoke `danx-epic-link` skill via Skill tool.** It scans open issues, identifies epic's phase children, sets `parent_id` on each phase, sets `children[]` on epic. After return, re-fetch epic via `issue_get` — `children[]` now populated — jump back to Step 3.0 (first condition now matches).
-3. **Card's `type` is NOT Epic but other cards reference it as parent.** Call `mcp__danx_dashboard__issue_list({parent_id: "<this.id>"})`. Any matches = card is actually epic that lost `Epic` label. Promote via `issue_edit({id, type: "Epic", ...})`, set `children[]` from matched cards (sorted like `danx-epic-link`). Jump back to Step 3.0.
+3. **Card's `type` is NOT Epic but other cards reference it as parent.** Call `mcp__danx-dashboard__issue_list({parent_id: "<this.id>"})`. Any matches = card is actually epic that lost `Epic` label. Promote via `issue_edit({id, type: "Epic", ...})`, set `children[]` from matched cards (sorted like `danx-epic-link`). Jump back to Step 3.0.
 
 Only if NONE match proceed to Step 3.1.
 
@@ -101,8 +101,8 @@ If NOT splitting, skip to Step 4.
 
 ## Step 3.2 — Perform the Split
 
-1. Call `mcp__danx_dashboard__issue_edit({id, type: "Epic"})` to promote the parent. Keep it `In Progress`. Add a comment via `issue_comment` summarizing the split. Don't worry about `children[]` yet — you don't have phase ids until each `issue_create` returns.
-2. For each phase, call `mcp__danx_dashboard__issue_create({type, title, description, parent_id, ac?, effort_level?, triage_enabled})`:
+1. Call `mcp__danx-dashboard__issue_edit({id, type: "Epic"})` to promote the parent. Keep it `In Progress`. Add a comment via `issue_comment` summarizing the split. Don't worry about `children[]` yet — you don't have phase ids until each `issue_create` returns.
+2. For each phase, call `mcp__danx-dashboard__issue_create({type, title, description, parent_id, ac?, effort_level?, triage_enabled})`:
    - `type` — a **dispatchable leaf**: `"Story"`, `"Bug"`, or `"Chore"`. NOT `Epic` and NOT `Feature` — both are containers, never worked directly; a Feature phase-child would itself need child Story cards. If a phase is genuinely a few-slice capability, create it as a `Feature` container WITH its own child Story cards in the same pass (never a bare dispatchable Feature).
    - `title` — `"<Epic Title> > Phase N: Description"`.
    - `description` — full markdown body.
@@ -111,7 +111,7 @@ If NOT splitting, skip to Step 4.
    - `triage_enabled` — EXPLICIT per card (server default `false` = never auto-triaged; explicit-only per the `issue-card-workflow` "Auto-Triage Opt-In" rule). Phases you are about to `ready` yourself need no auto-triage → `false`; pass `true` only when a phase is deliberately left in Review for the automatic triage pipeline to evaluate.
    - The server allocates the next `<PREFIX>-N` and returns it in `body.id`. There is NO filename, NO slug, NO rename step. Capture the returned `id`. `{ok: false, body: {error}}` → fix the args, retry.
 3. Create the phases in intended phase order; the `parent_id` you passed links each to the epic, and the epic's `children[]` reflects creation order automatically (server-maintained from each child's `parent_id`).
-4. **Set `waiting_on` on phase 2..N for serial ordering.** For each phase whose index ≥ 1, call `mcp__danx_dashboard__issue_dependency({id: <phase-i>, action: 'add', kind: 'depends_on', target_id: <children[i-1]>, reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete."})`:
+4. **Set `waiting_on` on phase 2..N for serial ordering.** For each phase whose index ≥ 1, call `mcp__danx-dashboard__issue_dependency({id: <phase-i>, action: 'add', kind: 'depends_on', target_id: <children[i-1]>, reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete."})`:
    - Phase 1 takes no dependency — it dispatches first.
    - Picker skips dispatch while any blocker non-terminal; dispatches phase N+1 once phase N derives `Done` / `Cancelled`. The `waiting_on` record stays as a durable dep-history note.
    - **Use `waiting_on` for sequential phase chains — NOT `blocked`.** `blocked` is self-block (human required); `waiting_on` is dep-chain gate (other in-flight work).
@@ -223,7 +223,7 @@ Before deciding Done vs Blocked, **inspect actual state of every AC item in the 
 
 **Mechanical procedure:**
 
-1. Re-fetch the card via `mcp__danx_dashboard__issue_get({issue_id})`.
+1. Re-fetch the card via `mcp__danx-dashboard__issue_get({issue_id})`.
 2. Count `ac` entries where `checked === false`.
 3. **Zero unchecked** → Step 9 (Done).
 4. **One or more unchecked** → run **Step 1.5 fix-it-yourself check** FIRST. Can you fix underlying defect in this dispatch? YES → fix, re-verify, re-check AC, re-run this gate. Only after exhausting in-session fixes proceed to Step 10. Do NOT move to Done. Do NOT rationalize.
@@ -339,19 +339,19 @@ If only thing blocking is human action → use Step 10 (Blocked).
 ### Procedure
 
 1. **Find blocking card(s).** Search in order until ≥1 concrete `<PREFIX>-N` id describing unblock work:
-   1. **Phase siblings via parent epic.** If card has `parent_id`, read epic's `children[]`, check each phase card via `mcp__danx_dashboard__issue_get`. Blocker usually phase shipping first.
-   2. **Open issues by topic.** Use `mcp__danx_dashboard__issue_list` to find cards covering prerequisite — ToDo, In Progress, Blocked, Action Items all qualify.
+   1. **Phase siblings via parent epic.** If card has `parent_id`, read epic's `children[]`, check each phase card via `mcp__danx-dashboard__issue_get`. Blocker usually phase shipping first.
+   2. **Open issues by topic.** Use `mcp__danx-dashboard__issue_list` to find cards covering prerequisite — ToDo, In Progress, Blocked, Action Items all qualify.
    3. **In Progress queue.** Cards being worked on may be blocker.
-2. **No existing card describes unblock work?** You MUST create one. Prepare the card data describing exactly what needs to happen. Call `mcp__danx_dashboard__issue_create({type, title, description, ac, ...})`. Pick status:
-   - Autonomous agent work → call `mcp__danx_dashboard__issue_transition({action: 'ready'})` so the poller dispatches.
-   - Human work → call `mcp__danx_dashboard__issue_transition({action: 'block', reason: "<one sentence>"})` (derived `Blocked` via rule 3). Include all evidence human needs in description.
+2. **No existing card describes unblock work?** You MUST create one. Prepare the card data describing exactly what needs to happen. Call `mcp__danx-dashboard__issue_create({type, title, description, ac, ...})`. Pick status:
+   - Autonomous agent work → call `mcp__danx-dashboard__issue_transition({action: 'ready'})` so the poller dispatches.
+   - Human work → call `mcp__danx-dashboard__issue_transition({action: 'block', reason: "<one sentence>"})` (derived `Blocked` via rule 3). Include all evidence human needs in description.
    Capture new card's returned `id`.
 3. **Set this card's dependency:**
-   - Call `mcp__danx_dashboard__issue_dependency({id: <this-card>, action: 'add', kind: 'depends_on', target_id: "<PREFIX>-N"})` once per IMMEDIATE blocker.
+   - Call `mcp__danx-dashboard__issue_dependency({id: <this-card>, action: 'add', kind: 'depends_on', target_id: "<PREFIX>-N"})` once per IMMEDIATE blocker.
    - **Each `target_id` is an IMMEDIATE blocker only.** If A→B→C, A depends on `B` — NOT `C`. The chain is computed auto by the dashboard from each card's direct blocker; restating upstream is redundant + drifts. Same for phase chains (Phase 3 depends on Phase 2 only, never both Phase 2 and Phase 1).
    - Do NOT change `status` directly. The `waiting_on` gate is independent — setting it via dependency call only. Picker uses `waiting_on` alone as dispatch gate.
-   - Call `mcp__danx_dashboard__issue_comment({id: <this-card>, text: "<summary of blockers found/created and state once they ship>"})` to add a comment record.
-4. Call `mcp__danx_dashboard__issue_retro({id: <this-card>, good: "...", bad: "...", action_item_ids: [...], commits: [...]})` — gap between shipped + needed is "what went wrong." Same action-items rule: only large separately-scopeable follow-ups. Create action item first via `mcp__danx_dashboard__issue_create`, push `<PREFIX>-N`. Small in-scope work belongs in THIS dispatch or blocker card, not retro action item.
+   - Call `mcp__danx-dashboard__issue_comment({id: <this-card>, text: "<summary of blockers found/created and state once they ship>"})` to add a comment record.
+4. Call `mcp__danx-dashboard__issue_retro({id: <this-card>, good: "...", bad: "...", action_item_ids: [...], commits: [...]})` — gap between shipped + needed is "what went wrong." Same action-items rule: only large separately-scopeable follow-ups. Create action item first via `mcp__danx-dashboard__issue_create`, push `<PREFIX>-N`. Small in-scope work belongs in THIS dispatch or blocker card, not retro action item.
 
 ### Exit
 

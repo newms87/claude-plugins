@@ -1,6 +1,6 @@
 ---
 name: issue-card-workflow
-description: 'Issue card lifecycle: status derivation, mcp__danx_dashboard__issue_* tools, comment/retro/blocked/waiting_on contracts, container-atomic rule (Epic + Feature). LOAD BEFORE proposing card TYPE or how to slice work into cards (epic/feature/story) — recommending a card structure in chat is the gated action, not just the issue_create call; the slice/taxonomy gate that decides epic-vs-story lives ONLY in this body, so naming a type before loading = deciding it wrong.'
+description: 'Issue card lifecycle: status derivation, mcp__danx-dashboard__issue_* tools, comment/retro/blocked/waiting_on contracts, container-atomic rule (Epic + Feature). LOAD BEFORE proposing card TYPE or how to slice work into cards (epic/feature/story) — recommending a card structure in chat is the gated action, not just the issue_create call; the slice/taxonomy gate that decides epic-vs-story lives ONLY in this body, so naming a type before loading = deciding it wrong.'
 ---
 
 # Issue Card Workflow
@@ -14,11 +14,11 @@ If you arrive here having ALREADY decided the card TYPE (epic/feature/story), th
 
 Missing it = do not call `issue_create`. (Quality-gate decisions are a server-enforced REQUIRED `issue_create` field — see "Quality-Gate Decisions" below — so they need no separate transcript emission. `triage_enabled` is ALSO decided on every create — see "Auto-Triage Opt-In" below.)
 
-Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx_dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
+Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx-dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
 
 ## DX-835 — two-step termination is MANDATORY
 
-Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's explicit responsibility, written via `mcp__danx_dashboard__issue_transition`. `mcp__danxbot__danxbot_complete` finalizes the dispatch row ONLY; it does NOT move cards. Every issue-bound terminal flow is two calls in order:
+Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's explicit responsibility, written via `mcp__danx-dashboard__issue_transition`. `mcp__danxbot__danxbot_complete` finalizes the dispatch row ONLY; it does NOT move cards. Every issue-bound terminal flow is two calls in order:
 
 | Outcome | Step A (card) | Step B (dispatch) |
 |---|---|---|
@@ -70,11 +70,11 @@ This sequence — checklist → gates → complete → retro — is mechanical, 
 
 ## Source of Truth
 
-**Dashboard DB** (via `mcp__danx_dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only — that is the whole surface. Poller dispatches off the dashboard DB via the dashboard HTTP API. Want a status change → call `mcp__danx_dashboard__issue_transition` or `mcp__danx_dashboard__issue_edit`.
+**Dashboard DB** (via `mcp__danx-dashboard__issue_*` MCP tools) is the canonical source for title, description, status, AC, children, comments, retro, blocked, waiting_on, requires_human. Agents read + write via MCP only — that is the whole surface. Poller dispatches off the dashboard DB via the dashboard HTTP API. Want a status change → call `mcp__danx-dashboard__issue_transition` or `mcp__danx-dashboard__issue_edit`.
 
 ## DB Schema
 
-Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
+Full schema available via `mcp__danx-dashboard__issue_get`. Key fields:
 
 - **`status` / `status_derived`** — **DERIVED from lifecycle triggers, agents NEVER write.** Computed by server from timestamps + gates. Pickup → via `issue_transition({action: 'pickup'})` (rule 4 → `In Progress`). Approve → `issue_transition({action: 'ready'})` (rule 5 → `ToDo`). Complete → `issue_transition({action: 'complete', summary})` (rule 2 → `Done`). Cancel → `issue_transition({action: 'cancel'})` (rule 1 → `Cancelled`). Block → `issue_transition({action: 'block', reason})` (rule 3 → `Blocked`). Direct write FORBIDDEN.
 - **`dispatch`** — worker-managed, agents don't touch.
@@ -89,16 +89,16 @@ Full schema available via `mcp__danx_dashboard__issue_get`. Key fields:
 
 | Tool | Purpose |
 |---|---|
-| `mcp__danx_dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?, triage_enabled})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions` AND its OWN `triage_enabled`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). `triage_enabled` MUST be passed explicitly on EVERY create (root + each phase child) — absent → false, the card is never auto-triaged (see "Auto-Triage Opt-In"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
-| `mcp__danx_dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
-| `mcp__danx_dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
-| `mcp__danx_dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
-| `mcp__danx_dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?, manual?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. `manual: true` (pickup-only, DX-946) = operator-session self-pickup: stamps `dispatch_kind: 'manual'`, bypasses card-flow gates, worker never auto-transitions the card. |
-| `mcp__danx_dashboard__issue_triage({id, verdict: 'approve'\|'cancel'\|'keep'\|'defer', ice?: {i,c,e}, reason, ttl_seconds?})` | Single atomic triage call. Server routes per verdict. |
-| `mcp__danx_dashboard__issue_comment({id, action: 'add'\|'edit'\|'delete', comment_id?, text?})` | Comment lifecycle (add/edit/delete). Server stamps author + timestamp. |
-| `mcp__danx_dashboard__issue_dependency({id, action: 'add'\|'remove', kind?: 'depends_on'\|'conflict_on', target_id?, reason?, dependency_id?})` | Manage card dependencies. |
-| `mcp__danx_dashboard__issue_requires_human({id, set: true, reason, steps[]} \| {id, set: false})` | Set/clear the `requires_human` gate. Server stamps `set_by`/`set_at`. |
-| `mcp__danx_dashboard__issue_retro({id, good, bad, action_item_ids[], commits[]})` | Populate retro on terminal. |
+| `mcp__danx-dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?, triage_enabled})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions` AND its OWN `triage_enabled`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). `triage_enabled` MUST be passed explicitly on EVERY create (root + each phase child) — absent → false, the card is never auto-triaged (see "Auto-Triage Opt-In"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
+| `mcp__danx-dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
+| `mcp__danx-dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
+| `mcp__danx-dashboard__issue_edit({id, title?, description?, ac?, effort_level?, parent_id?})` | Prose-only updates (no status/lifecycle stamps). Agents never write `status` directly. |
+| `mcp__danx-dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?, manual?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. `manual: true` (pickup-only, DX-946) = operator-session self-pickup: stamps `dispatch_kind: 'manual'`, bypasses card-flow gates, worker never auto-transitions the card. |
+| `mcp__danx-dashboard__issue_triage({id, verdict: 'approve'\|'cancel'\|'keep'\|'defer', ice?: {i,c,e}, reason, ttl_seconds?})` | Single atomic triage call. Server routes per verdict. |
+| `mcp__danx-dashboard__issue_comment({id, action: 'add'\|'edit'\|'delete', comment_id?, text?})` | Comment lifecycle (add/edit/delete). Server stamps author + timestamp. |
+| `mcp__danx-dashboard__issue_dependency({id, action: 'add'\|'remove', kind?: 'depends_on'\|'conflict_on', target_id?, reason?, dependency_id?})` | Manage card dependencies. |
+| `mcp__danx-dashboard__issue_requires_human({id, set: true, reason, steps[]} \| {id, set: false})` | Set/clear the `requires_human` gate. Server stamps `set_by`/`set_at`. |
+| `mcp__danx-dashboard__issue_retro({id, good, bad, action_item_ids[], commits[]})` | Populate retro on terminal. |
 
 ### MCP Error Handling
 
@@ -228,7 +228,7 @@ Skip the ref on self-evident lines — the bar is "a future agent would otherwis
 grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files-you-will-edit>   # comment-anchored ref lines
 ```
 
-Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx_dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]` BEFORE editing the referenced code. The comment names the constraint; the card holds the full intent. Editing past a ref without loading its card risks silently breaking the original requirement — that is the exact failure this protocol prevents.
+Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx-dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]` BEFORE editing the referenced code. The comment names the constraint; the card holds the full intent. Editing past a ref without loading its card risks silently breaking the original requirement — that is the exact failure this protocol prevents.
 
 **LIFECYCLE.** The ref travels with the code as long as the constraint applies. UPDATE it when the constraint changes form (new card supersedes). REMOVE it only when the constraint is genuinely lifted (the card was reverted / the requirement no longer holds) — never leave a ref pointing at a dead constraint, never strip a live one.
 

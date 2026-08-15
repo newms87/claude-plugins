@@ -27,7 +27,7 @@ fitting the content).
 
 ## Editing code in this dispatch → read issue-refs first (DEFAULT MODE)
 
-If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent: before changing a file, `grep -noE '[A-Z]+-[0-9]+'` it for existing card refs and `mcp__danx_dashboard__issue_get({id})` each unique id to load the constraint that put the code in its current shape; when YOU make a non-obvious card-driven decision, add a `// <CARD-ID>: <reason>` comment. Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".
+If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent: before changing a file, `grep -noE '[A-Z]+-[0-9]+'` it for existing card refs and `mcp__danx-dashboard__issue_get({id})` each unique id to load the constraint that put the code in its current shape; when YOU make a non-obvious card-driven decision, add a `// <CARD-ID>: <reason>` comment. Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".
 
 ## Required tool calls
 
@@ -69,7 +69,7 @@ Split by dispatch type:
 ## Created or identified a card for this thread → LINK it (MANDATORY)
 
 If this dispatch **creates** an issue card (via
-`mcp__danx_dashboard__issue_create`) OR identifies the ONE existing card
+`mcp__danx-dashboard__issue_create`) OR identifies the ONE existing card
 this thread is about, you MUST bind the thread to that card:
 
 > `mcp__danxbot__link_thread_to_issue({ issue_id: "<card id>" })`

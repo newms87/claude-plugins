@@ -9,7 +9,7 @@ Process every card with `status_derived: ToDo` using the workflow from `/danx-ne
 
 ## Resume self-check (read first, every dispatch — ISS-135)
 
-Before processing ANY card, call `mcp__danx_dashboard__issue_get({id})`. If `status_derived` is terminal (`Done` / `Cancelled`) AND every AC item is checked AND retro is filled — the prior session already finished that card. Call `danxbot_complete({status: "complete", summary: "Prior session already completed; verified terminal state on resume."})` and stop. **Do not redo work.** Do not flip status. Do not re-save. The full per-card contract lives in the `danx-next` skill's Step 1.1 — load it via the Skill tool when in doubt.
+Before processing ANY card, call `mcp__danx-dashboard__issue_get({id})`. If `status_derived` is terminal (`Done` / `Cancelled`) AND every AC item is checked AND retro is filled — the prior session already finished that card. Call `danxbot_complete({status: "complete", summary: "Prior session already completed; verified terminal state on resume."})` and stop. **Do not redo work.** Do not flip status. Do not re-save. The full per-card contract lives in the `danx-next` skill's Step 1.1 — load it via the Skill tool when in doubt.
 
 This guards against the May-7 incident: an orphan-resumed agent that re-runs `/danx-start` from scratch against a card whose prior session already shipped the work creates duplicate retro comments and duplicate `danxbot_complete` calls. The self-check is a 30-second read that costs zero tokens of redo.
 
@@ -49,11 +49,11 @@ re-fire the loop after the dispatch is logically over.
 
 ## Steps
 
-1. Call `mcp__danx_dashboard__issue_list({status_derived: 'ToDo', dispatchable_derived: true})` to get all dispatchable ToDo cards.
+1. Call `mcp__danx-dashboard__issue_list({status_derived: 'ToDo', dispatchable_derived: true})` to get all dispatchable ToDo cards.
 2. Empty → report "No cards to process" and stop.
 3. Report how many cards are queued + list their titles.
 4. For each card id, invoke the `/danx-next` workflow (Steps 1-11 from that skill) using the card's `id`. The first step inside `/danx-next` is the same Resume self-check above — terminal-state cards short-circuit there. Step 10 handles Blocked moves, Step 10b handles Waiting On moves.
-5. After each card, re-list via `mcp__danx_dashboard__issue_list` — epic-splitting may have added phase cards.
+5. After each card, re-list via `mcp__danx-dashboard__issue_list` — epic-splitting may have added phase cards.
 6. Loop until list is empty.
 
 ## Report Summary

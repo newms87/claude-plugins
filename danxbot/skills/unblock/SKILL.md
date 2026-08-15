@@ -26,7 +26,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
 ## Procedure
 
-1. **Load the card.** Call `mcp__danx_dashboard__issue_get({id})`. If user gave a vague ask ("unstick the urgent one"), call `mcp__danx_dashboard__issue_list({status_derived: 'Blocked'})`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest timestamp first if priority ties.
+1. **Load the card.** Call `mcp__danx-dashboard__issue_get({id})`. If user gave a vague ask ("unstick the urgent one"), call `mcp__danx-dashboard__issue_list({status_derived: 'Blocked'})`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest timestamp first if priority ties.
 
 2. **Find the authoritative blocker comment.** Scan `comments[]` from newest to oldest. The last comment containing a "Blocked" / "Operator action" / "What's still needed" section is the contract. If absent, fall back to card description + `blocked.reason` + open AC items.
 
@@ -90,7 +90,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
 ## Overlap detection (rule #2)
 
-Before picking up any new card, call `mcp__danx_dashboard__issue_list({status_derived: 'Blocked'})`.
+Before picking up any new card, call `mcp__danx-dashboard__issue_list({status_derived: 'Blocked'})`.
 
 For each Blocked card, check whether your target card shares any of:
 - `parent_id` (same epic)
