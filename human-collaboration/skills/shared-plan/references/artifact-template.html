@@ -1,22 +1,27 @@
 <!--
-  Shared-plan artifact skeleton. Copy this file's structure, don't invent a new
-  one. Reuse the CSS/JS wholesale — it's a genre convention (readers who see
-  several of these should recognize the shape instantly), same as a spec doc
-  reusing house style. What DOES change per project: the accent hue (pick one
-  distinct from other active artifacts so a reader with several tabs open can
-  tell them apart at a glance), the title, and — critically — which of the
-  eight sections you keep. Delete every <section> the task doesn't need. A
-  three-tab artifact (Goals, Decisions, Timeline) is normal and correct.
+  Shared-plan page skeleton — DATA-DRIVEN, not hand-authored HTML per entry.
+
+  Two ways to ship this:
+  1. Local/standalone file (default, works everywhere): keep this file exactly
+     as-is, full document, self-contained. Write it to disk and hand the
+     operator the path — opens in any browser.
+  2. Publish via the `Artifact` tool (interactive claude.ai session only):
+     that tool wraps content in its own <!doctype>/<head>/<body> — strip
+     THIS file's own <!DOCTYPE html>, <html>, <head>, <body> tags and pass
+     only what's inside (the <style>, the shell divs, the <script>) as the
+     artifact's file content. The <html data-theme="light"> attribute becomes
+     the tool's own theme handling.
+
+  To use: edit the TABS array and the DATA object near the top of the
+  <script> block below. That is almost always the ONLY edit you need — the
+  render functions after it are generic and read TABS + DATA to build
+  everything (tab nav, entry lists, search, filter, sort, the timeline).
+  Delete any TABS entry (and its DATA key) the task doesn't need.
 
   ID scheme (keep stable once assigned — never renumber, only append):
-    RES-N   Resources    GOA-N   Goals       ARC-N   Architecture
-    RUL-N   Rules        CAV-N   Caveats     DEC-N   Decisions
-    TST-N   Tests        TL-N    Timeline (chronological, newest last)
-
-  Load `artifact-design` before writing prose/copy for this page (title,
-  descriptions) even though the CSS below is reused — the skill still governs
-  tone, the masthead/objective copy, and picking the accent hex. Load
-  `artifact-diagramming` if the Architecture tab needs a real diagram.
+    RES-N Resources   GOA-N Goals        ARC-N Architecture
+    RUL-N Rules       CAV-N Caveats      DEC-N Decisions
+    TST-N Tests       TL-N  Timeline (chronological, newest last)
 -->
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
@@ -30,13 +35,12 @@
     --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f4f3ef; --surface-3:#eceae4;
     --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
     --grid:#e1e0d9; --axis:#b9b7ad; --border:rgba(11,11,11,0.10);
-    /* ACCENT: pick one hue distinct from other artifacts active this session.
-       Used for the masthead logo gradient, the "on" tab underline, and
-       Decision "Recommended"/"Chosen" flags. Swap --brand + --brand-strong +
-       --brand-soft together; the rest of the palette is stable. */
+    /* ACCENT: pick one hue distinct from other pages open this session.
+       Swap --brand + --brand-strong + --brand-soft together; used for the
+       logo gradient, active-tab underline, and Decision "Recommended" flags. */
     --brand:#2a78d6; --brand-strong:#184f95; --brand-soft:#cde2fb;
     --good:#0ca30c; --warn:#eda100; --crit:#d03b3b;
-    --radius:14px; --radius-sm:9px;
+    --radius-sm:9px;
     --shadow:0 1px 2px rgba(11,11,11,0.04),0 6px 20px rgba(11,11,11,0.05);
     --mono:"SF Mono",ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
     --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -66,8 +70,6 @@
   .toggle button{border:0;background:transparent;color:var(--ink-2);font:inherit;font-size:12px;
     padding:5px 11px;border-radius:6px;cursor:pointer}
   .toggle button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-weight:600}
-  .howto{background:var(--brand-soft);border:1px solid var(--border);border-radius:var(--radius-sm);
-    padding:11px 15px;margin:18px 0 0;font-size:13.5px;color:var(--brand-strong)}
   .tabs{display:flex;gap:3px;margin:22px 0 0;border-bottom:1px solid var(--border);flex-wrap:wrap;
     position:sticky;top:0;background:var(--page);z-index:20;padding-top:6px}
   .tabs button{border:0;background:transparent;font:inherit;font-size:14px;color:var(--ink-2);
@@ -83,45 +85,31 @@
   .search input{width:100%;padding:9px 13px 9px 34px;border-radius:9px;border:1px solid var(--border);
     background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
   .search .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px}
-  .fbtn{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);font:inherit;
+  .fbtn,select.fbtn{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);font:inherit;
     font-size:12.5px;padding:7px 12px;border-radius:8px;cursor:pointer}
   .fbtn.on{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600}
   .panel{display:none;padding-top:6px}
   .panel.on{display:block}
   .lede{color:var(--ink-2);font-size:14.5px;max-width:78ch;margin:14px 0 6px}
-  h2.grp{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
-    margin:26px 0 10px;font-weight:700;border-top:1px solid var(--grid);padding-top:16px}
-  h2.grp:first-of-type{border-top:0;padding-top:0}
   .item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
     padding:14px 16px;margin:9px 0;box-shadow:var(--shadow);display:grid;
     grid-template-columns:64px minmax(0,1fr);gap:14px;align-items:start}
   .item .id{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--brand);
-    background:var(--brand-soft);padding:3px 0;border-radius:6px;text-align:center;letter-spacing:.02em}
+    background:var(--brand-soft);padding:3px 0;border-radius:6px;text-align:center;letter-spacing:.02em;height:fit-content}
   .item h3{margin:0 0 4px;font-size:15px;font-weight:700;letter-spacing:-.01em;line-height:1.35}
-  .item p{margin:0 0 6px;color:var(--ink-2);font-size:14px}
+  .item p{margin:0 0 6px;color:var(--ink-2);font-size:14px;white-space:pre-wrap}
   .item p:last-child{margin-bottom:0}
   .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
   .pill{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600;border:1px solid transparent}
   .p-open{background:#fff3d6;color:#7a5a00;border-color:#f0dca8}
   .p-decided{background:#d6f2d6;color:#0a5c0a;border-color:#a8dfa8}
   .p-blocked{background:#ffd9d9;color:#8f1f1f;border-color:#f0b0b0}
-  .p-ready{background:#d3e8fb;color:#144a86;border-color:#a8cdee}
   .p-tag{background:var(--surface-3);color:var(--ink-2);border-color:var(--border)}
   html[data-theme="dark"] .p-open{background:#3d2f0a;color:#e0c477;border-color:#5c4a14}
   html[data-theme="dark"] .p-decided{background:#0f3a1a;color:#8fd9a0;border-color:#1d5c2e}
   html[data-theme="dark"] .p-blocked{background:#4a1414;color:#f0a0a0;border-color:#6b2020}
-  html[data-theme="dark"] .p-ready{background:#173254;color:#a9cdf6;border-color:#24476f}
   code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;
     border-radius:4px;border:1px solid var(--border)}
-  .tw{overflow-x:auto;margin:16px 0;border:1px solid var(--border);border-radius:var(--radius-sm);
-    background:var(--surface);box-shadow:var(--shadow)}
-  .tw table{border-collapse:collapse;width:100%;font-size:13.5px}
-  .tw thead th{background:var(--surface-2);font-weight:700;font-size:11.5px;letter-spacing:.05em;
-    text-transform:uppercase;color:var(--ink-2);padding:11px 14px;text-align:left;
-    border-bottom:1.5px solid var(--border);white-space:nowrap}
-  .tw tbody td{padding:11px 14px;border-bottom:1px solid var(--grid);vertical-align:top;line-height:1.5;color:var(--ink-2)}
-  .tw tbody tr:last-child td{border-bottom:0}
-  /* ---- decision blocks ---- */
   .ask{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 13px;margin-top:10px}
   .ask h4{margin:0 0 8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
   .opts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
@@ -130,14 +118,8 @@
   .opts .tradeoff{display:block;font-size:13px;color:var(--muted);margin-top:2px}
   .rec-flag{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
     color:var(--good);background:#d6f2d6;border-radius:2px;padding:1px 6px;margin-left:6px}
-  details.resolved{margin-top:14px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}
-  details.resolved>summary{cursor:pointer;padding:11px 16px;font-family:var(--mono);font-size:11.5px;
-    letter-spacing:.1em;text-transform:uppercase;color:var(--muted);list-style:none}
-  details.resolved>summary::-webkit-details-marker{display:none}
-  details.resolved>summary::before{content:"▸ ";color:var(--brand)}
-  details.resolved[open]>summary::before{content:"▾ "}
-  .resolved-body{padding:0 16px 16px}
-  /* ---- timeline tab ---- */
+  .resolution{margin-top:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2);padding:11px 14px}
+  .resolution .rk{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--good);margin-bottom:4px}
   .tl{display:flex;flex-direction:column;gap:0;position:relative;margin:14px 0}
   .tl-row{display:grid;grid-template-columns:150px 20px 1fr;gap:0 14px;padding:10px 0;position:relative}
   .tl-row .tl-time{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding-top:2px;white-space:nowrap}
@@ -147,11 +129,12 @@
   .tl-row.crit .tl-dot{background:var(--crit)}
   .tl-row::after{content:"";position:absolute;left:159px;top:0;bottom:0;width:1px;background:var(--grid)}
   .tl-row:last-child::after{bottom:50%}
-  .tl-row .tl-body{padding-bottom:4px}
   .tl-row .tl-body h4{margin:0 0 2px;font-size:14px;font-weight:700}
   .tl-row .tl-body p{margin:0;font-size:13.5px;color:var(--ink-2)}
-  .empty{color:var(--muted);font-size:14px;padding:26px 0;text-align:center;display:none}
+  .empty{color:var(--muted);font-size:14px;padding:26px 0;text-align:center}
   .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12.5px}
+  mark{background:#ffe9a8;color:inherit;padding:0 1px;border-radius:2px}
+  html[data-theme="dark"] mark{background:#5c4a14}
   @media(max-width:640px){ .item{grid-template-columns:1fr} .tl-row{grid-template-columns:1fr} .tl-row::after{display:none} }
 </style>
 </head>
@@ -159,10 +142,10 @@
 <div class="wrap">
   <header class="top">
     <div class="titlebar">
-      <div class="logo">XX</div>
+      <div class="logo" id="logo">XX</div>
       <div>
-        <h1>PROJECT NAME</h1>
-        <div class="sub">org/repo · living tracker · vN · DATE · <b>current focus in a few words</b></div>
+        <h1 id="h1">PROJECT NAME</h1>
+        <div class="sub" id="sub"></div>
       </div>
       <div class="spacer"></div>
       <div class="toggle" role="group" aria-label="Theme">
@@ -170,121 +153,240 @@
         <button data-t="dark">Dark</button>
       </div>
     </div>
-    <!-- optional: only if the operator will iterate on this doc by referencing IDs -->
-    <div class="howto"><b>How to iterate:</b> every entry has a stable ID (<code>RES-01</code>, <code>DEC-04</code>…). Reference IDs directly and I'll revise this doc and hand back a new version.</div>
   </header>
-
-  <nav class="tabs" id="tabs">
-    <!-- ONE button per section you actually kept. Delete the rest. Order matters:
-         put whatever the reader needs most right now first (often Decisions or Timeline,
-         not always Resources). -->
-    <button data-p="goals" class="on">Goals <span class="cnt">0</span></button>
-    <button data-p="decisions">Decisions <span class="cnt">0</span></button>
-    <button data-p="timeline">Timeline <span class="cnt">0</span></button>
-  </nav>
-
+  <nav class="tabs" id="tabs"></nav>
   <div class="controls">
-    <div class="search"><span class="ico">⌕</span><input type="text" id="q" placeholder="Search all tabs…"></div>
-    <button class="fbtn" data-f="all">All</button>
+    <div class="search"><span class="ico">⌕</span><input type="text" id="q" placeholder="Search this tab…"></div>
+    <button class="fbtn on" data-f="all">All</button>
     <button class="fbtn" data-f="open">Open</button>
     <button class="fbtn" data-f="blocked">Blocked</button>
     <button class="fbtn" data-f="decided">Decided</button>
+    <select class="fbtn" id="sort">
+      <option value="id">Sort: ID</option>
+      <option value="status">Sort: status</option>
+    </select>
   </div>
-  <div class="empty" id="empty">No entries match that filter.</div>
-
-  <!-- ============ GOALS (example — GOA-N) ============ -->
-  <section class="panel on" id="p-goals">
-    <p class="lede">What this task is trying to accomplish, restated so a cold reader doesn't need the chat history.</p>
-    <div class="item" data-s="decided"><div class="id">GOA-01</div><div>
-      <h3>One goal per item</h3>
-      <p>Plain statement of what "done" means for this piece.</p>
-      <div class="meta"><span class="pill p-decided">Core</span></div></div></div>
-  </section>
-
-  <!-- ============ DECISIONS (example — DEC-N) ============ -->
-  <section class="panel" id="p-decisions">
-    <p class="lede">Decisions made and the open questions blocking progress. <b>Recommended options are flagged</b> — a recommendation, not a done deal.</p>
-    <div class="item" data-s="open"><div class="id">DEC-01</div><div>
-      <h3>The question, phrased so it's answerable in one line</h3>
-      <p>One or two sentences of context — why this needs a human call, what it blocks.</p>
-      <div class="ask"><h4>Options</h4><ul class="opts">
-        <li><span class="opt-key">A</span>First option, stated as a behavior/outcome.
-          <span class="tradeoff"><b>For:</b> ... <b>Against:</b> ...</span></li>
-        <li><span class="opt-key rec">B</span>Second option.<span class="rec-flag">Recommended</span>
-          <span class="tradeoff"><b>For:</b> ... <b>Against:</b> ...</span></li>
-      </ul></div>
-      <div class="meta"><span class="pill p-open">Open</span></div>
-      <!-- once answered, flip data-s to "decided", add a pill "Resolved", and append:
-      <details class="resolved" open><summary>Resolution — DATE</summary>
-        <div class="resolved-body"><p>Chose B because ...</p></div>
-      </details> -->
-    </div></div>
-  </section>
-
-  <!-- ============ TIMELINE (new tab — for monitoring tasks; TL-N) ============ -->
-  <section class="panel" id="p-timeline">
-    <p class="lede">Chronological log for anything being watched over time — a monitor loop, a deploy, a long-running migration. Newest entry LAST (reads top-to-bottom like it happened). A quiet stretch with nothing to report still gets an entry ("checked, no change") so a gap in the timeline is never ambiguous between "didn't check" and "nothing happened."</p>
-    <div class="tl">
-      <div class="tl-row ok"><div class="tl-time">14:02 UTC</div><div class="tl-dot"></div><div class="tl-body">
-        <h4>Started monitoring</h4><p>Baseline captured: queue depth 0, worker healthy.</p></div></div>
-      <div class="tl-row warn"><div class="tl-time">14:17 UTC</div><div class="tl-dot"></div><div class="tl-body">
-        <h4>Queue depth climbing</h4><p>12 items backed up, worker still reporting healthy — investigating.</p></div></div>
-      <div class="tl-row crit"><div class="tl-time">14:19 UTC</div><div class="tl-dot"></div><div class="tl-body">
-        <h4>Worker stalled</h4><p>Last heartbeat 14:14. Restarted per runbook; see <code>DEC-02</code> for the follow-up decision needed.</p></div></div>
-    </div>
-  </section>
-
-  <div class="foot">Updated after every action taken or new information received — this artifact, not the chat, is the record. Next: whatever the newest open DEC-N or TL-N entry says.</div>
+  <main id="panels"></main>
+  <div class="foot" id="foot">Updated after every action taken or new information received — this page, not the chat, is the record.</div>
 </div>
 
 <script>
-(function(){
-  var html=document.documentElement;
-  document.querySelectorAll('.toggle button').forEach(function(b){
-    b.addEventListener('click',function(){
-      html.setAttribute('data-theme',b.getAttribute('data-t'));
-      document.querySelectorAll('.toggle button').forEach(function(x){x.classList.toggle('on',x===b);});
+// ============================================================================
+// DATA — edit this section. Everything below "RENDER ENGINE" is generic.
+// ============================================================================
+
+const PROJECT = {
+  name: "PROJECT NAME",
+  sub: "org/repo · living tracker · vN · DATE · current focus in a few words",
+  logo: "XX",
+};
+
+// One entry per tab you're keeping. `kind` picks the renderer: 'items' (the
+// standard Resources/Goals/Architecture/Rules/Caveats/Tests shape),
+// 'decisions' (items + options/resolution), or 'timeline'.
+const TABS = [
+  { key: "goals",     label: "Goals",     prefix: "GOA", kind: "items" },
+  { key: "decisions", label: "Decisions", prefix: "DEC", kind: "decisions" },
+  { key: "timeline",  label: "Timeline",  prefix: "TL",  kind: "timeline" },
+];
+
+// items shape:      { id, title, body, status: 'open'|'decided'|'blocked', tags?: [] }
+// decisions shape:  { id, title, body, status, options?: [{key,text,tradeoff,recommended?}],
+//                      resolution?: { date, text } }
+// timeline shape:   { id, time, title, body, severity: 'ok'|'warn'|'crit' }
+const DATA = {
+  goals: [
+    { id: "GOA-01", title: "One goal per item", body: "Plain statement of what \"done\" means for this piece.", status: "decided", tags: ["Core"] },
+  ],
+  decisions: [
+    {
+      id: "DEC-01", title: "The question, phrased so it's answerable in one line",
+      body: "One or two sentences of context — why this needs a human call, what it blocks.",
+      status: "open",
+      options: [
+        { key: "A", text: "First option, stated as a behavior/outcome.", tradeoff: "For: ... Against: ..." },
+        { key: "B", text: "Second option.", tradeoff: "For: ... Against: ...", recommended: true },
+      ],
+      resolution: null,
+      // once answered: status: "decided", resolution: { date: "2026-08-17", text: "Chose B because ..." }
+    },
+  ],
+  timeline: [
+    { id: "TL-01", time: "14:02 UTC", title: "Started monitoring", body: "Baseline captured: queue depth 0, worker healthy.", severity: "ok" },
+    { id: "TL-02", time: "14:17 UTC", title: "Queue depth climbing", body: "12 items backed up, worker still reporting healthy — investigating.", severity: "warn" },
+  ],
+};
+
+// ============================================================================
+// RENDER ENGINE — generic. Only touch this if a tab needs a genuinely new
+// entry shape beyond items/decisions/timeline.
+// ============================================================================
+(function () {
+  const $panels = document.getElementById("panels");
+  const $tabs = document.getElementById("tabs");
+  let active = TABS[0] ? TABS[0].key : null;
+  let filter = "all";
+  let sortBy = "id";
+  let query = "";
+
+  document.getElementById("h1").textContent = PROJECT.name;
+  document.getElementById("sub").textContent = PROJECT.sub;
+  document.getElementById("logo").textContent = PROJECT.logo;
+
+  document.querySelectorAll(".toggle button").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.documentElement.setAttribute("data-theme", b.dataset.t);
+      document.querySelectorAll(".toggle button").forEach((x) => x.classList.toggle("on", x === b));
     });
   });
-  var tabs=document.getElementById('tabs');
-  tabs.addEventListener('click',function(e){
-    var b=e.target.closest('button'); if(!b)return;
-    tabs.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b);});
-    document.querySelectorAll('.panel').forEach(function(p){p.classList.toggle('on', p.id==='p-'+b.getAttribute('data-p'));});
-    apply();
-  });
-  document.querySelectorAll('.tabs button').forEach(function(b){
-    var p=document.getElementById('p-'+b.getAttribute('data-p'));
-    var n=p?p.querySelectorAll('.item,.tl-row').length:0;
-    var c=b.querySelector('.cnt'); if(c)c.textContent=n;
-  });
-  var q=document.getElementById('q'), filter='all';
-  document.querySelectorAll('.fbtn').forEach(function(b){
-    b.addEventListener('click',function(){
-      filter=b.getAttribute('data-f');
-      document.querySelectorAll('.fbtn').forEach(function(x){x.classList.toggle('on',x===b);});
-      apply();
-    });
-  });
-  q.addEventListener('input',apply);
-  function apply(){
-    var term=q.value.trim().toLowerCase();
-    var anyVisible=false;
-    document.querySelectorAll('.panel').forEach(function(p){
-      var isActive=p.classList.contains('on');
-      var shown=0;
-      p.querySelectorAll('.item').forEach(function(it){
-        var txt=it.textContent.toLowerCase();
-        var vis=(!term||txt.indexOf(term)>-1)&&(filter==='all'||it.getAttribute('data-s')===filter);
-        it.style.display=vis?'':'none';
-        if(vis)shown++;
-      });
-      if(isActive){var total=p.querySelectorAll('.item').length; anyVisible=(total===0)||shown>0;}
-    });
-    document.getElementById('empty').style.display=anyVisible?'none':'block';
+
+  function esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  document.querySelector('.fbtn[data-f="all"]').classList.add('on');
-  apply();
+  function markText(s, term) {
+    const e = esc(s);
+    if (!term) return e;
+    const rx = new RegExp("(" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig");
+    return e.replace(rx, "<mark>$1</mark>");
+  }
+  function pillClass(status) {
+    return { open: "p-open", decided: "p-decided", blocked: "p-blocked" }[status] || "p-tag";
+  }
+
+  function buildTabs() {
+    $tabs.innerHTML = "";
+    TABS.forEach((t) => {
+      const b = document.createElement("button");
+      b.dataset.key = t.key;
+      b.className = t.key === active ? "on" : "";
+      b.innerHTML = `${esc(t.label)} <span class="cnt">${(DATA[t.key] || []).length}</span>`;
+      b.addEventListener("click", () => {
+        active = t.key;
+        document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x.dataset.key === active));
+        render();
+      });
+      $tabs.appendChild(b);
+    });
+  }
+
+  function matches(entry, term) {
+    if (!term) return true;
+    const hay = JSON.stringify(entry).toLowerCase();
+    return hay.indexOf(term.toLowerCase()) > -1;
+  }
+
+  function sortEntries(list) {
+    const copy = list.slice();
+    if (sortBy === "status") {
+      const order = { open: 0, blocked: 1, decided: 2 };
+      copy.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+    } else {
+      copy.sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+    }
+    return copy;
+  }
+
+  function renderItemsList(list, term) {
+    if (!list.length) return `<p class="empty">No entries match.</p>`;
+    return list
+      .map(
+        (it) => `
+      <div class="item">
+        <div class="id">${esc(it.id)}</div>
+        <div>
+          <h3>${markText(it.title, term)}</h3>
+          ${it.body ? `<p>${markText(it.body, term)}</p>` : ""}
+          <div class="meta">
+            <span class="pill ${pillClass(it.status)}">${esc(it.status)}</span>
+            ${(it.tags || []).map((t) => `<span class="pill p-tag">${esc(t)}</span>`).join("")}
+          </div>
+        </div>
+      </div>`
+      )
+      .join("");
+  }
+
+  function renderDecisionsList(list, term) {
+    if (!list.length) return `<p class="empty">No entries match.</p>`;
+    return list
+      .map((it) => {
+        const opts = (it.options || [])
+          .map(
+            (o) => `
+          <li><span class="opt-key ${o.recommended ? "rec" : ""}">${esc(o.key)}</span>${markText(o.text, term)}${
+              o.recommended ? '<span class="rec-flag">Recommended</span>' : ""
+            }
+            ${o.tradeoff ? `<span class="tradeoff">${markText(o.tradeoff, term)}</span>` : ""}</li>`
+          )
+          .join("");
+        const resolution = it.resolution
+          ? `<div class="resolution"><div class="rk">Resolved — ${esc(it.resolution.date)}</div><div>${markText(it.resolution.text, term)}</div></div>`
+          : "";
+        return `
+      <div class="item">
+        <div class="id">${esc(it.id)}</div>
+        <div>
+          <h3>${markText(it.title, term)}</h3>
+          ${it.body ? `<p>${markText(it.body, term)}</p>` : ""}
+          ${opts ? `<div class="ask"><h4>Options</h4><ul class="opts">${opts}</ul></div>` : ""}
+          ${resolution}
+          <div class="meta"><span class="pill ${pillClass(it.status)}">${esc(it.status)}</span></div>
+        </div>
+      </div>`;
+      })
+      .join("");
+  }
+
+  function renderTimeline(list, term) {
+    if (!list.length) return `<p class="empty">Nothing logged yet.</p>`;
+    return `<div class="tl">${list
+      .map(
+        (it) => `
+      <div class="tl-row ${esc(it.severity || "ok")}">
+        <div class="tl-time">${esc(it.time)}</div>
+        <div class="tl-dot"></div>
+        <div class="tl-body"><h4>${markText(it.title, term)}</h4>${it.body ? `<p>${markText(it.body, term)}</p>` : ""}</div>
+      </div>`
+      )
+      .join("")}</div>`;
+  }
+
+  function render() {
+    buildTabs();
+    const tab = TABS.find((t) => t.key === active);
+    if (!tab) {
+      $panels.innerHTML = `<p class="empty">No tabs defined.</p>`;
+      return;
+    }
+    let list = (DATA[tab.key] || []).filter((e) => matches(e, query));
+    if (tab.kind !== "timeline" && filter !== "all") {
+      list = list.filter((e) => e.status === filter);
+    }
+    list = sortEntries(list);
+    let html;
+    if (tab.kind === "decisions") html = renderDecisionsList(list, query);
+    else if (tab.kind === "timeline") html = renderTimeline(list, query);
+    else html = renderItemsList(list, query);
+    $panels.innerHTML = `<section class="panel on">${html}</section>`;
+  }
+
+  document.getElementById("q").addEventListener("input", (e) => {
+    query = e.target.value.trim();
+    render();
+  });
+  document.getElementById("sort").addEventListener("change", (e) => {
+    sortBy = e.target.value;
+    render();
+  });
+  document.querySelectorAll(".fbtn[data-f]").forEach((b) => {
+    b.addEventListener("click", () => {
+      filter = b.dataset.f;
+      document.querySelectorAll(".fbtn[data-f]").forEach((x) => x.classList.toggle("on", x === b));
+      render();
+    });
+  });
+
+  render();
 })();
 </script>
 </body>
