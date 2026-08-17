@@ -1,9 +1,11 @@
 ---
 name: handoff-context
-description: Write a zero-context handoff before compaction / context exhaustion / session end so the next agent resumes instantly. Triggers — operator types /handoff-context, "hand off", "context is almost full", "about to compact", "wrap up so we can continue later"; agent notices context nearly exhausted mid-task. STOP-AND-WRITE contract: zero further investigation, write from current state only, every claim tagged VERIFIED / UNVERIFIED / UNKNOWN.
+description: Write a zero-context handoff before compaction / context exhaustion / session end so the next agent resumes instantly. FALLBACK ONLY when no Artifact tool or no human present this session — if both hold, use human-collaboration:shared-plan's artifact instead (keep it current, no separate file needed). Triggers here — dispatched/headless context nearing exhaustion; operator types /handoff-context, "hand off", "context is almost full", "about to compact", "wrap up so we can continue later" in a session without shared-plan active. STOP-AND-WRITE contract: zero further investigation, write from current state only, every claim tagged VERIFIED / UNVERIFIED / UNKNOWN.
 ---
 
 # handoff-context — Stop, Dump State, Hand Off
+
+**Fallback skill.** If the `Artifact` tool is available and a human is present this session, use `human-collaboration:shared-plan` instead — keep its artifact's Resources/Decisions/Timeline tabs current as you go and a handoff needs nothing extra: no separate file, no last-second dump. This skill is for the contexts `shared-plan` explicitly excludes — dispatched danxbot workers, headless runs, any session without a human reading claude.ai — where a durable file is the only surface available.
 
 Context is about to be compacted or lost. The next agent (post-compaction you, or a fresh session) must resume **without re-deriving anything and without repeating dead ends**.
 
