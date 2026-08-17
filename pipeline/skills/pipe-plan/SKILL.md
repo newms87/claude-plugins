@@ -1,6 +1,6 @@
 ---
 name: pipe-plan
-description: 'Card-overrides-plan-mode + prose-only plans + zero-context test + phase-boundary audit + pipeline auto-execution discipline. In human-driven sessions with human-collaboration:shared-plan active, the card stays the durable work-record and the shared-plan artifact is the live planning surface for options/decisions being worked out — not a substitute for the card, not duplicated content.'
+description: 'Card-overrides-plan-mode + prose-only plans + zero-context test + phase-boundary audit + pipeline auto-execution discipline. human-collaboration:shared-plan runs alongside this, always, in human-driven sessions: the card stays the durable work-record, the shared-plan page is the live planning surface for options/decisions being worked out — not a substitute for the card, not duplicated content.'
 ---
 
 # Pipe-Plan — Planning + Complex-Card Escape Hatch
@@ -46,7 +46,7 @@ When any holds:
 
 ## EVERY plan lives in a card — all repos, always
 
-Whenever you plan work — `EnterPlanMode` or not — the durable work-record is a TRACKER CARD, never a plan file or standalone `.md`. This holds for **every repo, not just danxbot**. (In a human-driven session, `human-collaboration:shared-plan`'s artifact may ALSO be running as the live surface for decisions/options — that's a different vessel for a different audience, not a substitute for the card; link the card id in the artifact and the artifact URL on the card.)
+Whenever you plan work — `EnterPlanMode` or not — the durable work-record is a TRACKER CARD, never a plan file or standalone `.md`. This holds for **every repo, not just danxbot**. (In a human-driven session, `human-collaboration:shared-plan`'s page is ALWAYS also running as the live surface for decisions/options — that's a different vessel for a different audience, not a substitute for the card; link the card id on the page and the page's path/URL on the card.)
 
 **All durable task content lives on the card.** Anything another agent or a human might read, or that you will reference later — design notes, decisions, fix plans, AC, phase handoffs — goes on the card: its `description`/`ac[]`, a `comments[]` note, or a child/new card as fits the scope. A throwaway inline checklist for your own momentary execution is fine; the instant content needs to persist or be seen by anyone else, it belongs on a card.
 
