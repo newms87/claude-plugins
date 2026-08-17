@@ -9,6 +9,10 @@ User-invokable. The user types `/safe-terminate` (or equivalent) when they think
 
 This skill is NOT a long-form report. It is a confidence check. The user reads in under 30 seconds.
 
+## If `human-collaboration:shared-plan` is active this session
+
+Its artifact's Decisions/Timeline tabs already carry the running open-item list — that's the whole point of keeping it updated after every action. Read it first: any `DEC-N` without a `Resolved` pill, and any `TL-N` marked `warn`/`crit` without a follow-up, IS an open item — pull it straight into the recap below instead of re-deriving it from the transcript. Still walk the checklist for anything the artifact wouldn't have captured (uncommitted code, unpublished packages, background processes) — the artifact tracks decisions and status, not filesystem/process state.
+
 ## Mandatory pre-output checklist
 
 Walk the full session transcript top-to-bottom. For EACH item below, mentally answer "did this happen this session, and is it durable on disk / persisted to the right place?" If you cannot answer w/ certainty, treat as Open.

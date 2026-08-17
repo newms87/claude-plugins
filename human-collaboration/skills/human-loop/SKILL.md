@@ -1,6 +1,6 @@
 ---
 name: human-loop
-description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions. HARD RULE — applies EVERY TIME, even when this body is NOT loaded: every ask directed at the user is a SELF-CONTAINED brief written for a reader who knows the architecture but has read NONE of this session — problem statement (2-4 plain sentences) → one-sentence recommendation → numbered solutions → pros/cons sub-bullets per solution. Multiple asks in one turn = number the ASKS, letter the SOLUTIONS. No back-references to earlier turns, no unexplained identifiers, no evidence dumped before the question. The `AskUserQuestion` tool is FORBIDDEN for these (cramped labels hide tradeoffs). About to call AskUserQuestion? STOP → write the ask in chat instead.'
+description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions. HARD RULE — applies EVERY TIME, even when this body is NOT loaded: every ask directed at the user is a SELF-CONTAINED brief written for a reader who knows the architecture but has read NONE of this session — problem statement (2-4 plain sentences) → one-sentence recommendation → numbered solutions → pros/cons sub-bullets per solution. Multiple asks in one turn = number the ASKS, letter the SOLUTIONS. No back-references to earlier turns, no unexplained identifiers, no evidence dumped before the question. The `AskUserQuestion` tool is FORBIDDEN for these (cramped labels hide tradeoffs). About to call AskUserQuestion? STOP. A human-collaboration:shared-plan artifact is active this session → write the ask there as a DEC-N entry, chat gets only a one-line pointer. No artifact active → write the ask in chat, same brief shape.'
 ---
 
 # Human-in-the-Loop Rules
@@ -95,6 +95,8 @@ After options/diagnosis/proposals → text only. No Edit/Write/mutation until ex
 ## Every Ask Is a Self-Contained Brief — Reader Has Followed NONE of It
 
 Any ask directed at the user — decision, approval, clarification — is a standalone brief, NOT a continuation of your thinking. Assume the reader understands the system's architecture and has read **zero** of the current session. They must never scroll back through your reasoning to reconstruct what is being asked or why.
+
+**A `human-collaboration:shared-plan` artifact active this session is where the brief lives** — a `DEC-N` entry, same required shape below, options flagged with a recommendation. Chat then carries only "see `DEC-N`" plus one line of status, not the brief itself. No artifact active → the full brief goes in chat as before.
 
 Required shape, in this order:
 
