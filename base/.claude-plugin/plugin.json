@@ -1,7 +1,7 @@
 {
   "name": "base",
   "description": "Universal discipline: bash exit capture, sub-agent delegation, tool usage, process kill, monitor polling. Install on every claude instance.",
-  "version": "0.3.31",
+  "version": "0.3.32",
   "author": {
     "name": "Dan Newman",
     "email": "newms87@gmail.com"
