@@ -100,6 +100,7 @@
   .item p{margin:0 0 6px;color:var(--ink-2);font-size:14px;white-space:pre-wrap}
   .item p:last-child{margin-bottom:0}
   .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+  .ts{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
   .pill{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600;border:1px solid transparent}
   .p-open{background:#fff3d6;color:#7a5a00;border-color:#f0dca8}
   .p-decided{background:#d6f2d6;color:#0a5c0a;border-color:#a8dfa8}
@@ -190,17 +191,23 @@ const TABS = [
   { key: "timeline",  label: "Timeline",  prefix: "TL",  kind: "timeline" },
 ];
 
-// items shape:      { id, title, body, status: 'open'|'decided'|'blocked', tags?: [] }
-// decisions shape:  { id, title, body, status, options?: [{key,text,tradeoff,recommended?}],
+// `ts` is MANDATORY on every entry in every tab (except timeline, which uses
+// its own per-event `time`) — real current time when added, updated whenever
+// that entry is touched again. It's how the operator spots a stale item
+// without re-reading the whole page. Never guess it; never leave it stale
+// after an edit.
+//
+// items shape:      { id, ts, title, body, status: 'open'|'decided'|'blocked', tags?: [] }
+// decisions shape:  { id, ts, title, body, status, options?: [{key,text,tradeoff,recommended?}],
 //                      resolution?: { date, text } }
-// timeline shape:   { id, time, title, body, severity: 'ok'|'warn'|'crit' }
+// timeline shape:   { id, time, title, body, severity: 'ok'|'warn'|'crit' }  (no separate ts — `time` IS the timestamp)
 const DATA = {
   goals: [
-    { id: "GOA-01", title: "One goal per item", body: "Plain statement of what \"done\" means for this piece.", status: "decided", tags: ["Core"] },
+    { id: "GOA-01", ts: "2026-08-17 21:15 UTC", title: "One goal per item", body: "Plain statement of what \"done\" means for this piece.", status: "decided", tags: ["Core"] },
   ],
   decisions: [
     {
-      id: "DEC-01", title: "The question, phrased so it's answerable in one line",
+      id: "DEC-01", ts: "2026-08-17 21:15 UTC", title: "The question, phrased so it's answerable in one line",
       body: "One or two sentences of context — why this needs a human call, what it blocks.",
       status: "open",
       options: [
@@ -208,7 +215,7 @@ const DATA = {
         { key: "B", text: "Second option.", tradeoff: "For: ... Against: ...", recommended: true },
       ],
       resolution: null,
-      // once answered: status: "decided", resolution: { date: "2026-08-17", text: "Chose B because ..." }
+      // once answered: status: "decided", ts: <time of resolution>, resolution: { date: "2026-08-17", text: "Chose B because ..." }
     },
   ],
   timeline: [
@@ -299,6 +306,7 @@ const DATA = {
           <div class="meta">
             <span class="pill ${pillClass(it.status)}">${esc(it.status)}</span>
             ${(it.tags || []).map((t) => `<span class="pill p-tag">${esc(t)}</span>`).join("")}
+            ${it.ts ? `<span class="ts">${esc(it.ts)}</span>` : ""}
           </div>
         </div>
       </div>`
@@ -330,7 +338,7 @@ const DATA = {
           ${it.body ? `<p>${markText(it.body, term)}</p>` : ""}
           ${opts ? `<div class="ask"><h4>Options</h4><ul class="opts">${opts}</ul></div>` : ""}
           ${resolution}
-          <div class="meta"><span class="pill ${pillClass(it.status)}">${esc(it.status)}</span></div>
+          <div class="meta"><span class="pill ${pillClass(it.status)}">${esc(it.status)}</span>${it.ts ? `<span class="ts">${esc(it.ts)}</span>` : ""}</div>
         </div>
       </div>`;
       })
