@@ -195,8 +195,37 @@ fi
 # updated from inside their project directory, which is how the CLI resolves
 # WHICH project's record to rewrite.
 
-mapfile -t ROWS < <(
-  python3 - "$INSTALLED_FILE" <<'PY'
+# The row extraction needs a JSON parser, and WHICH ONE is a host question.
+# Probe by RUNNING each candidate, never by `command -v`: on Windows, `python3`
+# resolves to a Microsoft Store alias that exists on PATH and then refuses to
+# run, so a presence check reports an interpreter that cannot parse anything.
+# Node is tried first — it is the runtime this ecosystem already assumes.
+#
+# Neither available is a HARD failure that names the real cause. The previous
+# version simply got no rows out of the process substitution and reported
+# "No plugin rows found — nothing to update", which reads as "your records are
+# empty" on a machine holding fifteen of them: the publish looks finished while
+# every project stays pinned to the old version. That is the exact failure this
+# script exists to prevent.
+
+read -r -d '' EXTRACT_JS <<'EXTRACT_JS_EOF' || true
+const data = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+const seen = new Set();
+for (const [name, entries] of Object.entries(data.plugins || {})) {
+  for (const entry of entries || []) {
+    // "-" marks "no project path" (user scope). An empty field cannot be used:
+    // tab is IFS-whitespace, so bash's `read` collapses a run of tabs and would
+    // shift every later field left by one.
+    const row = [name, entry.scope || "user", entry.projectPath || "-", entry.version || "?"];
+    const key = row.join(String.fromCharCode(0));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    process.stdout.write(row.join(String.fromCharCode(9)) + String.fromCharCode(10));
+  }
+}
+EXTRACT_JS_EOF
+
+read -r -d '' EXTRACT_PY <<'EXTRACT_PY_EOF' || true
 import json, sys
 
 with open(sys.argv[1]) as fh:
@@ -205,16 +234,23 @@ with open(sys.argv[1]) as fh:
 seen = set()
 for name, entries in data.get("plugins", {}).items():
     for entry in entries:
-        # "-" marks "no project path" (user scope). An empty field cannot be
-        # used: tab is IFS-whitespace, so bash's `read` collapses a run of
-        # tabs and would shift every later field left by one.
         row = (name, entry.get("scope", "user"), entry.get("projectPath") or "-", entry.get("version", "?"))
         if row in seen:
             continue
         seen.add(row)
-        print("\t".join(row))
-PY
-)
+        print(chr(9).join(row))
+EXTRACT_PY_EOF
+
+if node -e '' >/dev/null 2>&1; then
+  mapfile -t ROWS < <(node -e "$EXTRACT_JS" "$INSTALLED_FILE")
+elif python3 -c '' >/dev/null 2>&1; then
+  mapfile -t ROWS < <(python3 -c "$EXTRACT_PY" "$INSTALLED_FILE")
+else
+  err "Neither 'node' nor 'python3' can run here — cannot read ${INSTALLED_FILE}."
+  err "Install either one, or update the records by hand:"
+  err "  claude plugin update <plugin>@<marketplace> --scope user"
+  exit 1
+fi
 
 if [ ${#ROWS[@]} -eq 0 ]; then
   err "No plugin rows found in ${INSTALLED_FILE} — nothing to update."
