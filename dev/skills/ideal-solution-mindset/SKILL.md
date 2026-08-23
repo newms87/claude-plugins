@@ -1,23 +1,23 @@
 ---
 name: ideal-solution-mindset
-description: 'Four core dev principles: ideal correct solution, no legacy/fallbacks/dead code, reduce complexity, DRY + SOLID reuse-first.'
+description: 'Core dev principles: ideal correct solution, no legacy/fallbacks/dead code, fix forward never revert, reduce complexity, DRY + SOLID reuse-first.'
 ---
 
 # Ideal Solution Mindset
 
-`Correct > Fast` · `Hard cut > Migration` · `Simple > Clever` · `Reuse > Rebuild`
+`Correct > Fast` · `Hard cut > Migration` · `Forward > Backward` · `Simple > Clever` · `Reuse > Rebuild`
 
 ## The Mission
 
-Build the system **correctly** every time. Cost, effort, and token usage are NEVER factors when choosing between a correct solution and a worse one. The system stays **lean and clean** — every line either earns its place under the four principles below or it is deleted in the same change.
+Build the system **correctly** every time. Cost, effort, and token usage are NEVER factors when choosing between a correct solution and a worse one. The system stays **lean and clean** — every line either earns its place under the principles below or it is deleted in the same change.
 
-The default failure mode this skill exists to block: agent reaches for the fastest patch, ships a partial fix, leaves the legacy path running, and ships a solution that is not the architecturally correct shape.
+The default failure mode this skill exists to block: agent reaches for the fastest patch, ships a partial fix, leaves the legacy path running, and ships a solution that is not the architecturally correct shape. Its mirror image is just as costly: agent hits a defect in its own new work and WITHDRAWS the work rather than finishing it (#2b).
 
 Reflect first. Decide. Execute.
 
 This skill is **principles-only and context-free** — it applies identically in autonomous workers, dispatched agents, and human-in-the-loop sessions. When and how to surface a decision to a human collaborator is a separate concern owned by `human-collaboration:human-loop`; nothing in this skill assumes a human is in the loop.
 
-## The Four Principles
+## The Principles
 
 ### #1 — Ideal Correct Solution
 
@@ -66,6 +66,33 @@ Mechanical gate before saving any file in a fix or refactor:
 > "Is there any code in this file made obsolete by my change that I left intact?"
 
 Yes → delete it in the same commit, update every caller, fail loudly at any remaining surface. "Out of scope" is the rationalization that ships dead code.
+
+### #2b — Fix Forward: Never Revert Work That Is Merely Imperfect
+
+Principle #2 deletes code that is **wrong**. This one protects code that is **right and unfinished** — and the two get confused constantly, because "remove it" feels like the same tidy instinct in both cases.
+
+**When something you built does not work perfectly, FIX IT. Do not withdraw it.**
+
+A revert is not a neutral, safe, or conservative choice. It costs the code AND the understanding that produced it: the next attempt pays again to rediscover what was already known, and any write-up left behind now describes a defect that is no longer in the tree — so it cannot be checked against anything. **A revert plus a confident explanation is worse than the defect**, because the explanation reads as settled knowledge and nothing can contradict it.
+
+Mechanical gate before removing anything you built:
+
+> "Can this defect harm a person or destroy data TODAY, in something already shipped and depended on?"
+
+**No** → fix it forward. Cosmetic breakage, a wrong offset, a feature working in two cases out of four, a thing you do not yet fully understand: all fixed, never withdrawn. Anything unreleased or with no consumers **cannot** harm anyone — the only cost it can impose is delay, and reverting maximises exactly that cost.
+
+**Yes** → removal is on the table, weighed against a forward hotfix. Pick whichever reaches safety faster.
+
+The only four reasons to remove instead of fix:
+
+1. You were **explicitly told** to revert.
+2. What is being built is **wrong and not wanted** — not imperfect, but the wrong thing. Continuing polishes something nobody asked for. (This is principle #2's territory: delete it completely, tombstone included.)
+3. **Starting over is genuinely faster** than repairing what exists. Say so plainly and start over — do not remove and stop.
+4. It should be **eliminated altogether and forgotten** — the idea is withdrawn, not deferred.
+
+Not on that list, and each one is a rationalization this gate exists to block: "it isn't finished", "it works in some cases but not others", "I'm not certain of the cause", "a checkpoint/handoff is coming", "I'll redo it properly next time". **A session or context boundary is not a deadline** — the work resumes either way, and it resumes cheaper with the code still there.
+
+When a fix genuinely cannot land now: ship it behind the narrowest switch that makes it safe and say so explicitly. Still forward, never backward. Leave the diagnosis **in the source, beside the code it explains** — never in a report standing where the code used to be.
 
 ### #3 — Reduce Complexity
 
@@ -117,7 +144,8 @@ Mechanical, in order:
 3. **Reuse audit.** What in the codebase already does part of this? Cite paths.
 4. **Legacy audit.** What in the codebase will my change make obsolete? List paths; commit to deleting them in scope.
 5. **Complexity check.** What's the simplest shape that is still correct? Is the current plan that shape, or is it one layer above?
-6. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" / "that's faster to ship" thought shape the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
+6. **Removal audit.** Does the plan remove anything I built that is merely unfinished or imperfect, rather than wrong? If yes — that is #2b; fix it forward instead, or name which of the four exceptions applies.
+7. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" / "that's faster to ship" thought shape the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
 
 If any step changes the plan, restart from step 2. The plan is ready when one full pass produces no edits.
 
@@ -134,10 +162,15 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 | "I'll add a fallback so it doesn't break in the old case." | Principle #2 violation. Fail loudly instead. |
 | "Make the new field optional with a default so the migration stays transparent / existing callers don't break." | Principle #2 violation. A new scope/identity/key field is REQUIRED + fail-loud. Backfill existing rows in the migration; never add a default coalesce to the canonical key. |
 | "I'll come back and clean this up later." | Will not happen. Clean it up now. |
+| "I'll revert this and redo it properly later." | Principle #2b violation. Later is now — fix it in place. Reverting discards the diagnosis along with the code. |
+| "It is safer to back this out until I understand it." | Principle #2b violation unless it is shipped AND harmful today. Understanding comes from the code that reproduces the defect; removing it removes the evidence. |
+| "It works for some cases but not all, so I will pull it for now." | Principle #2b violation. Partial is not wrong — finish the remaining cases. |
+| "A handoff/compaction/checkpoint is coming, so I should leave the tree clean." | Principle #2b violation. A session boundary is not a deadline; work resumes cheaper with the code present. |
 | "I can't reuse the existing endpoint/capability because \<constraint\>." (token can't be in the agent env, it must be isolated, it needs its own hop, for safety) | The constraint is **unverified** until you cite the `file:line` that enforces it. A premise that justifies building a NEW bypass around an existing capability is disqualified until proven against the code — verify FIRST; a false/assumed constraint is the #1 over-engineering driver. An advisor's or handoff's rationale is a hypothesis, not a constraint. |
 
 ## Composes With
 
+- `dev:git-discipline` — owns the MECHANICS of destructive git operations (revert / reset / restore / checkout are gated there). This skill owns the DECISION that precedes them: #2b says work that is merely imperfect is never a candidate for removal in the first place, so the question of how to remove it safely never arises.
 - `dev:code-quality` — the per-edit zero-tech-debt + SOLID checklist that owns the file-level details (refactor first, instance state over param threading, comments-are-authoritative). This skill owns the **decision and shape**; code-quality owns the **execution**.
 - `dev:debugging` — the bug-fix workflow already requires root-cause; this skill adds the rule that any code in the failure's blast radius made obsolete by the fix is deleted in the same commit, not left "for later."
 - `investigate:investigate` — read-only diagnostics still apply the reuse audit principle when surfacing findings.
