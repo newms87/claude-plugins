@@ -1,5 +1,5 @@
 {
-  "description": "Plugin skill load mandate + convey + tool-discipline + evidence mandates (SessionStart, all sources), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation deny guard (PreToolUse Bash), and live time + elapsed-since-last-fire + evidence discipline injection (UserPromptSubmit + PostToolUse).",
+  "description": "Plugin skill load mandate + convey + tool-discipline + evidence + craft mandates (SessionStart, all sources), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation deny guard (PreToolUse Bash), and live time + elapsed-since-last-fire + evidence + craft discipline injection (UserPromptSubmit + PostToolUse).",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -11,6 +11,10 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/evidence-mandate.sh UserPromptSubmit"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/craft-mandate.sh UserPromptSubmit"
           }
         ]
       }
@@ -47,6 +51,10 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/evidence-mandate.sh SessionStart"
+          },
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/craft-mandate.sh SessionStart"
           }
         ]
       },
