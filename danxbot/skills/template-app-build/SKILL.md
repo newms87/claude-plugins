@@ -38,8 +38,8 @@ one through the loop below.
    | `style.css` | App-wide stylesheet | yes |
    | `sample-data.json` | Default fixture rendered when no `data` prop is supplied | yes |
    | `main.ts` | Self-mount + `__settings` query-param parser | **NO** (scaffold infra) |
-   | `package.json` | Vendor pins | **NO** (scaffold infra) |
-   | `index.html` | Vite entry + importmap baked at scaffold time | **NO** (scaffold infra) |
+   | `package.json` | **App dependencies** — yours to edit | yes, `dependencies` only |
+   | `index.html` | Vite entry | **NO** (scaffold infra) |
 
    - **Read `App.vue` first.** Its `defineProps` block declares the prop
      contract every consumer relies on (`data`, `theme`). Whatever UI you
@@ -73,13 +73,28 @@ one through the loop below.
    Do NOT emit any output text after `danxbot_complete` — the worker
    discards the conversation stream within 5s of the terminal call.
 
+## Adding an npm dependency
+
+`package.json` IS yours to edit. Add the package to `dependencies` and call
+`save_template_app` — the build runs a real `pnpm install` against that manifest
+and resolves it through the worker's Verdaccio proxy. There is no allow-list, no
+pre-provision step, and nothing to declare anywhere else.
+
+Declare a first-party `@thehammer/*` package as `"latest"`, not a pinned version.
+An exact pin freezes it at whatever was published the day the template was built:
+a later release that adds a capability never reaches the template, the build still
+succeeds, and the app silently renders the old behaviour with no error anywhere.
+
 ## Forbidden
 
-- Editing `main.ts`, `package.json`, or `index.html`. They are scaffold
-  infra; downstream tooling depends on their exact shape.
-- Adding new npm dependencies. The scaffold's `package.json` pins the
-  vendor surface against which `index.html`'s importmap was baked. New deps
-  would not resolve.
+- Editing `main.ts` or `index.html`. They are scaffold infra, re-stamped from
+  the current scaffold on every `load_template_app`, so an edit there is
+  overwritten on the next load and reported back to you as a discarded edit.
+- Hand-editing the **danxbot-owned** keys inside `package.json` — `vue`,
+  `@thehammer/danx-ui`, `vite`, `@vitejs/plugin-vue`, `tailwindcss`,
+  `@tailwindcss/vite`. Those are composed in from the live shell's resolved
+  versions at load and stripped back out on save; your value would be
+  replaced either way.
 - Calling `save_template_app` for an id before `load_template_app` has run
   for that id. Save walks `templates/<template_id>/source/`; without the
   load step the directory is absent or stale and the build produces a wrong
