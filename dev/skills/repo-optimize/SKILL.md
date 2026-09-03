@@ -27,7 +27,7 @@ Read-only. User approves fixes, follow-up turn applies.
 2. `<repo>/CLAUDE.md` line count
 3. `~/.claude/CLAUDE.md` line count (every session)
 4. `<repo>/.claude/settings.json` + `~/.claude/settings.json` `enabledPlugins`
-5. For each enabled plugin: `ls ~/web/claude-plugins/<plugin>/skills/`
+5. For each enabled plugin: list its `skills/` dir. Resolve the location, never assume one — read `~/.claude/plugins/known_marketplaces.json` for each marketplace's `source.url` + `installLocation`, then `ls <installLocation>/<plugin>/skills/` (or a working checkout of that same `source.url`, if one exists on this machine)
 6. Workspace `<repo>/.danxbot/workspaces/*/.claude/settings.json` if present
 
 Output: token-count table (lines × ~5).
@@ -63,7 +63,7 @@ Output: `concept | locations[] | recommended single home`.
 
 | Pattern | Severity | Action |
 |---|---|---|
-| `/home/<user>/`, `~/web/<repo>/` operational | high | `<REPO_ROOT>` placeholder |
+| Any host-absolute or `~`-anchored checkout path (`/home/<user>/...`, `/Users/<user>/...`, `C:\Users\<user>\...`, `~/<dir>/<repo>/`) presented as operational | high | `<REPO_ROOT>` placeholder + an instruction to RESOLVE the location (registry lookup / `git rev-parse --show-toplevel` / search by remote), never a fixed path |
 | Hardcoded hostnames (`*.sageus.ai`, IPs, port-specific outside HMR) | high | `<your-deployment>` |
 | Personal repo names where skill claims generic | medium | `<connected-repo>` |
 | `@<scope>/*` outside owner-skill | medium | confirm intentional |

@@ -9,7 +9,7 @@ Guide for the recurring "make environment B see environment A's working trees, f
 
 ## Core architecture decision — one daemon, local-to-local sync
 
-If BOTH environments are reachable from a single filesystem view (e.g. WSL can already see the Windows drive at `/mnt/c/...`), you do **not** need Mutagen installed on both sides. One Mutagen daemon running in the environment with dual filesystem visibility (WSL) can run a **local-to-local** two-way sync session directly between the two real paths (`/home/user/repos` <-> `/mnt/c/Users/user/repos`). This is simpler than an agent-based remote sync and avoids ever needing Mutagen on the Windows/container side at all.
+If BOTH environments are reachable from a single filesystem view (e.g. WSL can already see the Windows drive at `/mnt/c/...`), you do **not** need Mutagen installed on both sides. One Mutagen daemon running in the environment with dual filesystem visibility (WSL) can run a **local-to-local** two-way sync session directly between the two real paths (`<SOURCE_ROOT>` <-> `/mnt/c/<MIRROR_ROOT>`). Both roots are whatever the operator actually uses on THIS machine — ask or resolve them, never copy a path out of this doc. This is simpler than an agent-based remote sync and avoids ever needing Mutagen on the Windows/container side at all.
 
 Only reach for Mutagen's SSH/Docker/agent-based remote endpoints when the two sides genuinely cannot see each other's filesystem directly.
 
@@ -37,10 +37,12 @@ Mutagen syncs VCS directories by default (`--ignore-vcs` opts OUT, it does not d
 Don't incrementally bolt on `--ignore` patterns as surprises surface (`node_modules`, `dist`, `.venv`, etc. are the obvious ones — the expensive misses are project-specific: a directory of accumulated Claude Code session-transcript logs, a hyperparameter-search results dir, a Terraform provider cache). Instead:
 
 ```bash
-for r in ~/web/*/; do
+for r in "$SOURCE_ROOT"/*/; do
   [ -f "$r/.gitignore" ] && { echo "=== $(basename "$r") ==="; cat "$r/.gitignore"; }
 done
 ```
+
+(`SOURCE_ROOT` is the directory holding the repos being synced — establish it once with the operator at the start of the job and export it; there is no default and no doc-supplied path to reuse.)
 
 Read every repo's actual `.gitignore` in the sync scope up front — the project's own author already decided what's generated; that's a better source of truth than any generic checklist.
 
@@ -80,7 +82,7 @@ Investigate anything disproportionately large before excluding it — some of it
 **Also scan for filenames illegal on the destination filesystem** before the first sync, not after it fails partway through:
 
 ```bash
-find ~/web -type f -name '*[:<>|?*]*'
+find "$SOURCE_ROOT" -type f -name '*[:<>|?*]*'
 ```
 
 (NTFS forbids `: < > | ? *` and a few reserved names; a stray leaked `Zone.Identifier` alternate-data-stream artifact is a common WSL/Windows-interop offender.)
@@ -134,7 +136,7 @@ Do both (`reset --mixed HEAD` then `core.fileMode false`) for every repo before 
 Gather every repo's real remote scheme up front — a multi-repo, multi-account setup is rarely uniform:
 
 ```bash
-for r in <repo-list>; do echo "$r :: $(git -C ~/web/$r remote get-url origin | sed -E 's#(https://)[^@]+@#\1[REDACTED]@#')"; done
+for r in <repo-list>; do echo "$r :: $(git -C "$SOURCE_ROOT/$r" remote get-url origin | sed -E 's#(https://)[^@]+@#\1[REDACTED]@#')"; done
 ```
 
 (Redact any embedded token before printing/logging — an HTTPS remote with a bearer token baked into the URL, e.g. `https://x-access-token:<PAT>@github.com/...`, is a live secret; flag it to the user, never re-print it gratuitously, and don't "fix" it — it's an existing, working auth mechanism, just carry the URL over as-is.)
