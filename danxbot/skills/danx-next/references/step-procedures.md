@@ -42,7 +42,7 @@ A card may carry stale claims from prior dead dispatches. **NEVER skip work beca
    - **Any mismatch** (file missing, test fails, commit not in log, diff doesn't deliver) → flip the item to `checked: false` via `issue_edit({id, ac})`, treat as work to do.
 3. **For each sha in `retro.commits[]`:** run `git cat-file -t <sha>` in THIS repo. Output not `commit` (or `git log origin/main` doesn't show it) → sha is:
    - **Stale** (rebased away / typo / never pushed) → drop from `retro.commits[]` via `issue_retro`.
-   - **Cross-repo** (`git cat-file -t <sha>` resolves in `~/web/claude-plugins/` or sibling repo but not THIS repo) → drop from `retro.commits[]` via `issue_retro` AND add a comment via `issue_comment` titled `## External repo work` naming repo + sha + what shipped.
+   - **Cross-repo** (`git cat-file -t <sha>` resolves in a sibling repo's checkout but not THIS repo) → drop from `retro.commits[]` via `issue_retro` AND add a comment via `issue_comment` titled `## External repo work` naming repo + sha + what shipped.
 
    If card is Blocked with reason starting `DX-559 enforcement:`, this self-heal unblocks it: walk each missing sha, route to stale-drop or cross-repo-comment, then `issue_transition({id, action: 'unblock'})` followed by `issue_transition({id, action: 'ready'})` and call `danxbot_complete({status: "complete", summary: "Reconciled retro.commits[] after DX-559 block — <one-line summary>"})`.
 
@@ -162,19 +162,33 @@ If you cannot verify — repo this worker cannot commit to, depends on external 
 
 Two paths — pick the one matching THIS dispatch.
 
-**`retro.commits[]` scope — owned-repo ONLY (DX-559 gate).** Only shas from THIS card's repo's `origin/main` belong in `retro.commits[]`. If dispatch edited sibling repo (plugin under `~/web/claude-plugins/`, another connected repo, any path outside this worktree), that work does NOT go in `retro.commits[]`. Instead, append `comments[]` entry naming external repo + sha(s) + what shipped. Example:
+**`retro.commits[]` scope — owned-repo ONLY (DX-559 gate).** Only shas from THIS card's repo's `origin/main` belong in `retro.commits[]`. If dispatch edited sibling repo (a plugin under the marketplace plugins repo, another connected repo, any path outside this worktree), that work does NOT go in `retro.commits[]`. Instead, append `comments[]` entry naming external repo + sha(s) + what shipped. Example:
 
 ```
 ## Plugin work
 
-Edited `~/web/claude-plugins/danxbot/skills/<skill>/SKILL.md`. Published `danxbot v0.3.10`.
+Edited `<plugins-repo>/danxbot/skills/<skill>/SKILL.md`. Published `danxbot v0.3.10`.
 
 Commits (claude-plugins repo):
 - `67eefe9` — skill body rewrite
 - `1e0a570` — version bump + publish
 ```
 
+`<plugins-repo>` above is a placeholder — never write a literal path from your own machine into a card. Resolve the sibling repo's real location at the moment you need it (see "Resolving a sibling repo's checkout" below) and write the repo NAME plus the path *within* that repo, not a host-absolute path.
+
 Putting cross-repo shas in `retro.commits[]` makes DX-559 gate block your `danxbot_complete({status: "complete"})` — gate verifies every sha against THIS repo's `origin/main`, treats unresolvable as missing.
+
+**Resolving a sibling repo's checkout — never assume a location.** Filesystem layout differs per machine and per context (operator main session, host-mode worker, container worker), and a repo that moved leaves every hardcoded path silently wrong. For the plugin marketplace repo, `~/.claude/plugins/known_marketplaces.json` is the reliable anchor: it carries each marketplace's `source.url` (the repo) and `installLocation` (a real checkout of that same repo on this machine). Read the URL from there, then search for an existing working checkout of that URL before cloning anything:
+
+```bash
+cat ~/.claude/plugins/known_marketplaces.json          # -> source.url + installLocation
+find ~ -maxdepth 4 -type d -name .git 2>/dev/null | while read -r g; do
+  d="$(dirname "$g")"
+  git -C "$d" remote get-url origin 2>/dev/null | grep -q '<repo-name>' && echo "$d"
+done
+```
+
+Use an existing checkout if one is found. Cloning a second copy of a repo already present on the machine silently drifts from the one the operator actually publishes from.
 
 ### Step 7a — Multi-worker agent dispatch (persona block present)
 
@@ -267,7 +281,7 @@ Blocked is **LAST RESORT** AND **EXCLUSIVELY for cards needing human acting**. I
 **Cross-repo work → DELEGATE, do not block (DX-1368).** Before treating "the work belongs to another repo I can't write" as a blocker, FIRST resolve whether that repo is a danxbot board: attempt `issue_list`/`issue_create` with `board=<repo>:<slug>` (unknown board → 404).
 
 - **Board EXISTS → DELEGATE, never self-block.** `issue_create({board: '<repo>:<slug>', type, title, description, ac})` moving the real spec + AC to the target board → `issue_dependency({id: <this>, action: 'add', kind: 'depends_on', target_id: <new>, reason: 'delegated cross-repo work'})` → drop the structured delegation marker comment on THIS card (template below) → keep any residual in-repo AC (if none, the card just tracks the delegate). The `depends_on` gate holds this card non-dispatchable until the partner is terminal, then the picker auto-re-dispatches it and Step 1.1 reads the marker on resume. Do NOT stamp `blocked` — cross-board `depends_on` resolves the partner globally by id and auto-clears on the partner's Done/Cancel (no new infra; confirmed by `src/issues/__tests__/cascade.test.ts`).
-- **Board does NOT exist** (operator-only repo, e.g. `~/web/claude-plugins`) → fall through to the block path below.
+- **Board does NOT exist** (operator-only repo, e.g. the plugin marketplace repo) → fall through to the block path below.
 
 Structured delegation marker comment (`issue_comment({id, action: 'add', text})`) — keep the `## Delegated → <id>` header verbatim so Step 1.1 can key on it:
 

@@ -26,12 +26,12 @@ Per-target config: `<DANXBOT_REPO>/deploy/targets/<TARGET>.yml`. Each target = i
 
 Both hit live (2026-08-10, DX-2133 deploy) and both fail FAST with a clear message once you know what they are — don't investigate further than this when you hit them:
 
-1. **Node version.** The deploy CLI (`deploy/cli.ts`) needs Node 22+ (see `.nvmrc`). The shell's default/system Node (commonly 18.x) fails immediately with `SyntaxError: Unexpected token 'with'` (the `cli-spinners` dependency uses import-attribute syntax Node 18 doesn't parse). Fix: `source ~/.nvm/nvm.sh && nvm use 22` before running `make deploy`.
+1. **Node version.** The deploy CLI (`deploy/cli.ts`) needs Node 22+ (see `.nvmrc`). The shell's default/system Node (commonly 18.x) fails immediately with `SyntaxError: Unexpected token 'with'` (the `cli-spinners` dependency uses import-attribute syntax Node 18 doesn't parse). Fix: `source "${NVM_DIR:-$HOME/.nvm}/nvm.sh" && nvm use 22` before running `make deploy`.
 2. **`DANXBOT_TARGET` must match the `TARGET=` argument.** The repo's `.envrc` sets `DANXBOT_TARGET=local` on every shell start (direnv). Running `make deploy TARGET=gpt` without ALSO exporting `DANXBOT_TARGET=gpt` fails with `Deploy failed: Target mismatch: CLI argument is "gpt" but DANXBOT_TARGET env var is set to "local"`. A plain `unset DANXBOT_TARGET` does NOT fix it — direnv re-sets it on the next shell invocation. Fix: export it explicitly in the same command.
 
 Full working invocation:
 ```bash
-cd <DANXBOT_REPO> && source ~/.nvm/nvm.sh && nvm use 22 && export DANXBOT_TARGET=<t> && make deploy TARGET=<t>
+cd <DANXBOT_REPO> && source "${NVM_DIR:-$HOME/.nvm}/nvm.sh" && nvm use 22 && export DANXBOT_TARGET=<t> && make deploy TARGET=<t>
 ```
 
 ### Worker swap during deploy can abort on a drain-wait timeout — this is a known gap, not a bug to re-diagnose
