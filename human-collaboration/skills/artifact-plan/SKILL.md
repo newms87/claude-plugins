@@ -17,7 +17,10 @@ Copy the template. **Do not read it into context** — it is ~20KB of chrome you
 cp "<this skill's directory>/references/artifact-template.html" <working-file>.html
 ```
 
-Then fill in `PROJECT` and the `DATA` arrays, and publish:
+Then fill in **three** things — the `<title>` on line 1 (it is a placeholder that names
+the artifact in the tab and gallery; leaving it ships a page called "PRODUCT NAME HERE"),
+`PROJECT`, and the `DATA` arrays. Grep the file for `PRODUCT NAME HERE` before publishing —
+a hit means the title is still unfilled. Then publish:
 
 ```
 Artifact({ file_path, favicon, description })
