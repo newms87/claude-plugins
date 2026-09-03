@@ -1,6 +1,6 @@
 ---
 name: bash-exit-capture
-description: Exit-code capture discipline for chained bash commands — avoid `cmd; tail` swallowing the real exit; use `EXIT=$?` pattern.
+description: Bash launch discipline — exit-code capture for chained commands (`cmd; tail` swallows the real exit; use `EXIT=$?`), and never launch a command that can block on stdin.
 ---
 
 # Bash Exit-Code Capture
@@ -51,3 +51,13 @@ long_cmd > /tmp/log 2>&1 && echo "OK" || (echo "FAIL"; tail -30 /tmp/log; exit 1
 ## Redirect to a file FIRST if you'll need to search it after
 
 Before running, ask: will I need to grep/search the FULL output afterward (e.g. every FAIL line in a test run), not just the tail? If yes → redirect to a file (`cmd > /tmp/scratch/out.log 2>&1; RC=$?`) and `Read`/`grep` the file as many times as needed. Piping through `tail -N`/`head -N` at capture time discards everything past N lines — if a full-content search turns out to be needed later, the whole run must be redone. Decide this BEFORE running, not after seeing truncated results.
+
+## Never launch a command that can block on stdin
+
+Before EVERY Bash call, foreground or background: does any command in the chain read stdin with no input attached? `cat > file` (no `<<EOF`, no pipe), bare `cat`, `read`, `ssh`, `psql`, `npm login`, any `-i`/interactive flag — these hang forever, and everything after the `;`/`&&` never runs.
+
+Redirect stdin closed (`< /dev/null`) or write files with the `Write` tool.
+
+Backgrounding HIDES this: "no output yet" is visually identical to still-working. **A background task with zero bytes of output past ~2 minutes is presumed hung — go read it, never assume it is progressing.**
+
+Real failure: `cat > /tmp/patch.py 2>/dev/null; node -e "..."` backgrounded as a heredoc workaround. `cat` blocked on stdin for 39 minutes; the `node -e` never ran; the operator noticed before the agent did.
