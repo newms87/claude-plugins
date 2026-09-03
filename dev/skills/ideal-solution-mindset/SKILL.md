@@ -174,7 +174,7 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 - `dev:code-quality` — the per-edit zero-tech-debt + SOLID checklist that owns the file-level details (refactor first, instance state over param threading, comments-are-authoritative). This skill owns the **decision and shape**; code-quality owns the **execution**.
 - `dev:debugging` — the bug-fix workflow already requires root-cause; this skill adds the rule that any code in the failure's blast radius made obsolete by the fix is deleted in the same commit, not left "for later."
 - `investigate:investigate` — read-only diagnostics still apply the reuse audit principle when surfacing findings.
-- `pipeline:pipe-plan` — plan-mode gate. Pipe-plan owns the structural plan format; this skill owns the principle the plan must satisfy before it's allowed to leave plan mode.
+- `human-collaboration:artifact-plan` — owns the structural format of the shared page a plan lives on; this skill owns the principle the plan must satisfy before it's allowed to leave plan mode.
 - `human-collaboration:human-loop` — owns when / whether to surface a decision to a human collaborator. This skill is silent on user interaction; the four principles apply regardless of who or what consumes the resulting work.
 
 When in doubt, this skill wins on **principle**, the composing skills win on **mechanics**.

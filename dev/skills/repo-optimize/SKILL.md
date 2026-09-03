@@ -126,7 +126,7 @@ End: "Pick which findings to execute. I will NOT apply any fix without per-findi
 
 ## After the user picks targets — file cards
 
-The punch list is approval scratch, not the durable record. Once the user picks targets to execute, file them as tracker card(s) before doing the work (card-first rule, `pipeline:pipe-plan`) — one card per target, or an Epic + phase children when several are related. The audit report itself is never the home of the work; the cards are. (Exception: the user explicitly says to just fix inline without cards.)
+The punch list is approval scratch, not the durable record. Once the user picks targets to execute, file them as tracker card(s) before doing the work (card-first rule, `danxbot:issue-card-workflow`) — one card per target, or an Epic + phase children when several are related. The audit report itself is never the home of the work; the cards are. (Exception: the user explicitly says to just fix inline without cards.)
 
 ## Hard rules
 
