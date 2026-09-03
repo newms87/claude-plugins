@@ -1,0 +1,775 @@
+<title>PRODUCT NAME HERE — replace with a short product-style noun phrase naming the thing this page tracks (e.g. "Demand Desk Frontend", "Citation Scoping Rework"). Never "Plan", "Tracker", or "Project Notes", and never a name plus an appended explainer.</title>
+
+<style>
+  /* ==========================================================================
+     THEME TOKENS
+     --------------------------------------------------------------------------
+     The Artifact viewer stamps data-theme="dark" / "light" on the ROOT element
+     when the reader picks a theme, and stamps NOTHING on "system" (the default,
+     where only prefers-color-scheme separates light from dark). So:
+
+       1. bare :root            -> the COMPLETE light token set
+       2. @media dark, guarded  -> redefines ONLY tokens (system dark)
+       3. :root[data-theme=dark]-> redefines ONLY tokens (explicit dark wins)
+
+     HARD RULE: no color may be declared for the FIRST time inside a @media or
+     [data-theme] block. Every color below is a token defined in bare :root and
+     merely re-valued in the two dark blocks. This page ships NO theme toggle of
+     its own — the viewer owns the theme; a page-level toggle fights it.
+     ========================================================================== */
+  :root {
+    color-scheme: light;
+
+    /* Surfaces + ink */
+    --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f4f3ef; --surface-3:#eceae4;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#8a8881;
+    --grid:#e1e0d9; --axis:#b9b7ad; --border:rgba(11,11,11,0.10);
+
+    /* ACCENT — swap --brand + --brand-strong + --brand-soft together. Pick a
+       hue distinct from other pages open this session. Used for the logo mark,
+       the active-tab underline, ID chips, and the Recommended flag. */
+    --brand:#2a78d6; --brand-strong:#184f95; --brand-soft:#cde2fb; --on-brand:#ffffff;
+
+    /* Semantic */
+    --good:#0b8a2f; --warn:#a8720a; --crit:#c0392b;
+    --focus:#2a78d6;
+
+    /* Work-item status pills */
+    --att-bg:#fff3d6; --att-ink:#7a5a00; --att-bd:#f0dca8;
+    --prog-bg:#dbe9fb; --prog-ink:#1c4f8f; --prog-bd:#b6d1f2;
+    --done-bg:#d9f0dd; --done-ink:#0a5c26; --done-bd:#aadcb8;
+
+    /* Item-status pills (Goals / Architecture / Rules / Caveats) */
+    --open-bg:#fff3d6; --open-ink:#7a5a00; --open-bd:#f0dca8;
+    --dec-bg:#d9f0dd;  --dec-ink:#0a5c26;  --dec-bd:#aadcb8;
+    --blk-bg:#ffd9d9;  --blk-ink:#8f1f1f;  --blk-bd:#f0b0b0;
+
+    /* Accents inside cards */
+    --pro-ink:#0b8a2f; --con-ink:#b0453a;
+    --rec-bg:#d9f0dd; --rec-ink:#0a5c26;
+    --res-bd:#aadcb8; --res-bg:#f2faf4;
+    --mark-bg:#ffe9a8; --mark-ink:#0b0b0b;
+
+    --shadow:0 1px 2px rgba(11,11,11,0.04),0 6px 20px rgba(11,11,11,0.05);
+
+    /* Non-color tokens */
+    --radius:10px; --radius-sm:8px;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page:#0d0d0d; --surface:#181818; --surface-2:#212120; --surface-3:#2b2b29;
+      --ink:#f5f4f0; --ink-2:#c3c2b7; --muted:#8f8d85;
+      --grid:#2c2c2a; --axis:#4a4a46; --border:rgba(255,255,255,0.13);
+      --brand:#5c9df0; --brand-strong:#9cc3f5; --brand-soft:#173254; --on-brand:#08131f;
+      --good:#4fc26a; --warn:#d7a33a; --crit:#e8756a;
+      --focus:#7fb2f5;
+      --att-bg:#3d2f0a; --att-ink:#e6cd85; --att-bd:#5c4a14;
+      --prog-bg:#12304f; --prog-ink:#95c2f2; --prog-bd:#1e4a76;
+      --done-bg:#0f3a1c; --done-ink:#8fd9a4; --done-bd:#1d5c30;
+      --open-bg:#3d2f0a; --open-ink:#e6cd85; --open-bd:#5c4a14;
+      --dec-bg:#0f3a1c;  --dec-ink:#8fd9a4;  --dec-bd:#1d5c30;
+      --blk-bg:#4a1414;  --blk-ink:#f0a0a0;  --blk-bd:#6b2020;
+      --pro-ink:#4fc26a; --con-ink:#e8756a;
+      --rec-bg:#0f3a1c; --rec-ink:#8fd9a4;
+      --res-bd:#1d5c30; --res-bg:#111f15;
+      --mark-bg:#5c4a14; --mark-ink:#f5f4f0;
+      --shadow:0 1px 2px rgba(0,0,0,0.45),0 8px 26px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#181818; --surface-2:#212120; --surface-3:#2b2b29;
+    --ink:#f5f4f0; --ink-2:#c3c2b7; --muted:#8f8d85;
+    --grid:#2c2c2a; --axis:#4a4a46; --border:rgba(255,255,255,0.13);
+    --brand:#5c9df0; --brand-strong:#9cc3f5; --brand-soft:#173254; --on-brand:#08131f;
+    --good:#4fc26a; --warn:#d7a33a; --crit:#e8756a;
+    --focus:#7fb2f5;
+    --att-bg:#3d2f0a; --att-ink:#e6cd85; --att-bd:#5c4a14;
+    --prog-bg:#12304f; --prog-ink:#95c2f2; --prog-bd:#1e4a76;
+    --done-bg:#0f3a1c; --done-ink:#8fd9a4; --done-bd:#1d5c30;
+    --open-bg:#3d2f0a; --open-ink:#e6cd85; --open-bd:#5c4a14;
+    --dec-bg:#0f3a1c;  --dec-ink:#8fd9a4;  --dec-bd:#1d5c30;
+    --blk-bg:#4a1414;  --blk-ink:#f0a0a0;  --blk-bd:#6b2020;
+    --pro-ink:#4fc26a; --con-ink:#e8756a;
+    --rec-bg:#0f3a1c; --rec-ink:#8fd9a4;
+    --res-bd:#1d5c30; --res-bg:#111f15;
+    --mark-bg:#5c4a14; --mark-ink:#f5f4f0;
+    --shadow:0 1px 2px rgba(0,0,0,0.45),0 8px 26px rgba(0,0,0,0.5);
+  }
+
+  /* ==========================================================================
+     BASE
+     ========================================================================== */
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    /* Explicit token background: a transparent body borrows the host ground. */
+    background:var(--page); color:var(--ink);
+    font-family:var(--sans); font-size:15.5px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden; /* body never scrolls sideways; wide content scrolls in its own box */
+  }
+  a{color:var(--brand)}
+  :focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:0 clamp(14px,3vw,32px) 90px}
+
+  /* ==========================================================================
+     HEADER + WAYS-OF-WORKING BANNER
+     ========================================================================== */
+  header.top{padding:26px 0 0}
+  .titlebar{display:flex;align-items:flex-start;gap:13px;flex-wrap:wrap}
+  .logo{width:38px;height:38px;border-radius:10px;flex:none;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--brand),var(--brand-strong));
+    color:var(--on-brand);font-weight:800;font-size:15px;letter-spacing:.02em}
+  .titletext{min-width:0}
+  h1{font-size:clamp(20px,4.4vw,25px);margin:0;letter-spacing:-.02em;font-weight:800;line-height:1.2}
+  .sub{color:var(--muted);font-size:13px;margin-top:3px}
+
+  .ways{display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+    margin:15px 0 0;padding:8px 11px;border:1px solid var(--border);
+    border-radius:var(--radius-sm);background:var(--surface-2)}
+  .ways-lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;
+    color:var(--muted);margin-right:2px}
+  .ways .chip{font-size:11.5px;color:var(--ink-2);background:var(--surface);
+    border:1px solid var(--border);border-radius:999px;padding:2px 10px;white-space:nowrap}
+
+  /* ==========================================================================
+     TABS — horizontal scroll strip; never overflows the viewport on a phone
+     ========================================================================== */
+  .tabs{display:flex;gap:3px;margin:20px 0 0;border-bottom:1px solid var(--border);
+    position:sticky;top:0;z-index:20;background:var(--page);padding-top:6px;
+    overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;scrollbar-width:thin;
+    -webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{height:5px}
+  .tabs::-webkit-scrollbar-thumb{background:var(--axis);border-radius:999px}
+  .tabs button{border:0;background:transparent;font:inherit;font-size:13.5px;color:var(--ink-2);
+    padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;
+    display:flex;align-items:center;gap:7px;border-radius:8px 8px 0 0;white-space:nowrap;flex:none}
+  .tabs button:hover{background:var(--surface-2);color:var(--ink)}
+  .tabs button.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:700}
+  .cnt{background:var(--surface-3);color:var(--ink-2);font-size:11px;font-weight:700;
+    padding:1px 7px;border-radius:999px;font-variant-numeric:tabular-nums}
+  .tabs button.on .cnt{background:var(--brand);color:var(--on-brand)}
+  .cnt.alert{background:var(--att-bg);color:var(--att-ink);border:1px solid var(--att-bd)}
+  .tabs button.on .cnt.alert{background:var(--brand);color:var(--on-brand);border-color:transparent}
+
+  /* The rule line: what belongs on this tab, and what does not. */
+  .rule{margin:14px 0 2px;color:var(--ink-2);font-size:13.5px;line-height:1.55;max-width:80ch;
+    border-left:2px solid var(--brand-soft);padding-left:11px}
+
+  /* ==========================================================================
+     CONTROLS
+     ========================================================================== */
+  .controls{display:flex;gap:9px;align-items:center;margin:14px 0 4px;flex-wrap:wrap}
+  .search{flex:1;min-width:180px;position:relative}
+  .search input{width:100%;padding:9px 13px 9px 32px;border-radius:9px;border:1px solid var(--border);
+    background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+  .search .ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px}
+  .fbtn,select.fbtn{border:1px solid var(--border);background:var(--surface);color:var(--ink-2);font:inherit;
+    font-size:12.5px;padding:7px 11px;border-radius:8px;cursor:pointer}
+  .fbtn.on{background:var(--brand);color:var(--on-brand);border-color:var(--brand);font-weight:600}
+  .filters{display:flex;gap:6px;flex-wrap:wrap}
+  .filters[hidden]{display:none}
+
+  /* ==========================================================================
+     ITEM CARD
+     ========================================================================== */
+  .item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 16px;margin:10px 0;box-shadow:var(--shadow);
+    display:grid;grid-template-columns:58px minmax(0,1fr);gap:14px;align-items:start}
+  .item > .body{min-width:0}
+  .id{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--brand);
+    background:var(--brand-soft);padding:3px 0;border-radius:6px;text-align:center;height:fit-content}
+  .item h3{margin:0 0 5px;font-size:15px;font-weight:700;letter-spacing:-.01em;line-height:1.35}
+  .item p{margin:0 0 6px;color:var(--ink-2);font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+  .item p:last-child{margin-bottom:0}
+  .problem{color:var(--ink) !important;font-size:14.5px}
+  .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .ts{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+  .pill{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600;border:1px solid transparent}
+  .p-attention{background:var(--att-bg);color:var(--att-ink);border-color:var(--att-bd)}
+  .p-progress{background:var(--prog-bg);color:var(--prog-ink);border-color:var(--prog-bd)}
+  .p-done{background:var(--done-bg);color:var(--done-ink);border-color:var(--done-bd)}
+  .p-open{background:var(--open-bg);color:var(--open-ink);border-color:var(--open-bd)}
+  .p-decided{background:var(--dec-bg);color:var(--dec-ink);border-color:var(--dec-bd)}
+  .p-blocked{background:var(--blk-bg);color:var(--blk-ink);border-color:var(--blk-bd)}
+  .p-tag{background:var(--surface-3);color:var(--ink-2);border-color:var(--border)}
+  code{font-family:var(--mono);font-size:12.5px;background:var(--surface-2);padding:1px 5px;
+    border-radius:4px;border:1px solid var(--border);overflow-wrap:anywhere}
+  mark{background:var(--mark-bg);color:var(--mark-ink);padding:0 1px;border-radius:2px}
+
+  /* Any genuinely wide block (table, long code, diagram) goes in .scroll-x. */
+  .scroll-x{overflow-x:auto;max-width:100%}
+
+  /* ==========================================================================
+     FOLDS — collapsed Context / Solutions
+     ========================================================================== */
+  .fold{margin-top:9px;border-top:1px solid var(--border);padding-top:8px}
+  .fold > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--muted);padding:2px 0;border-radius:5px}
+  .fold > summary::-webkit-details-marker{display:none}
+  .fold > summary::marker{content:""}
+  .fold > summary:hover{color:var(--ink-2)}
+  .caret{flex:none;width:0;height:0;border-left:5px solid currentColor;
+    border-top:4px solid transparent;border-bottom:4px solid transparent;
+    transition:transform .16s ease}
+  .fold[open] > summary .caret{transform:rotate(90deg)}
+  .fold-body{padding:9px 0 2px;overflow-x:auto}
+  @media (prefers-reduced-motion: reduce){ .caret{transition:none} }
+
+  /* ==========================================================================
+     SOLUTIONS
+     ========================================================================== */
+  .opts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+  .opt{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+  .opt-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .opt-key{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--brand);flex:none}
+  .opt-text{font-size:13.8px;color:var(--ink);min-width:0}
+  .rec-flag{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--rec-ink);background:var(--rec-bg);border-radius:3px;padding:2px 6px;flex:none}
+  .tr{display:grid;grid-template-columns:40px minmax(0,1fr);gap:9px;margin-top:6px;font-size:13px}
+  .tr-lab{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;padding-top:3px}
+  .tr-lab.pro{color:var(--pro-ink)}
+  .tr-lab.con{color:var(--con-ink)}
+  .tr-val{color:var(--ink-2)}
+
+  /* ==========================================================================
+     RESOLUTION — always open, always above the folds
+     ========================================================================== */
+  .resolution{margin:9px 0 2px;border:1px solid var(--res-bd);border-radius:var(--radius-sm);
+    background:var(--res-bg);padding:10px 13px}
+  .rk{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--good);margin-bottom:4px}
+  .resolution div:last-child{font-size:13.8px;color:var(--ink)}
+
+  /* ==========================================================================
+     TIMELINE
+     ========================================================================== */
+  .tl{display:flex;flex-direction:column;margin:12px 0}
+  .tl-row{display:grid;grid-template-columns:150px 20px minmax(0,1fr);gap:0 14px;padding:10px 0;position:relative}
+  .tl-time{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding-top:2px;white-space:nowrap}
+  .tl-dot{width:10px;height:10px;border-radius:50%;background:var(--axis);margin-top:5px;position:relative;z-index:1}
+  .tl-row.ok .tl-dot{background:var(--good)}
+  .tl-row.warn .tl-dot{background:var(--warn)}
+  .tl-row.crit .tl-dot{background:var(--crit)}
+  .tl-row::after{content:"";position:absolute;left:159px;top:0;bottom:0;width:1px;background:var(--grid)}
+  .tl-row:last-child::after{bottom:50%}
+  .tl-body h4{margin:0 0 2px;font-size:14px;font-weight:700}
+  .tl-body p{margin:0;font-size:13.5px;color:var(--ink-2);overflow-wrap:anywhere}
+
+  .empty{color:var(--muted);font-size:14px;padding:26px 0;text-align:center}
+  .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--border);color:var(--muted);font-size:12.5px}
+
+  /* ==========================================================================
+     RESPONSIVE
+     ========================================================================== */
+  @media (max-width:820px){
+    .item{grid-template-columns:52px minmax(0,1fr);gap:11px;padding:13px 13px}
+  }
+  @media (max-width:560px){
+    body{font-size:15px}
+    .item{grid-template-columns:minmax(0,1fr);gap:8px}
+    .id{justify-self:start;padding:3px 10px}
+    .tl-row{grid-template-columns:minmax(0,1fr);gap:2px}
+    .tl-row .tl-dot{display:none}
+    .tl-row::after{display:none}
+    .search{min-width:100%}
+    .tr{grid-template-columns:34px minmax(0,1fr);gap:7px}
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="titlebar">
+      <div class="logo" id="logo">XX</div>
+      <div class="titletext">
+        <h1 id="h1">PROJECT NAME</h1>
+        <div class="sub" id="sub"></div>
+      </div>
+    </div>
+    <div class="ways" aria-label="Build standards for this work">
+      <span class="ways-lab">Build standards</span>
+      <span class="chip">Zero tech debt</span>
+      <span class="chip">Fully responsive</span>
+      <span class="chip">Real app chrome</span>
+      <span class="chip">DRY + SOLID</span>
+      <span class="chip">Go all out</span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+  <p class="rule" id="rule"></p>
+
+  <div class="controls">
+    <div class="search"><span class="ico" aria-hidden="true">&#8981;</span>
+      <input type="text" id="q" aria-label="Search this tab" placeholder="Search this tab&#8230;"></div>
+    <div class="filters" id="filters">
+      <button class="fbtn on" data-f="all">All</button>
+      <button class="fbtn" data-f="open">Open</button>
+      <button class="fbtn" data-f="blocked">Blocked</button>
+      <button class="fbtn" data-f="decided">Decided</button>
+    </div>
+    <select class="fbtn" id="sort" aria-label="Sort entries">
+      <option value="id">Sort: ID</option>
+      <option value="recent">Sort: most recent</option>
+      <option value="status">Sort: status</option>
+    </select>
+  </div>
+
+  <main id="panels"></main>
+
+  <div class="foot" id="foot">
+    This page is the record. Every action taken and every finding received is written here,
+    immediately &#8212; not batched, not left in chat. If it is not on this page, it did not happen.
+  </div>
+</div>
+
+<!-- ============================================================================
+     AGENT WORKING CONTRACT — READ THIS BEFORE EDITING ANYTHING BELOW.
+
+     You are looking at a living plan page. If you re-read this file after a
+     context compaction with no skill loaded, everything you need is here.
+
+     ---------------------------------------------------------------------------
+     1. THE ONE RULE THAT SHAPES THE WHOLE FILE
+     ---------------------------------------------------------------------------
+     STATUS IS A FIELD. TABS ARE FILTERS.
+
+     Every work item lives in ONE array: DATA.work. The three work tabs
+     (Needs Attention / In Progress / Completed) are VIEWS over that single
+     array, filtered on item.status. To move an item between tabs you change
+     its `status` string. You NEVER move an object between arrays, and you
+     NEVER change its id. An item's id is permanent from the moment it is
+     created until the end of the project.
+
+     ---------------------------------------------------------------------------
+     2. ENTRY SHAPES — three kinds, that's all
+     ---------------------------------------------------------------------------
+     kind "work"  (DATA.work — read by Needs Attention, In Progress, Completed)
+       {
+         id:      "W-1",                       // permanent, append-only
+         status:  "attention" | "progress" | "done",
+         ts:      "YYYY-MM-DD HH:MM UTC",      // real clock, see rule 4
+         title:   "Short imperative or noun phrase",
+         problem: "1-3 sentences. ALWAYS VISIBLE. The queue must be scannable
+                   without expanding anything, so this is the whole point in
+                   plain language, not a pointer to detail below.",
+         context: "Background, evidence, what was checked. Collapsed by default.",
+         solutions: [                          // optional; omit or [] if none
+           { key:"A", text:"Stated as an outcome/behavior, not an implementation.",
+             pro:"What this buys.", con:"What this costs.", recommended:true }
+         ],
+         resolution: { date:"YYYY-MM-DD", text:"What was decided and why." } | null,
+         tags: ["optional","labels"]
+       }
+
+     kind "items" (DATA.goals / DATA.arch / DATA.rules / DATA.caveats)
+       { id:"GOA-1", ts:"YYYY-MM-DD HH:MM UTC", title:"...", body:"...",
+         status:"open" | "decided" | "blocked", tags:[] }
+
+     kind "timeline" (DATA.timeline)
+       { id:"TL-1", time:"HH:MM UTC" (or a full date-time), title:"...",
+         body:"...", severity:"ok" | "warn" | "crit" }
+       Timeline has no separate `ts` — `time` IS its timestamp.
+
+     ID prefixes, one per array, never reused across arrays:
+       W-n  work        GOA-n goals    ARC-n architecture
+       RUL-n rules      CAV-n caveats  TL-n  timeline
+
+     ---------------------------------------------------------------------------
+     3. IDS ARE PERMANENT
+     ---------------------------------------------------------------------------
+     Append only. Never renumber to close a gap. Never re-prefix. A deleted
+     item's number is retired, not recycled. The human refers to entries by id
+     in chat ("what happened to W-4?") and an id that shifted meaning is worse
+     than a missing entry.
+
+     ---------------------------------------------------------------------------
+     4. TIMESTAMPS COME FROM THE REAL CLOCK
+     ---------------------------------------------------------------------------
+     Every work and items entry carries `ts`. READ IT FROM THE ACTUAL CLOCK when
+     you write the entry — never compute it, never estimate it, never copy the
+     one above and add a plausible-looking few minutes. Bump `ts` every single
+     time you touch that entry, including a one-word edit. `ts` is how the human
+     spots a stale item without re-reading the page; a wrong timestamp is worse
+     than no timestamp, because it makes a stale item look fresh.
+
+     ---------------------------------------------------------------------------
+     5. UPDATE CADENCE, AND WHAT COUNTS AS THE RECORD
+     ---------------------------------------------------------------------------
+     - Update this page after EVERY action taken and EVERY new finding —
+       including "checked, nothing changed." Never batch updates to the end.
+     - This page is the ONLY record. No parallel plan file, no scratch .md, no
+       "I'll summarize in chat." Chat is a pointer ("see W-3") plus one line of
+       status. If it is not on this page, it is not recorded.
+     - Load-bearing claims are labeled: Verified / Unverified / Unknown. A claim
+       with no label reads as verified, so label it or check it.
+     - When context is running low, the FIRST entry in Needs Attention becomes a
+       "Resume here" item: where the work stands, what the next concrete action
+       is, and what a fresh reader must not re-litigate.
+     - If a tracker card exists for this work, put its id in Goals and put this
+       page's URL on the card, so neither can be found without the other.
+
+     ---------------------------------------------------------------------------
+     6. PUBLISHING — the Artifact tool
+     ---------------------------------------------------------------------------
+     - Publishing IS the render. Publish the file and look at the page. Never
+       stand up a local server, a build step, or any preview harness for this.
+     - This file deliberately has NO document-skeleton tags — no DOCTYPE
+       declaration and no "html", "head" or "body" element. The Artifact tool
+       wraps the content in its own skeleton at publish time. Do not add them
+       back; a second skeleton nested inside the tool's own is invalid markup.
+     - `favicon`: required on the FIRST publish (one or two emoji). It must
+       NEVER change afterwards — readers find the tab by its icon. Omit the
+       parameter on every redeploy.
+     - Pass a one-sentence `description`; it becomes the gallery card subtitle.
+     - Republish the SAME file path (or pass the artifact `url`) to keep the
+       same URL. A different path creates a second, orphaned artifact.
+     - BEFORE PUBLISHING: confirm the DATA object below is valid JavaScript —
+       balanced braces and brackets, a comma between every entry, quotes escaped
+       inside strings. One stray comma renders a blank page.
+     ============================================================================ -->
+<script>
+// ============================================================================
+// DATA — this is the section you edit. Everything under "RENDER ENGINE" is
+// generic and reads PROJECT + TABS + DATA to build the entire page.
+// ============================================================================
+
+const PROJECT = {
+  name: "PROJECT NAME",
+  sub: "org/repo · living plan · current focus in a few words",
+  logo: "XX",
+};
+
+// The eight tabs. `from` names the DATA array; `status` (work tabs only) is the
+// filter applied to it. `rule` is rendered under the tab heading and is how this
+// page teaches its own conventions to a reader who has no skill loaded — keep
+// each one written, current, and honest.
+const TABS = [
+  {
+    key: "attention", label: "Needs Attention", prefix: "W", kind: "work",
+    from: "work", status: "attention", badge: "alert",
+    rule: "ONLY things that are undecided and need the human to act. A recommended option is not a decision — an item with a recommendation still lives here. The moment something is decided it leaves this tab, by changing its status, never by moving it to another array.",
+  },
+  {
+    key: "progress", label: "In Progress", prefix: "W", kind: "work",
+    from: "work", status: "progress",
+    rule: "Decided and actively being worked on. Nothing here is waiting on the human — if it starts waiting, set its status back to attention and say what is needed.",
+  },
+  {
+    key: "done", label: "Completed", prefix: "W", kind: "work",
+    from: "work", status: "done",
+    rule: "Finished work, each with its resolution stated up front. Rejected options stay in the fold so a decision is never quietly re-litigated later by someone who cannot see what was already ruled out.",
+  },
+  {
+    key: "goals", label: "Goals", prefix: "GOA", kind: "items", from: "goals",
+    rule: "What “done” means for this work, and — just as important — what is explicitly out of scope. If a goal cannot be checked off by looking at something real, it is not written sharply enough yet.",
+  },
+  {
+    key: "arch", label: "Architecture", prefix: "ARC", kind: "items", from: "arch",
+    rule: "System design and components: what exists, what talks to what, where a thing lives. Describe the shape of the system, not the sequence of work — sequencing belongs in the work items.",
+  },
+  {
+    key: "rules", label: "Rules", prefix: "RUL", kind: "items", from: "rules",
+    rule: "Invariants and domain logic that must hold no matter what gets built. A rule is something a future change could violate; if nothing could violate it, it is a description, and it belongs in Architecture.",
+  },
+  {
+    key: "caveats", label: "Caveats", prefix: "CAV", kind: "items", from: "caveats",
+    rule: "Known gaps, contradictions between sources, what is verified versus assumed, and FYI findings with no action attached. Anything that WOULD need action goes to Needs Attention instead — this tab is where a finding rests when nobody has to do anything about it.",
+  },
+  {
+    key: "timeline", label: "Timeline", prefix: "TL", kind: "timeline", from: "timeline",
+    rule: "Chronological log of what actually happened, newest last. A quiet stretch still gets an entry saying it was quiet — an unexplained gap is indistinguishable from nobody having checked.",
+  },
+];
+
+const DATA = {
+  // ONE array. The first three tabs are views over it, filtered on `status`.
+  // Changing a status moves an item between tabs; the item itself never moves.
+  work: [
+    {
+      id: "W-1", status: "attention", ts: "2026-01-01 00:00 UTC",
+      title: "EXAMPLE — an undecided thing the human must call",
+      problem: "One to three sentences that make this scannable without expanding anything. State what is blocked and what the human has to choose between.",
+      context: "Background and evidence. What was checked, what it showed, why this could not be settled without asking. Collapsed — the queue stays readable.",
+      solutions: [
+        { key: "A", text: "First option, stated as an outcome.", pro: "What it buys.", con: "What it costs." },
+        { key: "B", text: "Second option, stated as an outcome.", pro: "What it buys.", con: "What it costs.", recommended: true },
+      ],
+      resolution: null,
+      tags: ["example"],
+    },
+    {
+      id: "W-2", status: "attention", ts: "2026-01-01 00:00 UTC",
+      title: "EXAMPLE — an item with a recommendation is still undecided",
+      problem: "A recommended option does not decide anything. This stays in Needs Attention until the human answers.",
+      context: "Delete this example entry once real work exists.",
+      solutions: [],
+      resolution: null,
+      tags: [],
+    },
+    {
+      id: "W-3", status: "progress", ts: "2026-01-01 00:00 UTC",
+      title: "EXAMPLE — decided, being worked, not waiting on anyone",
+      problem: "Say what is being built and how far along it is. If this starts waiting on the human, set status back to “attention”.",
+      context: "Optional detail on approach.",
+      solutions: [],
+      resolution: null,
+      tags: [],
+    },
+    {
+      id: "W-4", status: "done", ts: "2026-01-01 00:00 UTC",
+      title: "EXAMPLE — finished, with the resolution as the headline",
+      problem: "The original problem stays here so the completed item still reads on its own.",
+      context: "What was tried, what was checked.",
+      solutions: [
+        { key: "A", text: "The rejected option, kept so it is not re-proposed.", pro: "Simpler.", con: "Loses the guarantee we needed." },
+        { key: "B", text: "The chosen option.", pro: "Holds the guarantee.", con: "More code.", recommended: true },
+      ],
+      resolution: { date: "2026-01-01", text: "Chose B. Stated plainly, with the reason, so nobody reopens it." },
+      tags: [],
+    },
+  ],
+
+  goals: [
+    { id: "GOA-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — what “done” means", body: "A checkable statement. Someone can look at something real and say yes or no.", status: "open", tags: ["scope"] },
+    { id: "GOA-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — explicitly out of scope", body: "Name what this work is NOT doing, so it does not creep back in.", status: "decided", tags: ["out-of-scope"] },
+  ],
+
+  arch: [
+    { id: "ARC-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — a component and its job", body: "What it is, what it owns, what it talks to.", status: "decided", tags: [] },
+    { id: "ARC-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — a boundary", body: "Where one side stops and the other begins, and what crosses it.", status: "decided", tags: [] },
+  ],
+
+  rules: [
+    { id: "RUL-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — an invariant", body: "Something a future change could violate. State it so a violation is recognizable.", status: "decided", tags: [] },
+    { id: "RUL-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — domain logic that must hold", body: "The rule, plus the consequence of breaking it.", status: "decided", tags: [] },
+  ],
+
+  caveats: [
+    { id: "CAV-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — verified vs assumed", body: "Verified: the part that was actually checked, and how. Unverified: the part taken on faith.", status: "open", tags: ["evidence"] },
+    { id: "CAV-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — an FYI with no action attached", body: "A real finding nobody has to act on. If it needed action it would be a work item instead.", status: "open", tags: [] },
+  ],
+
+  timeline: [
+    { id: "TL-1", time: "2026-01-01 00:00 UTC", title: "EXAMPLE — started", body: "Baseline captured.", severity: "ok" },
+    { id: "TL-2", time: "2026-01-01 00:15 UTC", title: "EXAMPLE — quiet stretch still gets an entry", body: "Checked, nothing changed. A gap in this log is indistinguishable from not having checked.", severity: "ok" },
+    { id: "TL-3", time: "2026-01-01 00:30 UTC", title: "EXAMPLE — something went wrong", body: "What happened and what it means.", severity: "warn" },
+  ],
+};
+
+// ============================================================================
+// RENDER ENGINE — generic. Reads PROJECT + TABS + DATA. Touch this only if a
+// tab genuinely needs a new entry shape beyond work / items / timeline.
+// ============================================================================
+(function () {
+  const $tabs = document.getElementById("tabs");
+  const $rule = document.getElementById("rule");
+  const $panels = document.getElementById("panels");
+  const $filters = document.getElementById("filters");
+  const $q = document.getElementById("q");
+  const $sort = document.getElementById("sort");
+
+  let active = TABS.length ? TABS[0].key : null;
+  let filter = "all";
+  let sortBy = "id";
+  const queries = {};                                  // per-tab search text
+
+  document.getElementById("h1").textContent = PROJECT.name;
+  document.getElementById("sub").textContent = PROJECT.sub;
+  document.getElementById("logo").textContent = PROJECT.logo;
+
+  // ---- helpers -------------------------------------------------------------
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function mark(s, term) {
+    const e = esc(s);
+    if (!term) return e;
+    const rx = new RegExp("(" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig");
+    return e.replace(rx, "<mark>$1</mark>");
+  }
+  function pillClass(status) {
+    return {
+      attention: "p-attention", progress: "p-progress", done: "p-done",
+      open: "p-open", decided: "p-decided", blocked: "p-blocked",
+    }[status] || "p-tag";
+  }
+  function statusLabel(status) {
+    return { attention: "needs attention", progress: "in progress", done: "completed" }[status] || status;
+  }
+  function tabOf(key) { return TABS.filter(function (t) { return t.key === key; })[0]; }
+
+  // A tab's rows: its source array, narrowed by the tab's own status filter.
+  function rowsFor(tab) {
+    const all = DATA[tab.from] || [];
+    return tab.status ? all.filter(function (e) { return e.status === tab.status; }) : all;
+  }
+
+  // ---- chrome --------------------------------------------------------------
+  function buildTabs() {
+    $tabs.innerHTML = "";
+    TABS.forEach(function (t) {
+      const n = rowsFor(t).length;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.key = t.key;
+      b.className = t.key === active ? "on" : "";
+      b.setAttribute("aria-pressed", String(t.key === active));
+      const cls = "cnt" + (t.badge === "alert" && n > 0 ? " alert" : "");
+      b.innerHTML = esc(t.label) + ' <span class="' + cls + '">' + n + "</span>";
+      b.addEventListener("click", function () { active = t.key; render(); });
+      $tabs.appendChild(b);
+    });
+  }
+
+  function matches(entry, term) {
+    if (!term) return true;
+    return JSON.stringify(entry).toLowerCase().indexOf(term.toLowerCase()) > -1;
+  }
+
+  function sortEntries(list) {
+    const copy = list.slice();
+    if (sortBy === "status") {
+      const order = { attention: 0, open: 0, blocked: 1, progress: 2, decided: 3, done: 4 };
+      copy.sort(function (a, b) {
+        const d = (order[a.status] == null ? 9 : order[a.status]) - (order[b.status] == null ? 9 : order[b.status]);
+        return d !== 0 ? d : String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+      });
+    } else if (sortBy === "recent") {
+      copy.sort(function (a, b) { return String(b.ts || b.time || "").localeCompare(String(a.ts || a.time || "")); });
+    } else {
+      copy.sort(function (a, b) { return String(a.id).localeCompare(String(b.id), undefined, { numeric: true }); });
+    }
+    return copy;
+  }
+
+  // ---- renderers -----------------------------------------------------------
+  function metaRow(it, term) {
+    return '<div class="meta">' +
+      '<span class="pill ' + pillClass(it.status) + '">' + esc(statusLabel(it.status)) + "</span>" +
+      (it.tags || []).map(function (t) { return '<span class="pill p-tag">' + mark(t, term) + "</span>"; }).join("") +
+      (it.ts ? '<span class="ts">' + esc(it.ts) + "</span>" : "") +
+      "</div>";
+  }
+
+  function fold(label, inner) {
+    return '<details class="fold"><summary><span class="caret" aria-hidden="true"></span>' +
+      esc(label) + "</summary>" + '<div class="fold-body">' + inner + "</div></details>";
+  }
+
+  function renderWork(list, term) {
+    if (!list.length) return '<p class="empty">Nothing here right now.</p>';
+    return list.map(function (it) {
+      const sols = (it.solutions || []).map(function (o) {
+        return '<li class="opt">' +
+          '<div class="opt-head">' +
+            '<span class="opt-key">' + esc(o.key) + "</span>" +
+            '<span class="opt-text">' + mark(o.text, term) + "</span>" +
+            (o.recommended ? '<span class="rec-flag">Recommended</span>' : "") +
+          "</div>" +
+          (o.pro ? '<div class="tr"><span class="tr-lab pro">Pro</span><span class="tr-val">' + mark(o.pro, term) + "</span></div>" : "") +
+          (o.con ? '<div class="tr"><span class="tr-lab con">Con</span><span class="tr-val">' + mark(o.con, term) + "</span></div>" : "") +
+          "</li>";
+      }).join("");
+
+      // Resolution renders OPEN and ABOVE the folds: on a completed item what
+      // was decided is the headline, not the deliberation that produced it.
+      const res = it.resolution
+        ? '<div class="resolution"><div class="rk">Resolved — ' + esc(it.resolution.date) + "</div>" +
+          "<div>" + mark(it.resolution.text, term) + "</div></div>"
+        : "";
+
+      return '<article class="item">' +
+        '<div class="id">' + esc(it.id) + "</div>" +
+        '<div class="body">' +
+          "<h3>" + mark(it.title, term) + "</h3>" +
+          (it.problem ? '<p class="problem">' + mark(it.problem, term) + "</p>" : "") +
+          res +
+          (it.context ? fold("Context", "<p>" + mark(it.context, term) + "</p>") : "") +
+          (sols ? fold("Solutions (" + it.solutions.length + ")", '<ul class="opts">' + sols + "</ul>") : "") +
+          metaRow(it, term) +
+        "</div></article>";
+    }).join("");
+  }
+
+  function renderItems(list, term) {
+    if (!list.length) return '<p class="empty">No entries match.</p>';
+    return list.map(function (it) {
+      return '<article class="item">' +
+        '<div class="id">' + esc(it.id) + "</div>" +
+        '<div class="body">' +
+          "<h3>" + mark(it.title, term) + "</h3>" +
+          (it.body ? "<p>" + mark(it.body, term) + "</p>" : "") +
+          metaRow(it, term) +
+        "</div></article>";
+    }).join("");
+  }
+
+  function renderTimeline(list, term) {
+    if (!list.length) return '<p class="empty">Nothing logged yet.</p>';
+    return '<div class="tl">' + list.map(function (it) {
+      return '<div class="tl-row ' + esc(it.severity || "ok") + '">' +
+        '<div class="tl-time">' + esc(it.time) + "</div>" +
+        '<div class="tl-dot" aria-hidden="true"></div>' +
+        '<div class="tl-body"><h4>' + mark(it.title, term) + "</h4>" +
+        (it.body ? "<p>" + mark(it.body, term) + "</p>" : "") + "</div>" +
+        "</div>";
+    }).join("") + "</div>";
+  }
+
+  // ---- main ----------------------------------------------------------------
+  function render() {
+    buildTabs();
+    const tab = tabOf(active);
+    if (!tab) { $panels.innerHTML = '<p class="empty">No tabs defined.</p>'; return; }
+
+    $rule.textContent = tab.rule || "";
+    const term = queries[tab.key] || "";
+    if ($q.value !== term) $q.value = term;
+
+    // The status filter buttons only make sense where an entry's status is not
+    // already implied by the tab itself. Work tabs ARE status filters; timeline
+    // has no status at all.
+    const showFilters = tab.kind === "items";
+    $filters.hidden = !showFilters;
+
+    let list = rowsFor(tab).filter(function (e) { return matches(e, term); });
+    if (showFilters && filter !== "all") {
+      list = list.filter(function (e) { return e.status === filter; });
+    }
+    list = sortEntries(list);
+
+    let html;
+    if (tab.kind === "work") html = renderWork(list, term);
+    else if (tab.kind === "timeline") html = renderTimeline(list, term);
+    else html = renderItems(list, term);
+
+    $panels.innerHTML = '<section class="panel on">' + html + "</section>";
+  }
+
+  $q.addEventListener("input", function (e) {
+    queries[active] = e.target.value.trim();
+    render();
+  });
+  $sort.addEventListener("change", function (e) { sortBy = e.target.value; render(); });
+  $filters.querySelectorAll(".fbtn[data-f]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      filter = b.dataset.f;
+      $filters.querySelectorAll(".fbtn[data-f]").forEach(function (x) { x.classList.toggle("on", x === b); });
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
