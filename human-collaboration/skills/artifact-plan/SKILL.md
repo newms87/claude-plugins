@@ -20,7 +20,12 @@ cp "<this skill's directory>/references/artifact-template.html" <working-file>.h
 Then fill in **three** things — the `<title>` on line 1 (it is a placeholder that names
 the artifact in the tab and gallery; leaving it ships a page called "PRODUCT NAME HERE"),
 `PROJECT`, and the `DATA` arrays. Grep the file for `PRODUCT NAME HERE` before publishing —
-a hit means the title is still unfilled. Then publish:
+a hit means the title is still unfilled.
+
+Every work item needs a `priority` (`critical` → `lowest`). The page sorts by it by
+default, so Needs Attention reads as a ranked queue; rank by **consequence if ignored**,
+never by how long the investigation took. The template's contract block spells out the
+tiers. Then publish:
 
 ```
 Artifact({ file_path, favicon, description })

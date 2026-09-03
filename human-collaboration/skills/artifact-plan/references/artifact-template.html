@@ -34,6 +34,13 @@
     --good:#0b8a2f; --warn:#a8720a; --crit:#c0392b;
     --focus:#2a78d6;
 
+    /* Priority pills — a deliberate heat ramp, so severity reads before the words do */
+    --p-crit-bg:#ffdad6; --p-crit-ink:#8a1408; --p-crit-bd:#f4b3aa;
+    --p-vhigh-bg:#ffe4d1; --p-vhigh-ink:#8a3d08; --p-vhigh-bd:#f5c7a5;
+    --p-high-bg:#fff0cf; --p-high-ink:#7a5300; --p-high-bd:#f0d79c;
+    --p-med-bg:#e8ecf1;  --p-med-ink:#4a5763;  --p-med-bd:#cfd7e0;
+    --p-low-bg:#eef1f4;  --p-low-ink:#6b7683;  --p-low-bd:#dde3e9;
+
     /* Work-item status pills */
     --att-bg:#fff3d6; --att-ink:#7a5a00; --att-bd:#f0dca8;
     --prog-bg:#dbe9fb; --prog-ink:#1c4f8f; --prog-bd:#b6d1f2;
@@ -67,6 +74,11 @@
       --brand:#5c9df0; --brand-strong:#9cc3f5; --brand-soft:#173254; --on-brand:#08131f;
       --good:#4fc26a; --warn:#d7a33a; --crit:#e8756a;
       --focus:#7fb2f5;
+      --p-crit-bg:#4d1610; --p-crit-ink:#f5a89e; --p-crit-bd:#7a2418;
+      --p-vhigh-bg:#4a2810; --p-vhigh-ink:#f0bb8e; --p-vhigh-bd:#75401a;
+      --p-high-bg:#3d2f0a; --p-high-ink:#e6cd85; --p-high-bd:#5c4a14;
+      --p-med-bg:#24262a;  --p-med-ink:#9aa3ad;  --p-med-bd:#383c42;
+      --p-low-bg:#1f2124;  --p-low-ink:#7d868f;  --p-low-bd:#2f3338;
       --att-bg:#3d2f0a; --att-ink:#e6cd85; --att-bd:#5c4a14;
       --prog-bg:#12304f; --prog-ink:#95c2f2; --prog-bd:#1e4a76;
       --done-bg:#0f3a1c; --done-ink:#8fd9a4; --done-bd:#1d5c30;
@@ -89,6 +101,11 @@
     --brand:#5c9df0; --brand-strong:#9cc3f5; --brand-soft:#173254; --on-brand:#08131f;
     --good:#4fc26a; --warn:#d7a33a; --crit:#e8756a;
     --focus:#7fb2f5;
+    --p-crit-bg:#4d1610; --p-crit-ink:#f5a89e; --p-crit-bd:#7a2418;
+    --p-vhigh-bg:#4a2810; --p-vhigh-ink:#f0bb8e; --p-vhigh-bd:#75401a;
+    --p-high-bg:#3d2f0a; --p-high-ink:#e6cd85; --p-high-bd:#5c4a14;
+    --p-med-bg:#24262a;  --p-med-ink:#9aa3ad;  --p-med-bd:#383c42;
+    --p-low-bg:#1f2124;  --p-low-ink:#7d868f;  --p-low-bd:#2f3338;
     --att-bg:#3d2f0a; --att-ink:#e6cd85; --att-bd:#5c4a14;
     --prog-bg:#12304f; --prog-ink:#95c2f2; --prog-bd:#1e4a76;
     --done-bg:#0f3a1c; --done-ink:#8fd9a4; --done-bd:#1d5c30;
@@ -193,6 +210,13 @@
   .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
   .ts{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
   .pill{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600;border:1px solid transparent}
+  .prio{letter-spacing:.02em}
+  .prio-critical {background:var(--p-crit-bg); color:var(--p-crit-ink); border-color:var(--p-crit-bd)}
+  .prio-very_high{background:var(--p-vhigh-bg);color:var(--p-vhigh-ink);border-color:var(--p-vhigh-bd)}
+  .prio-high     {background:var(--p-high-bg); color:var(--p-high-ink); border-color:var(--p-high-bd)}
+  .prio-medium   {background:var(--p-med-bg);  color:var(--p-med-ink);  border-color:var(--p-med-bd)}
+  .prio-low      {background:var(--p-low-bg);  color:var(--p-low-ink);  border-color:var(--p-low-bd)}
+  .prio-lowest   {background:var(--p-low-bg);  color:var(--p-low-ink);  border-color:var(--p-low-bd)}
   .p-attention{background:var(--att-bg);color:var(--att-ink);border-color:var(--att-bd)}
   .p-progress{background:var(--prog-bg);color:var(--prog-ink);border-color:var(--prog-bd)}
   .p-done{background:var(--done-bg);color:var(--done-ink);border-color:var(--done-bd)}
@@ -317,6 +341,7 @@
       <button class="fbtn" data-f="decided">Decided</button>
     </div>
     <select class="fbtn" id="sort" aria-label="Sort entries">
+      <option value="priority">Sort: priority</option>
       <option value="id">Sort: ID</option>
       <option value="recent">Sort: most recent</option>
       <option value="status">Sort: status</option>
@@ -356,6 +381,15 @@
        {
          id:      "W-1",                       // permanent, append-only
          status:  "attention" | "progress" | "done",
+         priority:"critical" | "very_high" | "high" | "medium" | "low" | "lowest",
+                                               // REQUIRED on every work item. The page
+                                               // sorts by this by DEFAULT, so an unset
+                                               // priority silently reads as "medium" and
+                                               // buries a critical item mid-list. Rank by
+                                               // CONSEQUENCE IF IGNORED, not by how
+                                               // interesting the item is or how long it
+                                               // took to find. Same vocabulary as the
+                                               // tracker card's priority, so the two agree.
          ts:      "YYYY-MM-DD HH:MM UTC",      // real clock, see rule 4
          title:   "Short imperative or noun phrase",
          problem: "1-3 sentences. ALWAYS VISIBLE. The queue must be scannable
@@ -386,6 +420,34 @@
      ID prefixes, one per array, never reused across arrays:
        W-n  work        GOA-n goals    ARC-n architecture
        RUL-n rules      CAV-n caveats  TL-n  timeline
+
+     ---------------------------------------------------------------------------
+     2b. PRIORITY IS REQUIRED, AND IT IS THE DEFAULT SORT
+     ---------------------------------------------------------------------------
+     Every work item carries `priority`. The page sorts by it by default, so the
+     top of Needs Attention is a ranked queue rather than a pile — the human reads
+     downward and stops when they run out of time, and what they skipped is what
+     you said mattered least.
+
+     Rank by CONSEQUENCE IF IGNORED. Not by how long the investigation took, not
+     by how interesting the finding is, not by how recently you found it, and
+     never by how much you want it looked at. A defect that silently corrupts a
+     user's data outranks a defect that loudly stops a test run, because the loud
+     one announces itself and the silent one does not.
+
+     critical   data loss, data corruption, a security or privacy exposure, or
+                anything already affecting production right now
+     very_high  blocks the stated goal, or blocks the human from trusting a
+                result they are about to act on
+     high       a real defect with a real consequence, not yet biting
+     medium     the default. Worth doing; nothing breaks while it waits
+     low        cleanup, consistency, ergonomics
+     lowest     noted so it is not rediscovered; may never be done
+
+     An absent priority ranks as `medium` rather than last, so a forgotten field
+     degrades to mid-list instead of silently burying the item. Re-rank when the
+     evidence changes — a finding that turns out to be a checker artifact drops,
+     and one that turns out to be reaching production climbs.
 
      ---------------------------------------------------------------------------
      3. IDS ARE PERMANENT
@@ -499,7 +561,7 @@ const DATA = {
   // Changing a status moves an item between tabs; the item itself never moves.
   work: [
     {
-      id: "W-1", status: "attention", ts: "2026-01-01 00:00 UTC",
+      id: "W-1", status: "attention", priority: "critical", ts: "2026-01-01 00:00 UTC",
       title: "EXAMPLE — an undecided thing the human must call",
       problem: "One to three sentences that make this scannable without expanding anything. State what is blocked and what the human has to choose between.",
       context: "Background and evidence. What was checked, what it showed, why this could not be settled without asking. Collapsed — the queue stays readable.",
@@ -511,7 +573,7 @@ const DATA = {
       tags: ["example"],
     },
     {
-      id: "W-2", status: "attention", ts: "2026-01-01 00:00 UTC",
+      id: "W-2", status: "attention", priority: "high", ts: "2026-01-01 00:00 UTC",
       title: "EXAMPLE — an item with a recommendation is still undecided",
       problem: "A recommended option does not decide anything. This stays in Needs Attention until the human answers.",
       context: "Delete this example entry once real work exists.",
@@ -520,7 +582,7 @@ const DATA = {
       tags: [],
     },
     {
-      id: "W-3", status: "progress", ts: "2026-01-01 00:00 UTC",
+      id: "W-3", status: "progress", priority: "medium", ts: "2026-01-01 00:00 UTC",
       title: "EXAMPLE — decided, being worked, not waiting on anyone",
       problem: "Say what is being built and how far along it is. If this starts waiting on the human, set status back to “attention”.",
       context: "Optional detail on approach.",
@@ -529,7 +591,7 @@ const DATA = {
       tags: [],
     },
     {
-      id: "W-4", status: "done", ts: "2026-01-01 00:00 UTC",
+      id: "W-4", status: "done", priority: "low", ts: "2026-01-01 00:00 UTC",
       title: "EXAMPLE — finished, with the resolution as the headline",
       problem: "The original problem stays here so the completed item still reads on its own.",
       context: "What was tried, what was checked.",
@@ -583,7 +645,15 @@ const DATA = {
 
   let active = TABS.length ? TABS[0].key : null;
   let filter = "all";
-  let sortBy = "id";
+  // Priority is the DEFAULT sort everywhere. A reader opening this page should see
+  // the most consequential thing first without touching a control; the other sorts
+  // exist for when they are hunting a specific entry rather than triaging.
+  let sortBy = "priority";
+  const PRIORITY_RANK = { critical: 0, very_high: 1, high: 2, medium: 3, low: 4, lowest: 5 };
+  const PRIORITY_LABEL = { critical: "Critical", very_high: "Very high", high: "High", medium: "Medium", low: "Low", lowest: "Lowest" };
+  // An entry with no priority ranks as medium rather than last, so a forgotten field
+  // degrades to "middle of the list" instead of silently hiding the item at the bottom.
+  function priorityRank(p) { return PRIORITY_RANK[p] == null ? 3 : PRIORITY_RANK[p]; }
   const queries = {};                                  // per-tab search text
 
   document.getElementById("h1").textContent = PROJECT.name;
@@ -643,7 +713,12 @@ const DATA = {
 
   function sortEntries(list) {
     const copy = list.slice();
-    if (sortBy === "status") {
+    if (sortBy === "priority") {
+      copy.sort(function (a, b) {
+        const d = priorityRank(a.priority) - priorityRank(b.priority);
+        return d !== 0 ? d : String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+      });
+    } else if (sortBy === "status") {
       const order = { attention: 0, open: 0, blocked: 1, progress: 2, decided: 3, done: 4 };
       copy.sort(function (a, b) {
         const d = (order[a.status] == null ? 9 : order[a.status]) - (order[b.status] == null ? 9 : order[b.status]);
@@ -660,6 +735,7 @@ const DATA = {
   // ---- renderers -----------------------------------------------------------
   function metaRow(it, term) {
     return '<div class="meta">' +
+      (it.priority ? '<span class="pill prio prio-' + esc(it.priority) + '">' + esc(PRIORITY_LABEL[it.priority] || it.priority) + "</span>" : "") +
       '<span class="pill ' + pillClass(it.status) + '">' + esc(statusLabel(it.status)) + "</span>" +
       (it.tags || []).map(function (t) { return '<span class="pill p-tag">' + mark(t, term) + "</span>"; }).join("") +
       (it.ts ? '<span class="ts">' + esc(it.ts) + "</span>" : "") +
