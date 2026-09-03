@@ -16,13 +16,14 @@ Orch → SubAgent → mcp__X(args) → return JSON verbatim
 
 Sub-agent paid tokens to fetch. Orchestrator pays tokens re-reading result. Same bytes, triple cost, zero synthesis.
 
-## Pre-dispatch check — answer all three
+## Pre-dispatch check — answer all four
 
 1. **What does sub-agent return that orchestrator can't produce itself?** No → don't dispatch.
 2. **Is output materially smaller than input?** No (≈ raw read/tool body) → don't dispatch.
 3. **Does sub-agent need isolated context** (fan-out, parallel branches)? No → keep inline.
+4. **Does this brief re-open anything THIS SESSION already settled with evidence?** List those decisions and write them into the brief as fixed constraints. Never hand one back as a choice ("decide from evidence", "pick one", "evaluate both") — the sub-agent has none of your history, so your brief is the only guard, and a measured-and-rejected option offered as an option gets implemented and shipped as "the only solution". Can't recall what was measured? Re-read before dispatching.
 
-All no → sub-agent is passthrough. Cut it.
+Q1-3 all no → sub-agent is passthrough. Cut it. Q4 unanswered → the brief is a regression risk.
 
 ## Fixes
 
