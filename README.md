@@ -17,10 +17,13 @@ Personal Claude Code plugin set. Discipline, dev pipeline, danxbot orchestration
 ## Install
 
 ```bash
-# Add this marketplace (local path or git URL)
-claude plugin marketplace add ~/web/claude-plugins
-# Or once pushed to GitHub:
-# claude plugin marketplace add github:newms87/claude-plugins
+# Add this marketplace from GitHub — machine-independent, use this by default
+claude plugin marketplace add github:newms87/claude-plugins
+
+# Or point at your own local checkout of this repo. There is NO canonical
+# location for it — pass the path to wherever YOU cloned it; do not copy a
+# path out of any doc.
+# claude plugin marketplace add /path/to/your/claude-plugins
 
 # Install plugins
 claude plugin install base@newms-plugins

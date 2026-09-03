@@ -1,5 +1,13 @@
 # Plugin Refactor — Phase 7 Verification Report (DX-802)
 
+> **HISTORICAL RECORD — do not follow the paths in this file.** This is a
+> point-in-time verification report, not guidance. Every filesystem path it
+> quotes reflects a machine layout that no longer exists, and there is no
+> canonical location for any repo named here. To locate a repo today, resolve
+> it (registry lookup / `git rev-parse --show-toplevel` / search by git
+> remote) rather than reusing anything below. The paths are left intact only
+> so the record stays an accurate account of what was inspected at the time.
+
 Read-only sweep of the post-refactor steady state. All 6 plugins were published this session (base v0.3.7, investigate v0.3.4, dev v0.2.8, pipeline v0.3.4, human-collaboration v0.3.2, danxbot v0.3.22). Repo-side Phase 6 cuts in working tree (uncommitted) treated as the post-refactor reality.
 
 ---

@@ -1,5 +1,13 @@
 # Plugin Refactor — Phase 1 Audit Matrix (DX-796)
 
+> **HISTORICAL RECORD — do not follow the paths in this file.** This is a
+> point-in-time audit, not guidance. Every filesystem path it quotes reflects
+> a machine layout that no longer exists, and there is no canonical location
+> for any repo named here. To locate a repo today, resolve it (registry
+> lookup / `git rev-parse --show-toplevel` / search by git remote) rather than
+> reusing anything below. The paths are left intact only so the record stays
+> an accurate account of what was run at the time.
+
 Audit-only deliverable for epic DX-795. No plugin / repo / marketplace edits in this phase. Every verdict below is a proposal carried into subsequent phases.
 
 **Method:**

@@ -12,9 +12,10 @@
 # edit, every fix you push silently never reaches dispatched workers /
 # host sessions / other developers.
 #
-# This script makes the bump mandatory + automatic. Mirrors the pattern in
-# ~/web/danx-ui/scripts/publish.sh; no npm publish (plugins distribute via
-# GitHub), so the "publish" action is `git push` after the bump commit.
+# This script makes the bump mandatory + automatic. Mirrors the bump-commit-
+# push pattern used by the operator's npm-published packages; no npm publish
+# here (plugins distribute via GitHub), so the "publish" action is `git push`
+# after the bump commit.
 #
 # USAGE
 # -----
