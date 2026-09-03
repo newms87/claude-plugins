@@ -31,7 +31,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 ## Step 3: Record Findings + Fix Plan ON THE CARD
 
-**The durable record of review findings + the fix plan lives on the CARD, never a file** (card-first rule — see `pipe-plan` "EVERY plan lives in a card"). A `/tmp/*.md` revisions file is forbidden: the next agent and the human read the card, not your scratch dir.
+**The durable record of review findings + the fix plan lives on the CARD, never a file** (card-first rule — see `danxbot:issue-card-workflow`). A `/tmp/*.md` revisions file is forbidden: the next agent and the human read the card, not your scratch dir.
 
 1. **Append a `## Code Review Revisions` comment to the active card** via `mcp__danx-dashboard__issue_comment`: paste ALL findings verbatim grouped by reviewer (test / code / architecture), then a concrete fix plan below them (phases with specific file paths + changes).
 2. **Findings that are substantial work outside this card's scope** → file a child or new card (`mcp__danx-dashboard__issue_create`) instead of cramming them in; link via `parent_id`/dependency as fits.

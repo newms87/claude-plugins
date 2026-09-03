@@ -20,7 +20,7 @@ Read every rule below. These are the rules you are most likely to violate under 
 ```
 PLAN SOURCE
   Issue card (<PREFIX>-N in dashboard DB) → danxbot:issue-card-workflow skill
-  Card path unclear after initial investigation → pipe-plan (escape hatch)
+  Card path unclear after initial investigation → human-collaboration:artifact-plan (escape hatch)
   No card + investigation → dev:debugging skill
 PRE-IMPL (every phase)
   pipe-start (this skill)
