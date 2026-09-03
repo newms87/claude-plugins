@@ -1,7 +1,7 @@
 {
   "name": "human-collaboration",
   "description": "Human-in-the-loop discipline. artifact-plan is the primary surface: one published HTML page is the plan, the context, every operator ask, the monitoring log and the handoff — it replaces all other planning methods. Plus read-only-default, diagnostic-mode-on-question, host-environment, docs/explain. Install on instances where a human drives the prompts. Do NOT install on autonomous dispatched workers.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": {
     "name": "Dan Newman",
     "email": "newms87@gmail.com"
