@@ -363,6 +363,10 @@
                    plain language, not a pointer to detail below.",
          context: "Background, evidence, what was checked. Collapsed by default.",
          solutions: [                          // optional; omit or [] if none
+           // If this array is non-empty, EXACTLY ONE entry MUST carry recommended:true.
+           // You did the investigation; withholding a pick is not neutrality, it hands
+           // the human an unranked menu. Recommending is NOT deciding — the item stays
+           // in Needs Attention until they answer. Say so in the pro/con, not by abstaining.
            { key:"A", text:"Stated as an outcome/behavior, not an implementation.",
              pro:"What this buys.", con:"What this costs.", recommended:true }
          ],
