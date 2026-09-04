@@ -351,11 +351,19 @@ mark { background:color-mix(in srgb, var(--accent) 24%, transparent); color:inhe
                                                // took to find. Same vocabulary as the
                                                // tracker card's priority, so the two agree.
          ts:      "YYYY-MM-DD HH:MM UTC",      // real clock, see rule 4
-         title:   "Short imperative or noun phrase",
+         title:   "<domain or screen> — <the thing, in plain words>. See rule 3a:
+                   lead with WHERE in the system this is, then say what is wrong,
+                   in language a stranger to this codebase can follow. Name
+                   systems and screens, not symbols.",
          problem: "1-3 sentences. ALWAYS VISIBLE. The queue must be scannable
                    without expanding anything, so this is the whole point in
-                   plain language, not a pointer to detail below.",
-         context: "Background, evidence, what was checked. Collapsed by default.",
+                   plain language, not a pointer to detail below. No symbol
+                   names, no jargon — what is wrong and who it hurts.",
+         context: "ORIENT FIRST, THEN GO DEEP (rule 3a). Open by explaining what
+                   this part of the system IS and what the domain words mean —
+                   a reader must never meet a proper noun before its definition.
+                   Then the evidence, measurements, file paths and history, plus
+                   how to SEE it if that is possible. Collapsed by default.",
          solutions: [                          // optional; omit or [] if none
            // If this array is non-empty, EXACTLY ONE entry MUST carry recommended:true.
            // You did the investigation; withholding a pick is not neutrality, it hands
@@ -416,6 +424,55 @@ mark { background:color-mix(in srgb, var(--accent) 24%, transparent); color:inhe
      item's number is retired, not recycled. The human refers to entries by id
      in chat ("what happened to W-4?") and an id that shifted meaning is worse
      than a missing entry.
+
+     ---------------------------------------------------------------------------
+     3a. WRITE FOR A STRANGER — the reader knows engineering, not THIS
+     ---------------------------------------------------------------------------
+     Assume every entry is read by an experienced engineer who has never seen
+     this codebase, this product, or this conversation. They know how software
+     works. They do not know what your services are called, what your domain
+     words mean, or what happened yesterday. Write for that person, always —
+     not for whoever happened to do the work.
+
+     This is not a politeness rule. The page exists to survive compaction, hand
+     off to another agent, and be re-read weeks later by someone who has
+     forgotten the details — INCLUDING the person who wrote it. An entry only
+     its author can decode has already failed at its one job.
+
+     TITLE: LEAD WITH THE DOMAIN, THEN SAY THE THING IN PLAIN WORDS.
+       The title is often all the human reads. It must place them — WHERE in the
+       system is this? — and then say what is actually wrong or needed, in
+       language that survives having no context.
+         BAD   "Fix splitObjectName staleness in DemandHeader"
+         BAD   "DanxbotClient::cancel is not gated"
+         GOOD  "Demand list vs detail page — one case shows two different names"
+         GOOD  "danxbot safety rule — it describes a call that does not exist"
+       Name systems and screens, not symbols. A file or function name may appear
+       LATER, as a pointer; it may not be the thing that carries the meaning.
+
+     PROBLEM: WHAT IS WRONG AND WHO IT HURTS, IN 1-3 SENTENCES.
+       No jargon, no symbol names. If a reader cannot tell from this alone why
+       anyone should care, it is not written yet.
+
+     CONTEXT: ORIENT FIRST, THEN GO DEEP.
+       Every context block opens by explaining the thing before discussing it —
+       what this part of the system IS, what the domain words mean, and why it
+       exists at all. Only after that: the evidence, the measurements, the file
+       paths, the history. A reader must never meet a proper noun before its
+       definition.
+       Where it helps, say how to SEE the problem — the screen to open, the
+       command to run, the three clicks that reproduce it. A reader who can
+       reproduce something can decide about it; a reader who cannot is taking
+       your word.
+
+     OPTIONS: STATE COSTS IN HUMAN TERMS.
+       What does each choice do to somebody using the thing, or to the person
+       maintaining it? "Touches three components" is not a cost. "A screen of
+       cards headed by a filename is a screen of noise" is.
+
+     THE TEST, and it is mechanical: hand the entry to someone who was not
+     here. Could they act on it without asking you a single question? If not,
+     what is missing is orientation, and orientation goes at the top.
 
      ---------------------------------------------------------------------------
      4. TIMESTAMPS COME FROM THE REAL CLOCK
@@ -485,7 +542,7 @@ const TABS = [
   {
     key: "attention", label: "Needs Attention", prefix: "W", kind: "work",
     from: "work", status: "attention", badge: "alert",
-    rule: "THIS TAB BELONGS TO THE HUMAN. Only things that are undecided AND need THEM specifically — a judgement only they can make, or a fact only they can supply. If the decision follows from something they already ruled, or from evidence already in hand, it is not theirs: decide it, say so in the resolution, and move it to In Progress. Agent-facing state — what to resume, what is in flight, what not to re-litigate — lives in In Progress, never here. A recommended option is not a decision, so an item with a recommendation still lives here until they answer. The moment something is decided it leaves this tab by changing its status, never by moving it to another array. AN EMPTY TAB IS THE GOAL, never a gap to fill — after clearing it, do not go looking for something to put back. Before filing anything as “only the human can supply this”, check whether YOU can: a document you can read, a query you can run, a file you can open is NOT a human dependency, and filing your own unstarted work as their blocker is the same failure as parking agent state here.",
+    rule: "THIS TAB BELONGS TO THE HUMAN. Only things that are undecided AND need THEM specifically — a judgement only they can make, or a fact only they can supply. If the decision follows from something they already ruled, or from evidence already in hand, it is not theirs: decide it, say so in the resolution, and move it to In Progress. Agent-facing state — what to resume, what is in flight, what not to re-litigate — lives in In Progress, never here. A recommended option is not a decision, so an item with a recommendation still lives here until they answer. AND IT MUST BE DECIDABLE BY A STRANGER: title leads with the domain, the problem says what is wrong without jargon, and the context ORIENTS before it goes deep — see rule 3a. If only the person who wrote it could act on it, it is a note, not a question. The moment something is decided it leaves this tab by changing its status, never by moving it to another array. AN EMPTY TAB IS THE GOAL, never a gap to fill — after clearing it, do not go looking for something to put back. Before filing anything as “only the human can supply this”, check whether YOU can: a document you can read, a query you can run, a file you can open is NOT a human dependency, and filing your own unstarted work as their blocker is the same failure as parking agent state here.",
   },
   {
     key: "progress", label: "In Progress", prefix: "W", kind: "work",

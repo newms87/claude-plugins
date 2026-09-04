@@ -1,6 +1,6 @@
 ---
 name: artifact-plan
-description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY undecided things the human must act on — a recommended option is not a decision, and anything decided leaves that tab the moment it is decided. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
+description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY undecided things the human must act on — a recommended option is not a decision, and anything decided leaves that tab the moment it is decided. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". EVERY ENTRY IS WRITTEN FOR A STRANGER — an experienced engineer with zero knowledge of this codebase: the title leads with the domain and says the thing in plain words, and the context ORIENTS before it goes deep. Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
 ---
 
 # The Artifact Is the Record
@@ -44,6 +44,37 @@ The local HTML file is a transient build input. Never curate it, never keep a se
 ## Publishing IS the render
 
 Publish and look at it. Never stand up a local server, a file:// preview or a DOM harness to check a page you could simply publish. If it renders wrong, fix it and republish.
+
+## Write for a stranger
+
+Every entry is read by an experienced engineer who has never seen this codebase, this
+product, or this conversation. They know how software works. They do not know what your
+services are called, what your domain words mean, or what happened yesterday.
+
+That is not a courtesy — it is the page's job. It exists to survive compaction, hand off to
+another agent, and be re-read weeks later by someone who has forgotten the details,
+**including the person who wrote it**. An entry only its author can decode has already failed.
+
+- **Title: lead with the domain, then say the thing in plain words.** The title is often all
+  that gets read. It has to place the reader — *where in the system is this?* — and then say
+  what is wrong. "Fix splitObjectName staleness in DemandHeader" fails; "Demand list vs
+  detail page — one case shows two different names" works. Name systems and screens, not
+  symbols. A function name can appear later as a pointer; it may not carry the meaning.
+- **Problem: what is wrong and who it hurts** — no jargon, no symbol names. If a reader
+  cannot tell from this alone why anyone should care, it is not written yet.
+- **Context: orient first, then go deep.** Explain what this part of the system IS and what
+  the domain words mean before discussing them — a reader must never meet a proper noun
+  before its definition. Then the evidence, file paths and history. Say how to SEE it where
+  you can: someone who can reproduce a thing can decide about it, and someone who cannot is
+  taking your word for it.
+- **Options: state costs in human terms.** "Touches three components" is not a cost. "A
+  screen of cards headed by a filename is a screen of noise" is.
+
+**The test is mechanical:** hand the entry to someone who was not here. Could they act on it
+without asking you a single question? If not, what is missing is orientation — and
+orientation goes at the top.
+
+The template carries this as rule 3a, with fuller guidance and worked examples.
 
 ## Chat is a TLDR and a pointer. Nothing else. Ever.
 
