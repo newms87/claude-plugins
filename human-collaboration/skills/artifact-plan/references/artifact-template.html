@@ -226,6 +226,41 @@ body {
 .tr-lab.pro { color:var(--ok); } .tr-lab.con { color:var(--warn); }
 .tr-val { font-size:13.5px; line-height:1.55; color:var(--ink-2); max-width:70ch; }
 
+/* ---- decision controls ----
+   The reader answers an open question by clicking, and the page publishes
+   itself with the answer in it. Rendered ONLY once the page has confirmed it
+   can actually write — see "THE DECISION CHANNEL" in the script below. No new
+   colours: the accent button is the same accent as the logo and the tab rule,
+   and the strip sits on the option card's own border. */
+.opt-act {
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  margin-top:9px; padding-top:9px; border-top:1px solid var(--line);
+}
+.choose {
+  appearance:none; font:inherit; font-size:12.5px; font-weight:600; cursor:pointer;
+  padding:6px 12px; border-radius:8px; border:1px solid var(--accent);
+  background:var(--accent); color:#fff;
+}
+.choose:hover { filter:brightness(1.08); }
+.choose.ghost { background:var(--surface); color:var(--ink-2); border-color:var(--line); filter:none; }
+.choose.ghost:hover { color:var(--ink); border-color:var(--line-2); }
+.choose:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.opt-act .ask { font-size:13px; line-height:1.5; color:var(--ink-2); flex:1; min-width:220px; }
+.opt-act .ask strong { color:var(--ink); font-weight:650; }
+.opt-act .say {
+  font-family:var(--mono); font-size:10.5px; text-transform:uppercase;
+  letter-spacing:.08em; color:var(--ink-3);
+}
+
+/* One page-level strip, used for the read-only answer and for reporting a
+   click that a competing publish beat to the record. */
+.notice {
+  margin:16px 0 0; padding:11px 13px; border-radius:8px;
+  font-size:13px; line-height:1.55; max-width:78ch;
+  background:var(--accent-soft); border:1px solid var(--accent-line); color:var(--ink-2);
+}
+.notice.bad { background:var(--crit-soft); border-color:var(--crit); color:var(--crit); }
+
 /* ---- meta pills ---- */
 .meta { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:11px; }
 .pill {
@@ -518,11 +553,81 @@ mark { background:color-mix(in srgb, var(--accent) 24%, transparent); color:inhe
      - Pass a one-sentence `description`; it becomes the gallery card subtitle.
      - Republish the SAME file path (or pass the artifact `url`) to keep the
        same URL. A different path creates a second, orphaned artifact.
+     - `capabilities`: pass `{"artifact": {}}` on EVERY publish. That is what
+       lets the page write to itself, which is what makes rule 7 work. Omitting
+       it on a redeploy keeps whatever the artifact already declared, but pass
+       it explicitly anyway — a page that silently loses the declaration answers
+       every click with `not_declared` and the reader gets nothing.
      - BEFORE PUBLISHING: confirm the DATA object below is valid JavaScript —
        balanced braces and brackets, a comma between every entry, quotes escaped
        inside strings. One stray comma renders a blank page.
+
+     ---------------------------------------------------------------------------
+     7. THE READER CAN DECIDE FROM THE PAGE — and it reaches you as a republish
+     ---------------------------------------------------------------------------
+     Every option on an undecided Needs Attention item carries a "Choose N"
+     button. Clicking it (and confirming) makes the page rewrite its own DATA
+     with the decision recorded, and publish that as a new version of itself.
+     The session that published the page is subscribed to its live changes, so
+     the republish arrives as a notification telling you to re-read the page.
+     THAT is the channel — the human never types the answer into chat.
+
+     What a click writes onto the item, and nothing else:
+       status:     "attention" -> "progress"      (rule 1: status is a field)
+       ts:         the reader's real clock, UTC
+       resolution: { date, text, choice: { key, text, ts, via:"page" } }
+
+     `resolution.choice` is the machine-readable half — `key` is the option's
+     own key and `text` is that option's exact text — so WHICH option was
+     chosen is never inferred from prose. `resolution.text` is the human half
+     and says the same thing in words.
+
+     WHEN YOU SEE A REPUBLISH NOTIFICATION: re-read the artifact, find the
+     items whose `resolution.choice.via` is "page", and treat each as the
+     human's answer — then act on it and keep working the item in In Progress.
+     Do NOT re-ask. Do NOT publish over the page before reading it, or you
+     destroy the answer you were waiting for.
+
+     TWO THINGS THE ENGINE GUARANTEES, DO NOT BREAK THEM:
+     - The published page is built from a snapshot of this file's OWN SOURCE
+       taken before the render engine ran, with only the DATA literal swapped.
+       The live DOM is never serialized, so an expanded fold, a scroll position
+       or a search term can never end up in the record. If you add code that
+       runs before that snapshot is taken, you break this.
+     - The buttons exist only after the page has confirmed it can write. A
+       read-only reader sees the page exactly as it was before this existed —
+       never a control that does nothing.
      ============================================================================ -->
-<script>
+<script data-plan-engine>
+// ============================================================================
+// PAGE SOURCE SNAPSHOT — must stay the FIRST thing this script does.
+//
+// This runs while the parser is still on this <script> element, so the DOM is
+// the page exactly as it was authored: the render engine has not run, no fold
+// has been opened, nothing has been typed. That is the only moment a snapshot
+// is safe to take, and it is the whole reason the decision channel below can
+// republish this page without baking one reader's session into it.
+//
+// Two things are removed on the way out, and they are the only two:
+//   - `data-theme` on the root element. The viewer stamps its OWN theme choice
+//     there; publishing it would force this reader's theme on everyone.
+//   - every <script> that is not this one. The platform serves `window.claude`
+//     into the page on each view (a copy of the page saved anywhere else has
+//     no `window.claude` at all), so anything else here came from the runtime,
+//     not from the file — republishing it would compound a copy per version.
+// ============================================================================
+const PAGE_SOURCE = (function () {
+  const root = document.documentElement.cloneNode(true);
+  root.removeAttribute("data-theme");
+  const scripts = root.querySelectorAll("script");
+  for (let i = 0; i < scripts.length; i++) {
+    if (!scripts[i].hasAttribute("data-plan-engine")) scripts[i].parentNode.removeChild(scripts[i]);
+  }
+  // `outerHTML` omits the doctype, and a publish without one is rejected
+  // `invalid_content`.
+  return "<!doctype html>\n" + root.outerHTML;
+})();
+
 // ============================================================================
 // DATA — this is the section you edit. Everything under "RENDER ENGINE" is
 // generic and reads PROJECT + TABS + DATA to build the entire page.
@@ -576,79 +681,199 @@ const TABS = [
   },
 ];
 
+// `work` is ONE array. The first three tabs are views over it, filtered on
+// `status`. Changing a status moves an item between tabs; the item itself never
+// moves.
+//
+// KEEP COMMENTS OUT OF THE LITERAL BELOW. A decision recorded from the page
+// rewrites this block as JSON (see rule 7), so anything written inside the
+// braces is lost the first time a reader clicks. Notes go here, above the
+// declaration, where they survive.
 const DATA = {
-  // ONE array. The first three tabs are views over it, filtered on `status`.
-  // Changing a status moves an item between tabs; the item itself never moves.
-  work: [
+  "work": [
     {
-      id: "W-1", status: "attention", priority: "critical", ts: "2026-01-01 00:00 UTC",
-      title: "EXAMPLE — an undecided thing the human must call",
-      problem: "One to three sentences that make this scannable without expanding anything. State what is blocked and what the human has to choose between.",
-      context: "Background and evidence. What was checked, what it showed, why this could not be settled without asking. Collapsed — the queue stays readable.",
-      solutions: [
-        { key: "A", text: "First option, stated as an outcome.", pro: "What it buys.", con: "What it costs." },
-        { key: "B", text: "Second option, stated as an outcome.", pro: "What it buys.", con: "What it costs.", recommended: true },
+      "id": "W-1",
+      "status": "attention",
+      "priority": "critical",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — an undecided thing the human must call",
+      "problem": "One to three sentences that make this scannable without expanding anything. State what is blocked and what the human has to choose between.",
+      "context": "Background and evidence. What was checked, what it showed, why this could not be settled without asking. Collapsed — the queue stays readable.",
+      "solutions": [
+        {
+          "key": "A",
+          "text": "First option, stated as an outcome.",
+          "pro": "What it buys.",
+          "con": "What it costs."
+        },
+        {
+          "key": "B",
+          "text": "Second option, stated as an outcome.",
+          "pro": "What it buys.",
+          "con": "What it costs.",
+          "recommended": true
+        }
       ],
-      resolution: null,
-      tags: ["example"],
+      "resolution": null,
+      "tags": [
+        "example"
+      ]
     },
     {
-      id: "W-2", status: "attention", priority: "high", ts: "2026-01-01 00:00 UTC",
-      title: "EXAMPLE — an item with a recommendation is still undecided",
-      problem: "A recommended option does not decide anything. This stays in Needs Attention until the human answers.",
-      context: "Delete this example entry once real work exists.",
-      solutions: [],
-      resolution: null,
-      tags: [],
+      "id": "W-2",
+      "status": "attention",
+      "priority": "high",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — an item with a recommendation is still undecided",
+      "problem": "A recommended option does not decide anything. This stays in Needs Attention until the human answers.",
+      "context": "Delete this example entry once real work exists.",
+      "solutions": [],
+      "resolution": null,
+      "tags": []
     },
     {
-      id: "W-3", status: "progress", priority: "medium", ts: "2026-01-01 00:00 UTC",
-      title: "EXAMPLE — decided, being worked, not waiting on anyone",
-      problem: "Say what is being built and how far along it is. If this starts waiting on the human, set status back to “attention”.",
-      context: "Optional detail on approach.",
-      solutions: [],
-      resolution: null,
-      tags: [],
+      "id": "W-3",
+      "status": "progress",
+      "priority": "medium",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — decided, being worked, not waiting on anyone",
+      "problem": "Say what is being built and how far along it is. If this starts waiting on the human, set status back to “attention”.",
+      "context": "Optional detail on approach.",
+      "solutions": [],
+      "resolution": null,
+      "tags": []
     },
     {
-      id: "W-4", status: "done", priority: "low", ts: "2026-01-01 00:00 UTC",
-      title: "EXAMPLE — finished, with the resolution as the headline",
-      problem: "The original problem stays here so the completed item still reads on its own.",
-      context: "What was tried, what was checked.",
-      solutions: [
-        { key: "A", text: "The rejected option, kept so it is not re-proposed.", pro: "Simpler.", con: "Loses the guarantee we needed." },
-        { key: "B", text: "The chosen option.", pro: "Holds the guarantee.", con: "More code.", recommended: true },
+      "id": "W-4",
+      "status": "done",
+      "priority": "low",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — finished, with the resolution as the headline",
+      "problem": "The original problem stays here so the completed item still reads on its own.",
+      "context": "What was tried, what was checked.",
+      "solutions": [
+        {
+          "key": "A",
+          "text": "The rejected option, kept so it is not re-proposed.",
+          "pro": "Simpler.",
+          "con": "Loses the guarantee we needed."
+        },
+        {
+          "key": "B",
+          "text": "The chosen option.",
+          "pro": "Holds the guarantee.",
+          "con": "More code.",
+          "recommended": true
+        }
       ],
-      resolution: { date: "2026-01-01", text: "Chose B. Stated plainly, with the reason, so nobody reopens it." },
-      tags: [],
+      "resolution": {
+        "date": "2026-01-01",
+        "text": "Chose B. Stated plainly, with the reason, so nobody reopens it."
+      },
+      "tags": []
+    }
+  ],
+  "goals": [
+    {
+      "id": "GOA-1",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — what “done” means",
+      "body": "A checkable statement. Someone can look at something real and say yes or no.",
+      "status": "open",
+      "tags": [
+        "scope"
+      ]
     },
+    {
+      "id": "GOA-2",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — explicitly out of scope",
+      "body": "Name what this work is NOT doing, so it does not creep back in.",
+      "status": "decided",
+      "tags": [
+        "out-of-scope"
+      ]
+    }
   ],
-
-  goals: [
-    { id: "GOA-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — what “done” means", body: "A checkable statement. Someone can look at something real and say yes or no.", status: "open", tags: ["scope"] },
-    { id: "GOA-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — explicitly out of scope", body: "Name what this work is NOT doing, so it does not creep back in.", status: "decided", tags: ["out-of-scope"] },
+  "arch": [
+    {
+      "id": "ARC-1",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — a component and its job",
+      "body": "What it is, what it owns, what it talks to.",
+      "status": "decided",
+      "tags": []
+    },
+    {
+      "id": "ARC-2",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — a boundary",
+      "body": "Where one side stops and the other begins, and what crosses it.",
+      "status": "decided",
+      "tags": []
+    }
   ],
-
-  arch: [
-    { id: "ARC-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — a component and its job", body: "What it is, what it owns, what it talks to.", status: "decided", tags: [] },
-    { id: "ARC-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — a boundary", body: "Where one side stops and the other begins, and what crosses it.", status: "decided", tags: [] },
+  "rules": [
+    {
+      "id": "RUL-1",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — an invariant",
+      "body": "Something a future change could violate. State it so a violation is recognizable.",
+      "status": "decided",
+      "tags": []
+    },
+    {
+      "id": "RUL-2",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — domain logic that must hold",
+      "body": "The rule, plus the consequence of breaking it.",
+      "status": "decided",
+      "tags": []
+    }
   ],
-
-  rules: [
-    { id: "RUL-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — an invariant", body: "Something a future change could violate. State it so a violation is recognizable.", status: "decided", tags: [] },
-    { id: "RUL-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — domain logic that must hold", body: "The rule, plus the consequence of breaking it.", status: "decided", tags: [] },
+  "caveats": [
+    {
+      "id": "CAV-1",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — verified vs assumed",
+      "body": "Verified: the part that was actually checked, and how. Unverified: the part taken on faith.",
+      "status": "open",
+      "tags": [
+        "evidence"
+      ]
+    },
+    {
+      "id": "CAV-2",
+      "ts": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — an FYI with no action attached",
+      "body": "A real finding nobody has to act on. If it needed action it would be a work item instead.",
+      "status": "open",
+      "tags": []
+    }
   ],
-
-  caveats: [
-    { id: "CAV-1", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — verified vs assumed", body: "Verified: the part that was actually checked, and how. Unverified: the part taken on faith.", status: "open", tags: ["evidence"] },
-    { id: "CAV-2", ts: "2026-01-01 00:00 UTC", title: "EXAMPLE — an FYI with no action attached", body: "A real finding nobody has to act on. If it needed action it would be a work item instead.", status: "open", tags: [] },
-  ],
-
-  timeline: [
-    { id: "TL-1", time: "2026-01-01 00:00 UTC", title: "EXAMPLE — started", body: "Baseline captured.", severity: "ok" },
-    { id: "TL-2", time: "2026-01-01 00:15 UTC", title: "EXAMPLE — quiet stretch still gets an entry", body: "Checked, nothing changed. A gap in this log is indistinguishable from not having checked.", severity: "ok" },
-    { id: "TL-3", time: "2026-01-01 00:30 UTC", title: "EXAMPLE — something went wrong", body: "What happened and what it means.", severity: "warn" },
-  ],
+  "timeline": [
+    {
+      "id": "TL-1",
+      "time": "2026-01-01 00:00 UTC",
+      "title": "EXAMPLE — started",
+      "body": "Baseline captured.",
+      "severity": "ok"
+    },
+    {
+      "id": "TL-2",
+      "time": "2026-01-01 00:15 UTC",
+      "title": "EXAMPLE — quiet stretch still gets an entry",
+      "body": "Checked, nothing changed. A gap in this log is indistinguishable from not having checked.",
+      "severity": "ok"
+    },
+    {
+      "id": "TL-3",
+      "time": "2026-01-01 00:30 UTC",
+      "title": "EXAMPLE — something went wrong",
+      "body": "What happened and what it means.",
+      "severity": "warn"
+    }
+  ]
 };
 
 // ============================================================================
@@ -779,6 +1004,226 @@ const DATA = {
     return tab.status ? all.filter(function (e) { return e.status === tab.status; }) : all;
   }
 
+  // ==========================================================================
+  // THE DECISION CHANNEL
+  //
+  // The reader clicks an option; the page rewrites its own DATA with that
+  // decision and publishes itself as a new version. The Claude session that
+  // published this page is subscribed to its live changes, so the republish IS
+  // the message back — no typing, no copy-paste.
+  //
+  // Four rules this code must never break:
+  //   1. NEVER SERIALIZE THE LIVE DOM. PAGE_SOURCE was captured before this
+  //      engine touched anything, and the only thing rewritten in it is the
+  //      DATA literal. Fold state, scroll position and the search box can
+  //      therefore never leak into the published record.
+  //   2. NEVER LEAVE A DEAD CONTROL. Buttons appear only once the capability
+  //      has actually resolved, and are removed the moment a call says this
+  //      view cannot write.
+  //   3. NEVER RETRY A CONFLICT. The shell is already reloading every open view
+  //      to the winning version; a retry would fight it.
+  //   4. NEVER PUBLISH ON A SINGLE CLICK. A misclick that silently rewrites the
+  //      shared record and pings a session is worse than one extra click.
+  // ==========================================================================
+
+  // Codes that are permanent for this view. Any of them means: stop offering to
+  // write, and say the view is read-only rather than that something failed.
+  const CAP_TERMINAL = {
+    not_writer: 1, not_granted: 1, not_declared: 1, consent_required: 1,
+    capability_disabled: 1, capability_removed: 1,
+  };
+  let capState = "pending";        // "pending" -> "ready" | "none"
+  let publisher = null;            // the resolved `artifact` namespace
+  let publishing = false;          // one publish at a time
+
+  // Real clock, formatted the way every `ts` on this page is written.
+  function utcStamp(d) {
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getUTCFullYear() + "-" + p(d.getUTCMonth() + 1) + "-" + p(d.getUTCDate()) +
+      " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes()) + " UTC";
+  }
+
+  // An item is decidable while it is still the human's call: in Needs Attention,
+  // not yet resolved, and carrying options to choose between.
+  function decidable(it) {
+    return it.status === "attention" && !it.resolution && (it.solutions || []).length > 0;
+  }
+
+  // Rendered inside every eligible option. It starts as a line of text, not a
+  // control — the capability has not answered yet and may never answer.
+  function actSlot(it, o) {
+    if (!decidable(it)) return "";
+    return '<div class="opt-act" data-w="' + esc(it.id) + '" data-k="' + esc(o.key) + '">' +
+      '<span class="say">Checking whether this view can record decisions&#8230;</span></div>';
+  }
+  function idleMarkup(key) {
+    return '<button class="choose" type="button" data-act="ask">Choose ' + esc(key) + "</button>" +
+      '<span class="say">Records it here and tells Claude</span>';
+  }
+  function confirmMarkup(id, key) {
+    return '<span class="ask">Record <strong>option ' + esc(key) + "</strong> as the decision for " +
+      esc(id) + "? This publishes a new version of this page and notifies the Claude session " +
+      "watching it.</span>" +
+      '<button class="choose" type="button" data-act="go">Yes, record it</button>' +
+      '<button class="choose ghost" type="button" data-act="cancel">Cancel</button>';
+  }
+  function slotSays(slot, msg, retryable) {
+    slot.innerHTML = '<span class="ask">' + esc(msg) + "</span>" +
+      (retryable ? '<button class="choose ghost" type="button" data-act="ask">Try again</button>' : "");
+  }
+
+  // Every slot on screen is brought to the current capability state. This is a
+  // targeted update, never a re-render: a re-render would collapse a fold the
+  // reader had just opened, and the capability can resolve up to 10s late.
+  function applyCapability() {
+    const slots = $panels.querySelectorAll(".opt-act");
+    for (let i = 0; i < slots.length; i++) {
+      if (capState === "ready") slots[i].innerHTML = idleMarkup(slots[i].getAttribute("data-k"));
+      else if (capState === "none") slots[i].parentNode.removeChild(slots[i]);
+    }
+  }
+
+  // One page-level strip, above the panel. Used only when the reader is owed an
+  // answer they cannot get from a slot.
+  function notice(text, tone) {
+    let el = document.getElementById("notice");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "notice";
+      $panels.parentNode.insertBefore(el, $panels);
+    }
+    el.className = "notice" + (tone ? " " + tone : "");
+    el.textContent = text;
+  }
+
+  function goReadOnly() {
+    capState = "none"; publisher = null; publishing = false;
+    applyCapability();
+    notice("This view can read this page but cannot write to it, so decisions cannot be " +
+      "recorded from here. Tell Claude which option you want instead.", "");
+  }
+
+  function workById(id) {
+    const all = DATA.work || [];
+    for (let i = 0; i < all.length; i++) { if (all[i].id === id) return all[i]; }
+    return null;
+  }
+  function optionOf(it, key) {
+    const sols = (it && it.solutions) || [];
+    for (let i = 0; i < sols.length; i++) { if (String(sols[i].key) === String(key)) return sols[i]; }
+    return null;
+  }
+
+  // ---- rewriting this page's own source ------------------------------------
+  // PAGE_SOURCE still holds the ORIGINAL DATA literal and none of the render
+  // output. Swapping that one literal for the current DATA yields the page as
+  // it would have been authored with this decision already in it.
+  //
+  // The literal is found the way the generator writes it: `const DATA = {` at
+  // the start of a line, closed by `};` at the start of a line. Everything
+  // nested inside DATA is indented, so the first line-start `};` after the
+  // opening brace is DATA's own. The guard below refuses to publish rather than
+  // risk a corrupt page: if a top-level declaration turns up inside what was
+  // matched, the anchor found something that is not DATA.
+  function sourceWithData(src, data) {
+    const head = "\nconst DATA = ";
+    const at = src.indexOf(head);
+    if (at < 0) return null;
+    const open = src.indexOf("{", at + head.length);
+    if (open < 0) return null;
+    const close = src.indexOf("\n};", open);
+    if (close < 0) return null;
+    if (src.slice(open, close).indexOf("\nconst ") > -1) return null;
+    return src.slice(0, at + 1) + "const DATA = " +
+      JSON.stringify(data, null, 2) + ";" + src.slice(close + 3);
+  }
+
+  // ---- the publish ---------------------------------------------------------
+  function recordChoice(id, key, slot, attempt) {
+    if (publishing || capState !== "ready" || !publisher) return;
+    const it = workById(id);
+    const opt = optionOf(it, key);
+    if (!it || !opt) {
+      slotSays(slot, "That option is no longer on this page. Reload and choose again.", false);
+      return;
+    }
+
+    const stamp = utcStamp(new Date());
+    const before = { status: it.status, resolution: it.resolution, ts: it.ts };
+
+    // `choice` is the machine-readable half: WHICH option was chosen is
+    // recorded as the option's own key and its exact text, never inferred from
+    // the prose. `text` says the same thing for a human reader.
+    it.resolution = {
+      date: stamp.slice(0, 10),
+      text: "Chose " + opt.key + " — " + opt.text +
+        " (recorded from this page by the reader, " + stamp + ").",
+      choice: { key: String(opt.key), text: String(opt.text), ts: stamp, via: "page" },
+    };
+    it.status = "progress";        // rule 1: a decided item leaves the tab by
+    it.ts = stamp;                 // changing status, never by moving arrays.
+
+    const next = sourceWithData(PAGE_SOURCE, DATA);
+    if (!next) {
+      it.status = before.status; it.resolution = before.resolution; it.ts = before.ts;
+      slotSays(slot, "This page could not rewrite its own source, so nothing was published " +
+        "and nothing was recorded. Tell Claude.", false);
+      return;
+    }
+
+    publishing = true;
+    slot.innerHTML = '<span class="say">Recording and publishing&#8230;</span>';
+    publisher.publish(next).then(function () {
+      // A successful `html` publish reloads every open view, this one included,
+      // so there is nothing left to do but say so. `publishing` stays true on
+      // purpose: no second publish from a view that is on its way out.
+      slot.innerHTML = '<span class="say">Recorded. Reloading&#8230;</span>';
+    }).catch(function (err) {
+      publishing = false;
+      it.status = before.status; it.resolution = before.resolution; it.ts = before.ts;
+      const code = (err && err.code) || "upstream_error";
+
+      if (CAP_TERMINAL[code]) { goReadOnly(); return; }
+
+      if (code === "conflict") {
+        // Routine, and NOT an error to apologise for: someone published first
+        // and the shell is already reloading this view to their version. Never
+        // retry. The click itself is lost across that reload, so leave a note
+        // behind that survives it and say so plainly on the way back.
+        try {
+          sessionStorage.setItem("plan-lost-choice", JSON.stringify(
+            { id: id, key: String(opt.key), ts: stamp }));
+        } catch (e) { /* private window or blocked storage — the line below still shows */ }
+        slotSays(slot, "A newer version of this page was published first, so this choice was " +
+          "NOT recorded. This view is reloading to that version — choose again there.", false);
+        return;
+      }
+      if (code === "rate_limited") {
+        slotSays(slot, "This page is publishing too often right now. Wait a few seconds, " +
+          "then choose again.", true);
+        return;
+      }
+      if (code === "too_large") {
+        slotSays(slot, "This page is too large to publish from a view. Nothing was recorded — " +
+          "tell Claude.", false);
+        return;
+      }
+      if (code === "invalid_content" || code === "transform_error" || code === "read_only_path") {
+        slotSays(slot, "The page this view built was rejected (" + code + "), so nothing was " +
+          "recorded. Tell Claude.", false);
+        return;
+      }
+      // upstream_error, and any code this page does not know, is treated as
+      // transient: one retry after a short randomized delay, then stop.
+      if (!attempt) {
+        slot.innerHTML = '<span class="say">Publish failed, retrying once&#8230;</span>';
+        setTimeout(function () { recordChoice(id, key, slot, 1); }, 400 + Math.floor(Math.random() * 700));
+        return;
+      }
+      slotSays(slot, "The publish failed (" + code + ") and nothing was recorded.", true);
+    });
+  }
+
   // ---- chrome --------------------------------------------------------------
   function buildTabs() {
     $tabs.innerHTML = "";
@@ -849,6 +1294,7 @@ const DATA = {
           "</div>" +
           (o.pro ? '<div class="tr"><span class="tr-lab pro">Pro</span><span class="tr-val">' + inlineMd(o.pro, term) + "</span></div>" : "") +
           (o.con ? '<div class="tr"><span class="tr-lab con">Con</span><span class="tr-val">' + inlineMd(o.con, term) + "</span></div>" : "") +
+          actSlot(it, o) +
           "</li>";
       }).join("");
 
@@ -925,6 +1371,7 @@ const DATA = {
     else html = renderItems(list, term);
 
     $panels.innerHTML = '<section class="panel on">' + html + "</section>";
+    applyCapability();
   }
 
   $q.addEventListener("input", function (e) {
@@ -939,6 +1386,56 @@ const DATA = {
       render();
     });
   });
+
+  // Decision clicks, delegated — the panel is rebuilt on every render, so the
+  // listener lives on the container that survives. The three steps are ask ->
+  // confirm -> publish, and each step only ever rewrites its own slot, so a
+  // reader who has opened three folds keeps all three open.
+  $panels.addEventListener("click", function (e) {
+    const btn = e.target && e.target.closest ? e.target.closest("button[data-act]") : null;
+    if (!btn) return;
+    const slot = btn.closest(".opt-act");
+    if (!slot) return;
+    const id = slot.getAttribute("data-w");
+    const key = slot.getAttribute("data-k");
+    const act = btn.getAttribute("data-act");
+    if (act === "ask") slot.innerHTML = confirmMarkup(id, key);
+    else if (act === "cancel") slot.innerHTML = idleMarkup(key);
+    else if (act === "go") recordChoice(id, key, slot, 0);
+  });
+
+  // A click that a competing publish beat to the record is reported on the way
+  // back, because the reload that follows a conflict throws away everything
+  // this page held in memory.
+  (function reportLostChoice() {
+    let raw = null;
+    try {
+      raw = sessionStorage.getItem("plan-lost-choice");
+      sessionStorage.removeItem("plan-lost-choice");
+    } catch (e) { return; }
+    if (!raw) return;
+    let v = null;
+    try { v = JSON.parse(raw); } catch (e) { return; }
+    if (!v || !v.id) return;
+    notice("Your choice of option " + v.key + " for " + v.id + " at " + v.ts + " was NOT recorded — " +
+      "another version of this page was published first. Open " + v.id + " and choose again.", "bad");
+  })();
+
+  // The capability namespace resolves LATER than this script — never during its
+  // first synchronous run, and up to 10s late when the host never answers. So
+  // the page renders completely without it and the controls light up if and
+  // when it arrives. `null` means this view cannot run the capability at all
+  // (read-only viewer, not declared, module failed) — the slots are removed and
+  // the page reads exactly as it did before any of this existed.
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("artifact").then(function (ns) {
+      if (ns && typeof ns.publish === "function") { publisher = ns; capState = "ready"; }
+      else { capState = "none"; }
+      applyCapability();
+    }).catch(function () { capState = "none"; applyCapability(); });
+  } else {
+    capState = "none";             // a saved copy, or any host that serves no runtime
+  }
 
   render();
 })();
