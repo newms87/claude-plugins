@@ -1,6 +1,6 @@
 ---
 name: artifact-plan
-description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY undecided things the human must act on — a recommended option is not a decision, and anything decided leaves that tab the moment it is decided. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. Chat is only a pointer ("see W-3") plus one line of status. Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
+description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY undecided things the human must act on — a recommended option is not a decision, and anything decided leaves that tab the moment it is decided. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
 ---
 
 # The Artifact Is the Record
@@ -44,6 +44,46 @@ The local HTML file is a transient build input. Never curate it, never keep a se
 ## Publishing IS the render
 
 Publish and look at it. Never stand up a local server, a file:// preview or a DOM harness to check a page you could simply publish. If it renders wrong, fix it and republish.
+
+## Chat is a TLDR and a pointer. Nothing else. Ever.
+
+**This is absolute. It is not a style preference and it does not relax when the finding
+feels important, when the reasoning is subtle, or when the answer seems short enough to
+just say.** The operator has stated it directly: the thread is reserved for TLDR responses
+and references to the artifact.
+
+What a chat message may contain, and nothing more:
+
+- **What was just done**, in one or two sentences of plain, high-level language.
+- **What happens next**, so the operator knows where the work is going.
+- **A pointer to the page** — an id (`W-3`, `RUL-09`, `CAV-04`) or the URL.
+
+What NEVER goes in chat, regardless of how well it is written:
+
+- **Questions.** A question for the operator is a `Needs Attention` entry with options and
+  a recommendation. Asking in chat means the question dies with the scrollback and gets
+  asked again next session. Say "`W-2` needs your call" — never the question itself.
+- **Findings, evidence, `file:line` citations, reasoning, trade-offs, comparisons.** All of
+  it goes in the page, where it is searchable, ranked, timestamped, and survives compaction.
+- **Explanations of a decision.** The decision's `resolution` field is where the reasoning
+  lives. Chat says it was decided and names the id.
+- **Bulleted findings lists.** A list of discoveries in chat is the page's job done in the
+  one place it cannot persist.
+- **Progress narration.** "I'm now reading X, then I'll check Y" is noise. Report on
+  completion.
+
+**The test before sending any message:** would this still be readable and useful to
+somebody who has the page open and has never seen this conversation? If a sentence only
+makes sense as part of the chat thread, it belongs in the page instead.
+
+**When there is a lot to report, that is when this matters most.** Four reviews returning
+sixty findings is exactly the moment the temptation to summarise in chat is strongest, and
+exactly the moment a chat summary is most wasteful — it is the longest thing to write, the
+hardest thing to search, and the first thing lost. Write the findings into the page and
+send three sentences.
+
+**Length is the tell.** More than roughly five or six lines means something is being said
+in chat that belongs in the page. Go move it.
 
 ## Relationship to tracker cards
 
