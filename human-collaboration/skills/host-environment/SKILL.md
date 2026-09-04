@@ -29,9 +29,13 @@ User's environment identical to yours. HMR → every saved file live instantly. 
 
 Commands matching these patterns MUST use `run_in_background: true` with NO timeout: `make backtest`, `make hyperopt`, `make monthly-opt`, `make adaptive-*`, `make analyze`, `make signal-stability`, `make gate-analysis`, `make sweep-thresholds`, `make feature-importance`, `docker compose run.*freqtrade`. Check if previous instance running before launching (`docker top` for containerized commands). Wait for background completion notification — do NOT poll or launch duplicates. First attempt appears stuck → verify with `docker top` before launching another — competing CPU-bound processes make each 3x slower.
 
-## One Environment — Files Exist Everywhere or Nowhere
+## "File Not Found" — Wrong Path, or Wrong Filesystem. Never "Lag"
 
-Docker containers volume-mounted to host. Host files = container files. No "host version" vs "container version." Write a file → exists everywhere. "File not found" → path wrong — answer 99.99% of time. Run `pwd`, fix path. Never search filesystem for file you already know path to, try container paths when host paths fail, hypothesize about partial clones.
+A container volume-mounted from the host shares one filesystem: host file = container file, no "host version" vs "container version". There, `file not found` is a wrong path essentially every time — run `pwd`, fix the path, move on. Never search the filesystem for a path you already know, never try container paths when host paths fail, never hypothesize about partial clones.
+
+The one real exception is a repo that exists **twice** on genuinely different filesystems — a native checkout mirrored to another OS side, a VM, a sync tool. Then each side holds its own copy, some paths are excluded from the mirror outright (scratch dirs, `.env`, generated trees), and creation may not propagate symmetrically. Establish which side you are reading from and which side must execute the file, then create new files on the executing side. Anything machine-specific about the local topology belongs in the user-global `CLAUDE.md`, not here.
+
+Either way, **a sync delay is never the diagnosis.** It explains any absence, so it explains nothing, and it terminates the investigation exactly where the real check starts. Check the mirror's exclusion list, then read the file back from the side you actually care about.
 
 ## Docker Containers: Just Start Them
 
