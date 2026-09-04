@@ -27,7 +27,7 @@ fitting the content).
 
 ## Editing code in this dispatch → read issue-refs first (DEFAULT MODE)
 
-If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent: before changing a file, `grep -noE '[A-Z]+-[0-9]+'` it for existing card refs and `mcp__danx-dashboard__issue_get({id})` each unique id to load the constraint that put the code in its current shape; when YOU make a non-obvious card-driven decision, add a `// <CARD-ID>: <reason>` comment. Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".
+If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent: before changing a file, `grep -noE '[A-Z]+-[0-9]+'` it for existing card refs and `mcp__danx-dashboard__issue_get({id, fields: ["description", "ac", "comments"]})` each unique id to load the constraint that put the code in its current shape; when YOU make a non-obvious card-driven decision, add a `// <CARD-ID>: <reason>` comment. Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".
 
 ## Required tool calls
 

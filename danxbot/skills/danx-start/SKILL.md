@@ -49,7 +49,7 @@ re-fire the loop after the dispatch is logically over.
 
 ## Steps
 
-1. Call `mcp__danx-dashboard__issue_list({status_derived: 'ToDo', dispatchable_derived: true})` to get all dispatchable ToDo cards.
+1. Call `mcp__danx-dashboard__issue_list({filter: {status_derived: ['ToDo'], dispatchable_derived: true}})` to get all dispatchable ToDo cards.
 2. Empty → report "No cards to process" and stop.
 3. Report how many cards are queued + list their titles.
 4. For each card id, invoke the `/danx-next` workflow (Steps 1-11 from that skill) using the card's `id`. The first step inside `/danx-next` is the same Resume self-check above — terminal-state cards short-circuit there. Step 10 handles Blocked moves, Step 10b handles Waiting On moves.

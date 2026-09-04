@@ -57,7 +57,7 @@ re-fire the loop after the dispatch is logically over.
    - Updates the Feature Inventory with current status of features.
    - ICE-scores every non-Complete feature.
    - Brainstorms + prioritizes new feature ideas.
-   - Checks for duplicates via `issue_list({type: 'Feature'})` (search by title / keywords).
+   - Checks for duplicates via `issue_list({filter: {type: 'Feature'}})` (search by title / keywords).
    - Generates 3-5 prioritized feature drafts.
    - For each draft, calls `issue_create({type: 'Feature'|'Bug', title: "...", description: "...", ac: [...], triage_enabled: true})` with the draft content.
      - `triage_enabled: true` is EXPLICIT and intentional here: ideator drafts exist to be evaluated by the automatic triage pipeline. The server default is `false` (explicit-only — nothing is auto-triaged without opting in), so omitting it would strand every draft in Review untriaged.

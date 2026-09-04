@@ -55,7 +55,7 @@ When you edit, follow the DB schema rules — see `danxbot:issue-card-workflow` 
 - **AC edit** — call `issue_edit({id, ac: [...]})`. Append a new item or flip an existing item's `checked` field.
 - **Description rewrite** — call `issue_edit({id, description: "..."})`. Preserve the markdown structure.
 - **Comment append** — call `issue_comment({id, action: 'add', text: "..."})`. Server stamps `author` + `timestamp`.
-- **Retro fill** — call `issue_retro({id, good: "...", bad: "...", action_item_ids: [], commits: []})`. Populate all retro fields atomically.
+- **Retro fill** — call `issue_retro({id, good: "...", bad: "...", action_item_ids: [], commits: [], tests: [...]})` (`tests[]` is REQUIRED — empty array allowed, omitting the key fails). Populate all retro fields atomically.
 
 After calling an MCP tool, re-read the card with `issue_get` to confirm the mutation succeeded. If an MCP tool returns `{ok: false, body: {error}}`, read `body.error` and re-route per the message.
 

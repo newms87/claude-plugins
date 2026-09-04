@@ -27,7 +27,7 @@ These mechanics are IDENTICAL for both container types — wherever a step says 
 
 1. Set epic's `type: Epic` (no `status:` literal — creation defaults derive to `Review`; server leaves `ready_at`/`completed_at`/`cancelled_at`/`blocked` all null so rule 7 falls through to raw `status: Review` field on creation).
 
-2. In SAME turn create all phase child cards via `issue_create` (set `parent_id` to epic's `id`), each with own description/`ac[]`/`type` and same creation default (all derive `Review`). Append each phase's `id` to epic's `children[]` (or use atomic `phase_children[]` on epic creation).
+2. In SAME turn create all phase child cards via `issue_create` (set `parent_id` to epic's `id`), each with own description/`ac[]`/`type` and same creation default (all derive `Review`). The epic's `children[]` is DERIVED from each child's `parent_id` — there is no writable `children` key (`issue_edit` rejects it with 400 `offending_keys`). Setting `parent_id` on the child IS the linkage; or use atomic `phase_children[]` on epic creation.
 
 3. Sequential-phase `waiting_on` chains may land at creation — `waiting_on` is status-independent, so phase may carry derived `Review` + `waiting_on: {by: [<prior-phase>]}` together. Creating agent stamps `by[]` chain same pass it creates the phase cards; no second-pass edit. Picker holds each phase off dispatch until BOTH triage approves (stamps `ready_at` → `ToDo`) AND every `by[]` blocker terminal. Planning agent has full context — capture NOW, not later.
 
@@ -37,7 +37,13 @@ Same derived status as parent epic at creation. Epic derives Review → phase ca
 
 ## After Completing Each Phase Card
 
-Fill `retro.{good, bad, action_item_ids, commits}`, call `danxbot_complete({status: "complete"})`. Server stamps `completed_at`, clears `dispatch: null`, renders `## Retro` comment, spawns action-item cards. Do NOT edit epic — server propagates parent's triggers from children's derived statuses automatically. Next phase card's notes go in `comments[]` per rule below; once all phases derive Done, server stamps epic's `completed_at` automatically.
+Three calls, in this order (DX-835 — `danxbot_complete` finalizes the DISPATCH row only; it does NOT move the card, and it does NOT stamp `completed_at`):
+
+1. `issue_transition({id, action: 'complete', summary})` — stamps the phase card's `completed_at`.
+2. `issue_retro({id, good, bad, action_item_ids[], commits[], tests[]})` — `issue_retro` REFUSES 409 until the card is terminal, so it comes AFTER the transition, never before. `tests[]` is REQUIRED (empty array allowed).
+3. `danxbot_complete({status: "complete"})` — finalizes the dispatch row.
+
+The server renders the `## Retro` comment and spawns action-item cards. Do NOT edit the epic — the poller propagates the parent's triggers from children's derived statuses automatically. Next phase card's notes go in `comments[]` per the rule below; once all phases derive Done, the server stamps the epic's `completed_at` automatically.
 
 ## CRITICAL: Update Next Phase Card Before Ending Session
 

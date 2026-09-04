@@ -14,7 +14,20 @@ If you arrive here having ALREADY decided the card TYPE (epic/feature/story), th
 
 Missing it = do not call `issue_create`. (Quality-gate decisions are a server-enforced REQUIRED `issue_create` field — see "Quality-Gate Decisions" below — so they need no separate transcript emission. `triage_enabled` is ALSO decided on every create — see "Auto-Triage Opt-In" below.)
 
-Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses MCP tools (`mcp__danx-dashboard__issue_*`) exclusively — that is the entire surface an agent ever touches for card state.
+Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses the dashboard MCP tools exclusively — that is the entire surface an agent ever touches for card state.
+
+## ⚠ TOOL-NAME PREFIX IS CONTEXT-DEPENDENT — resolve it before your first call
+
+The tool prefix is derived from the MCP **server key in the config that loaded it**, and the two contexts key it differently. **Both spellings below are real; neither is universally correct.**
+
+| Context | Server key | Tool prefix |
+|---|---|---|
+| **Dispatched danxbot worker** (a `/danx-next`-style card dispatch — most skills in this plugin) | `danx-dashboard` | `mcp__danx-dashboard__issue_*` |
+| **Operator / main interactive session** (e.g. a repo whose own `.mcp.json` keys the server `danx_dashboard`) | `danx_dashboard` | `mcp__danx_dashboard__issue_*` |
+
+This file writes the **hyphen** form throughout because the dispatched-worker path is the majority consumer (danxbot materializes `mcpServers[<artifact id>]` verbatim, and that id is `danx-dashboard` — `REQUIRED_WORK_MCP_SERVER_ID`, `src/inject/repo-profile-seed.ts`). **In an operator session those exact names do not exist** and calling them returns "No such tool available."
+
+**Mechanical rule: do not copy a prefix out of this file on faith.** Read the actual tool name from your own loaded tool list (or `ToolSearch` `select:...`) once, at the start, and use that spelling for every call in the session. The part after the prefix — `issue_create`, `issue_transition`, … — is identical in both.
 
 ## DX-835 — two-step termination is MANDATORY
 
@@ -60,10 +73,27 @@ Order for self-done work: `create` → **`pickup` with `manual: true`** → work
 
 ### Manual-session finalization — you ARE the quality-gate + retro authority (no dispatched gate-reviewer exists)
 
-A manually-picked-up card (`dispatch_kind: 'manual'`) never gets a `gate-<name>` dispatch spawned for it — that spawn path is worker-only. There is no `quality_gate_complete`-shaped MCP tool exposed to an operator/manual session. This does NOT mean skip the gates — it means YOU are the substitute reviewer, and you drive every card-state field an automated pipeline would have, via the MCP tools you do have, before calling `complete`:
+A manually-picked-up card (`dispatch_kind: 'manual'`) never gets a `gate-<name>` dispatch spawned for it — that spawn path is worker-only. The worker's in-dispatch `quality_gate_complete` route is not exposed to an operator/manual session either; **your substitute for it is `issue_quality_gate_verdict`** (step 2 below). This does NOT mean skip the gates — it means YOU are the substitute reviewer, and you drive every card-state field an automated pipeline would have, via the MCP tools you do have, before calling `complete`:
 
 1. **AC checklist** — `issue_get` returns each AC item's `check_item_id`/id under `checklists[].items[]`. As each AC item is genuinely satisfied, call `issue_checklist({action:'update_item', checklist_id, item_id, status:'passing'})` per item. `issue_transition complete` REFUSES 409 (`unresolved_items`) while any checklist item is `incomplete` — this is not optional bookkeeping, it's a hard gate.
-2. **Quality gates** — run your own equivalent review (architecture-reviewer / code-reviewer / test-reviewer subagents, or inline review for a small change) BEFORE touching gate state. Once that review is done and findings are addressed, `issue_transition complete` still 409s (`quality_gate_post`) while a required POST gate (`code-architecture`/`code-quality`/`code-test-quality`) sits `pending` — because those only flip to `pass` via a `gate-<name>` dispatch verdict, which never runs for a manual card. Since your independent subagent review already served that function, call `issue_quality_gate({id, gate, required:false})` for each required POST gate, with the review having actually happened first — never flip a gate that wasn't reviewed. Do NOT flip PRE gates (`plan-*`) this way; those gate the *dispatch*, not the completion, and manual pickup already bypasses them (rule 4 above).
+2. **Quality gates — record a VERDICT with `issue_quality_gate_verdict`, never a `required` flip.** Run your own equivalent review (architecture-reviewer / code-reviewer / test-reviewer subagents, or inline review for a small change) FIRST. Then, for each required POST gate (`code-architecture` / `code-quality` / `code-test-quality`), call:
+
+   ```
+   issue_quality_gate_verdict({id, gate, status: 'pass', message: "<the real reviewer finding, >= 20 chars>"})
+   ```
+
+   `message` is REQUIRED at **>= 20 characters** for `pass`/`fail` (shorter → 400) and is the accountability record a later reader sees instead of a reviewer dispatch — write the actual finding, never a rubber stamp. `status: 'pending'` reverts a prior verdict.
+
+   **The two gate tools are SIBLINGS and neither substitutes for the other — this is the #1 way this step goes wrong:**
+
+   | Tool | Writes | Effect on `complete` |
+   |---|---|---|
+   | `issue_quality_gate({id, gate, required})` | the per-card **`required` FLAG** (does this gate run at all) | **NONE.** Flipping `required:false` does NOT unblock `complete`. |
+   | `issue_quality_gate_verdict({id, gate, status, message})` | the **VERDICT** (did it pass) | **This is what unblocks `complete`.** |
+
+   `issue_transition complete` 409s (`failed_gate: "quality_gate_post"`, `failed_post_gates[]`) while any required POST gate row is not `pass`. Setting `required:false` does not clear that: when the BOARD's `default_state` for the gate is `required`, the per-card flag is **inert** ("this flag irrelevant" — `isGateEffectivelyRequired`, `src/issues/quality-gates/read.ts`), so the gate stays required, stays `pending`, and `complete` keeps 409ing. Verified the hard way on SG-318: all three POST gates were flipped to `required:false` and `complete` still returned 409 with `failed_post_gates: [code-test-quality (pending), code-quality (pending)]`. Record the verdict — do not chase the flag.
+
+   Do NOT touch PRE gates (`plan-*`) here; those gate the *dispatch*, not the completion, and manual pickup already bypasses them (rule 4 above).
 3. **Retro** — `issue_retro` REFUSES 409 until the card is terminal, so it's the LAST call, right after `issue_transition complete`. Fill `good`/`bad` honestly (including any gate/checklist friction encountered — like this one), `commits[]` with every landed sha+subject, `tests[]` with at least one row summarizing what you ran (a `kind:'group'` row naming the suite is enough — don't enumerate individual unit tests).
 4. **Comments** — if the work surfaced a real deferred gap (scope the card's AC didn't cover), don't hand-wave it in a comment: create a follow-up card (`issue_create`), wire `depends_on` if it blocks this one, and push the deferral into `retro.action_item_ids[]` — comments are for narrative, cards are the durable record (see "Durable work-records" in General Rules below).
 
@@ -81,7 +111,7 @@ Full schema available via `mcp__danx-dashboard__issue_get`. Key fields:
 - **`dispatch`** — worker-managed, agents don't touch.
 - **`children[]`** — ordered list of child ids. On Epic = phase cards (UI "Phases"). On non-epic = sub-cards (UI "Children"). Phases MUST be cards, no in-card checklist. Set via `issue_edit({parent_id})` on child cards.
 - **`ac[]`** — Acceptance Criteria. Server assigns `check_item_id` on create. Agents populate via `issue_edit({ac})`.
-- **`retro`** — fill on Done/Cancelled/Blocked via `issue_retro({good, bad, action_item_ids[], commits[]})`. Server auto-renders `## Retro` comment. `commits[]` owned-repo ONLY (DX-559 gate). `action_item_ids[]` = LAST RESORT.
+- **`retro`** — fill on Done/Cancelled/Blocked via `issue_retro({good, bad, action_item_ids[], commits[], tests[]})` (`tests[]` REQUIRED — empty array allowed, omitting the key fails). Server auto-renders `## Retro` comment. `commits[]` owned-repo ONLY (DX-559 gate). `action_item_ids[]` = LAST RESORT.
 - **`blocked`** — self-block trigger. Null = card proceeds. Non-null = `{at, reason}` = card stuck, human acts. Set via `issue_transition({action: 'block', reason})`. Agents never write `status: "Blocked"` — call transition, server projects.
 - **`waiting_on`** — dep-chain gate, status-independent. Card queued behind OTHER in-flight work (phase sibling, Action Items, separate task). Null = nothing queues. `{reason, timestamp, by[]}` = by[] is IMMEDIATE blocker(s) only (never transitive). Picker skips while any blocker non-terminal; auto-unblocks on terminal. Set via `issue_dependency({action: 'add', kind: 'depends_on'})`. **Waiting On ≠ Blocked** — Blocked is THIS card stuck (human), Waiting On is queued behind OTHER work.
 - **`requires_human`** — orthogonal gate, status-independent. Null = no human needed. Non-null = `{reason, steps[], set_by, set_at}` = card needs human on system with zero agent reach (3rd-party token, vendor portal, external infra). Set via `issue_requires_human({id, set: true, reason, steps[]})`. Cleared by human via dashboard only.
@@ -90,17 +120,21 @@ Full schema available via `mcp__danx-dashboard__issue_get`. Key fields:
 
 | Tool | Purpose |
 |---|---|
-| `mcp__danx-dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?, triage_enabled})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions` AND its OWN `triage_enabled`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). `triage_enabled` MUST be passed explicitly on EVERY create (root + each phase child) — absent → false, the card is never auto-triaged (see "Auto-Triage Opt-In"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
-| `mcp__danx-dashboard__issue_list({status_derived?, type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Returns list of card objects. Use BEFORE hand-globbing. |
-| `mcp__danx-dashboard__issue_get({id})` | Single card read. Returns full card object from DB. |
+| `mcp__danx-dashboard__issue_create({type, title, description, parent_id?, ac?, effort_level?, phase_children?, gate_decisions?, triage_enabled, list_id?})` | Allocate next `<PREFIX>-N` in DB. Epic creation optionally includes `phase_children[]` to create child cards atomically (each entry carries its OWN `gate_decisions` AND its OWN `triage_enabled`). `gate_decisions?: {gate, enabled, note}[]` is a server-enforced REQUIRED field whenever the board has any optional gate for the card's type — a missing decision fails the create closed with `400 {error, required_gate_decisions:[...]}` (see "Quality-Gate Decisions"). `triage_enabled` MUST be passed explicitly on EVERY create (root + each phase child) — absent → false, the card is never auto-triaged (see "Auto-Triage Opt-In"). Returns `{ok: true, body: {id, ...}}` or `{ok: false, body: {error, ...}}`. |
+| `mcp__danx-dashboard__issue_list({filter?: {status_derived?: string[], type?, parent_id?, dispatchable_derived?, assigned_agent?, include_closed?, q?}, fields?, sort?, limit?, offset?})` | **Preferred for multi-card scan/discovery** — status sweeps, sibling lookups, parent→children, "find all blocked". Use BEFORE hand-globbing. **Filters are NESTED under `filter` (DX-935/DX-937 hard-cut — flat top-level params are GONE, including the former standalone `q`).** `filter.status_derived` is an **ARRAY**. Response is MINIMAL by default (see `fields` below). |
+| `mcp__danx-dashboard__issue_get({id, fields?})` | Single card read. **The default response is MINIMAL (DX-935/DX-937): cheap scalars only — id, type, title, status, parent_id, priority, timestamps, assigned_agent. NO joined collections.** `description`, `ac`, `comments`, `retro`, `dependencies`, `triage`, `requires_human`, `assignment`, `quality_gates`, `children`, `mirrors`, `code_review_items` each require naming that field-GROUP in `fields[]`. A bare `issue_get({id})` returns none of them — never conclude a card has no description/AC/comments from a bare read. |
 | `mcp__danx-dashboard__issue_edit({id, title?, description?, ac?, checklists?, effort_level?, parent_id?, priority?, list_id?, triage_enabled?})` | Prose + structured fields (no status/lifecycle stamps). Agents never write `status` directly. **`priority` IS settable here** — a tier word (`lowest`/`low`/`medium`/`high`/`very_high`/`critical`) or a number in [0,6). To honor "set priority", write the `priority` FIELD; putting "Priority: X" in the description changes nothing downstream and is a silent false-positive. |
 | **This table is a SUMMARY, not the contract.** | NEVER conclude a parameter does not exist because it is absent here — this table has been stale before. Before telling the operator something cannot be done via MCP, load the live schema (`ToolSearch` `select:<tool>`) and read its `properties`. "The tool doesn't support it" is a claim requiring the same evidence as any other. |
-| `mcp__danx-dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?, manual?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. `manual: true` (pickup-only, DX-946) = operator-session self-pickup: stamps `dispatch_kind: 'manual'`, bypasses card-flow gates, worker never auto-transitions the card. |
-| `mcp__danx-dashboard__issue_triage({id, verdict: 'approve'\|'cancel'\|'keep'\|'defer', ice?: {i,c,e}, reason, ttl_seconds?})` | Single atomic triage call. Server routes per verdict. |
-| `mcp__danx-dashboard__issue_comment({id, action: 'add'\|'edit'\|'delete', comment_id?, text?})` | Comment lifecycle (add/edit/delete). Server stamps author + timestamp. |
+| `mcp__danx-dashboard__issue_transition({id, action: 'ready'\|'pickup'\|'rollback_pickup'\|'complete'\|'cancel'\|'block'\|'unblock'\|'archive'\|'reopen', reason?, summary?, manual?, assigned_agent?})` | Lifecycle transitions. Server stamps timestamps + recomputes `status_derived`. `manual: true` (pickup-only, DX-946) = operator-session self-pickup: stamps `dispatch_kind: 'manual'`, bypasses card-flow gates, worker never auto-transitions the card. **`assigned_agent` is REQUIRED on every `manual:true` pickup (DX-2282)** — an explicit distinguishing identity, never the shared dispatch-token identity, or the pickup is refused 409. `rollback_pickup` releases a claim non-terminally. |
+| `mcp__danx-dashboard__issue_triage({id, confidence: 0-5, reason})` | Single atomic triage call. **DX-2086: you send a `confidence` INTEGER 0-5 + a required non-empty `reason`; the SERVER computes the verdict** against the board's thresholds (→ cancel / defer / keep / approve). There is **no `verdict`, `ice`, or `ttl_seconds` parameter** — those were removed; passing them fails. A keep/defer verdict now also stamps `blocked_at`. |
+| `mcp__danx-dashboard__issue_comment({id, action: 'add'\|'edit'\|'delete', comment_id?, text?, metadata?})` | Comment lifecycle (add/edit/delete; delete is a soft-delete). Server stamps author from the bearer — a client-supplied author is IGNORED. `metadata` (add-only) is an optional opaque JSON object danxbot stores and returns verbatim. |
 | `mcp__danx-dashboard__issue_dependency({id, action: 'add'\|'remove', kind?: 'depends_on'\|'conflict_on', target_id?, reason?, dependency_id?})` | Manage card dependencies. |
 | `mcp__danx-dashboard__issue_requires_human({id, set: true, reason, steps[]} \| {id, set: false})` | Set/clear the `requires_human` gate. Server stamps `set_by`/`set_at`. |
-| `mcp__danx-dashboard__issue_retro({id, good, bad, action_item_ids[], commits[]})` | Populate retro on terminal. |
+| `mcp__danx-dashboard__issue_retro({id, good, bad, action_item_ids[], commits[], tests[]})` | Populate retro on terminal (409s until the card is terminal). **`tests[]` is REQUIRED (DX-1646)** — an empty array is allowed (the "ran no tests" case), but OMITTING the key fails the call. One row per test GROUP (a whole suite/class — name the group, do NOT enumerate individual unit tests) or per individual e2e test: `{name, kind:'group'\|'e2e', num_tests, num_passing_tests, duration_ms}` required; `num_assertions`/`num_passing_assertions` nullable. |
+| `mcp__danx-dashboard__issue_quality_gate({id, gate, required, effort_level?})` | Flips the per-card **`required` FLAG** only. **Does NOT record a verdict and does NOT unblock `complete`.** Inert when the board's `default_state` for that gate is `required` or `disabled`. |
+| `mcp__danx-dashboard__issue_quality_gate_verdict({id, gate, status: 'pass'\|'fail'\|'pending', message})` | Records the **VERDICT** — this is what clears the `quality_gate_post` 409 and lets a manually-picked-up card reach Done. `message` REQUIRED at **>= 20 chars** for pass/fail. A manual verdict is a pure row write: a manual `fail` never blocks the card, a manual `pass` never releases a dispatch. See "Manual-session finalization" above. |
+| `mcp__danx-dashboard__issue_checklist({id, action: 'add_list'\|'update_list'\|'remove_list'\|'add_item'\|'update_item'\|'remove_item', checklist_id?, item_id?, name?, label?, detail?, status?, items?})` | **Targeted** checklist CUD (DX-1362) — use this to flip ONE item. Prefer it over the wholesale `issue_edit({checklists})`, which silently DROPS any checklist you omit and churns every item id (orphaning its Trello mirror). 4-state status: `incomplete\|failing\|passing\|cancelled`. |
+| `mcp__danx-dashboard__issue_attach({id, file_path})` | Attach a LOCAL file (ABSOLUTE path on the dispatch's filesystem) to the card. Auto-mirrors to Trello + the Slack card-view thread. 25 MB ceiling. |
 
 ### MCP Error Handling
 
@@ -163,7 +197,7 @@ Leaving a later phase un-readied in `Review` is **NOT a hold.** It is zero mecha
 
 Correct pattern, always: the moment you know phase B needs phase A done first, call `issue_dependency({id: B, action:'add', kind:'depends_on', target_id: A})` — same turn if both cards already exist, immediately upon deciding it later otherwise. THEN ready phase B whenever convenient — now, or held un-readied — either is safe once the edge exists, because the edge (`waiting_on`) is what protects ordering, not the status.
 
-`issue_triage({verdict:'keep'})` refreshes the re-triage TTL and leaves the card at Review — it is NOT a cross-card ordering primitive and must never be used as a substitute for a `depends_on` edge.
+A triage `keep` verdict (a `confidence` landing in the keep band — you never name the verdict directly, DX-2086) leaves the card derived-Review AND stamps `blocked_at`. It is NOT a cross-card ordering primitive and must never be used as a substitute for a `depends_on` edge.
 
 See references/phases-epics.md for the split walkthrough, epic mechanics, phase creation, and completion contract.
 
@@ -189,7 +223,7 @@ Reasoning hint for choosing `enabled` per gate (registry names — the names the
 | `plan-tdd` | PRE | has behavior to pin test-first / AC that should be checkable tests. |
 | `code-architecture` / `code-quality` / `code-test-quality` | POST | finished diff warrants architecture / quality / test review before completion. |
 
-Post-create, flip a per-card gate with `issue_quality_gate({id, gate, required})` (the PRE/plan- gates run before the work dispatch; the POST/code- gates block `issue_transition complete`).
+Post-create, flip a per-card gate's *required flag* with `issue_quality_gate({id, gate, required})` (the PRE/plan- gates run before the work dispatch; the POST/code- gates block `issue_transition complete`). That flag is inert when the board's `default_state` for the gate is `required` or `disabled`, and it never records a pass — to record a gate VERDICT use the sibling `issue_quality_gate_verdict` (see "Manual-session finalization").
 
 ## Auto-Triage Opt-In — `triage_enabled` is an EXPLICIT per-card decision (MANDATORY on every `issue_create`)
 
@@ -230,7 +264,7 @@ Skip the ref on self-evident lines — the bar is "a future agent would otherwis
 grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files-you-will-edit>   # comment-anchored ref lines
 ```
 
-Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx-dashboard__issue_get({id})` and read its `description` / `ac[]` / `comments[]` BEFORE editing the referenced code. The comment names the constraint; the card holds the full intent. Editing past a ref without loading its card risks silently breaking the original requirement — that is the exact failure this protocol prevents.
+Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx-dashboard__issue_get({id, fields: ["description", "ac", "comments"]})` and read those fields BEFORE editing the referenced code (a bare `issue_get({id})` returns MINIMAL scalars only — none of them). The comment names the constraint; the card holds the full intent. Editing past a ref without loading its card risks silently breaking the original requirement — that is the exact failure this protocol prevents.
 
 **LIFECYCLE.** The ref travels with the code as long as the constraint applies. UPDATE it when the constraint changes form (new card supersedes). REMOVE it only when the constraint is genuinely lifted (the card was reverted / the requirement no longer holds) — never leave a ref pointing at a dead constraint, never strip a live one.
 

@@ -31,7 +31,7 @@ All cards are in the DB, accessed via MCP tools (`mcp__danx-dashboard__issue_*`)
 
 - **`status` / `status_derived`** is **DERIVED** from lifecycle triggers — agents NEVER write via `issue_edit`. Pickup → `issue_transition({action: 'pickup'})` → rule 4 → `In Progress`. Approve → `issue_transition({action: 'ready'})` → rule 5 → `ToDo`. Complete → `issue_transition({action: 'complete', summary})` → rule 2 → `Done`. Cancel → `issue_transition({action: 'cancel'})` → rule 1 → `Cancelled`. Block → `issue_transition({action: 'block', reason})` → rule 3 → `Blocked`. Direct `status:` write FORBIDDEN.
 - **Use MCP tools for all mutations.** Call `issue_edit` for prose, `issue_transition` for lifecycle, `issue_comment` for comments, `issue_retro` for terminal retro.
-- **`retro`** filled on terminal via `issue_retro({good, bad, action_item_ids[], commits[]})`. Server auto-renders `## Retro` comment. `commits[]` is owned-repo only (DX-559 gate). `action_item_ids[]` is LAST RESORT.
+- **`retro`** filled on terminal via `issue_retro({good, bad, action_item_ids[], commits[], tests[]})` (`tests[]` REQUIRED). Server auto-renders `## Retro` comment. `commits[]` is owned-repo only (DX-559 gate). `action_item_ids[]` is LAST RESORT.
 - **`blocked`** vs **`waiting_on`** — blocked = THIS card stuck (human needed); waiting_on = queued behind OTHER work (no human). Both dispatch gates; status-independent. `conflict_on[]` + `requires_human` are two more independent gates.
 
 ## Detailed Steps

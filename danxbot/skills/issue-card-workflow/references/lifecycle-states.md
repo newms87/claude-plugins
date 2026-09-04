@@ -2,7 +2,7 @@
 
 ## Status Derivation Rules
 
-Statuses are computed from lifecycle triggers via `deriveStatus()` in `src/issue/derive-status.ts`:
+Statuses are computed from lifecycle triggers via `deriveStatus()` in `src/issues/derive/status.ts` (dashboard mirror: `dashboard/src/composables/derive-status.ts`):
 
 | Rule | Condition | Derived status |
 |---|---|---|
@@ -34,7 +34,7 @@ This corrects a real mistake: declaring "8 In Progress on one board + 2 on anoth
 
 This applies to:
 - Human-typed cards via dashboard Create-Card button.
-- Agent-created via `danx_issue_create` (pass `status: "Review"` explicitly).
+- Agent-created via `issue_create` — the server always starts a card in Review; there is NO `status` parameter to pass (`issue_create` rejects unknown keys).
 - Cards in epic + phase fan-out (epic AND every phase start `Review`).
 - Action-item cards spawned mid-retro.
 
@@ -59,7 +59,7 @@ The triage block on each card is owned by the **per-card triage agent** dispatch
 
 | Derived status | Triage decision | Trigger write | Default TTL |
 |---|---|---|---|
-| `Review` | ICE-score → Keep / Cancel / Approve / Park | Keep: refresh `expires_at` only. Cancel: stamp `cancelled_at` + retro. Approve: stamp `ready_at` (optionally populate `requires_human`). Park: stamp `archived_at`. | 24h |
+| `Review` | Score `confidence` 0-5 → server picks Cancel / Defer(Park) / Keep / Approve | Cancel: stamps `cancelled_at` (terminal). Defer/Park: stamps `archived_at` AND `blocked_at`. Keep: stamps `blocked_at` + `blocked_reason`, stays derived-Review. Approve: stamps `ready_at` (optionally populate `requires_human`). **Keep and Defer now BLOCK the card — neither is a passive TTL refresh.** | 24h |
 | `Blocked` | Hard Gate audit → Demote OR Confirm | Demote: clear `blocked: null`. Confirm: refresh `expires_at` + write `reassess_hint`. | 3h |
 | `Waiting On` | Re-check `waiting_on.by[]` — clear if every dep terminal | Clear: `waiting_on: null` (no trigger write; status-independent). | 1h |
 | `ToDo` / `In Progress` | Not triaged | n/a | n/a |
@@ -129,7 +129,7 @@ Cancelled children excluded from rules 4–5 — single non-cancelled child shif
 Parent rollup ignores orthogonal `requires_human` — checked only at dispatch, not propagated. Dashboard surfaces child-count subscript on epic children when any phase has `requires_human != null`.
 
 **Implications for agents (container = Epic OR Feature):**
-- When you finish a child card, call `danxbot_complete({status: "complete"})` — worker stamps the child's `completed_at`, poller propagates the parent container on next tick. Do NOT touch the container — edit overwritten.
+- When you finish a child card, call `issue_transition({id, action: 'complete', summary})` FIRST, THEN `danxbot_complete({status: 'complete'})` (DX-835 — `danxbot_complete` finalizes the DISPATCH row only and does NOT move the card). The poller propagates the parent container on the next tick. Do NOT touch the container — edit overwritten.
 - When a child stamps `blocked.at`, the container's `blocked` synthesized by poller. Operator triages from container view.
 - The container stays at whatever derivation produces. Stamping `completed_at` on an Epic OR Feature with one child `In Progress` is no-op, cleared next tick.
 - Parents with `waiting_on != null` skipped by parent-status derivation — parent's own dep-chain note takes precedence. Set parent's `waiting_on` explicitly when needed.

@@ -29,7 +29,7 @@ immediately — the epic is already linked.
 ## Step 1 — Identify candidate phase cards
 
 1. The orchestrator's dispatch prompt names the epic's id. Load it via `issue_get({id})`.
-2. Call `issue_list({parent_id: null, include_closed: false})` to list all open cards without a parent.
+2. Call `issue_list({filter: {parent_id: null, include_closed: false}})` to list all open cards without a parent.
 3. For each open card (excluding the epic itself), extract `id`, `parent_id`, `title`, `type`.
 4. Build a candidate set:
    - `parent_id == null` (already-linked phase cards aren't candidates).

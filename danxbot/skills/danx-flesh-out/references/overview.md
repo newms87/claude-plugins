@@ -2,7 +2,7 @@
 
 Flesh-out is a single-shot dispatch: read → probe → rewrite → save → complete. No `/loop`, no `ScheduleWakeup`. Terminal call is `danxbot_complete({status: "ready"})` (or `"review"` for sentinel branch).
 
-Flesh-out is invoked when operator creates half-baked card via dashboard Create-Card button. Card enters with `status: Blocked` + sentinel `blocked.reason` starting "Awaiting flesh-out". Agent fills in: `description` (pass zero-context-test bar), `ac[]` (3–8 verifiable items), optional `triage{}` (Review status only), optional epic split via `danx_issue_create`.
+Flesh-out is invoked when operator creates half-baked card via dashboard Create-Card button. Card enters with `status: Blocked` + sentinel `blocked.reason` starting "Awaiting flesh-out". Agent fills in: `description` (pass zero-context-test bar), `ac[]` (3–8 verifiable items), optional `triage{}` (Review status only), optional epic split via `issue_create`.
 
 **Refuse paths (only if sentinel wrong):**
 - `status: In Progress / Done / Cancelled` → agent doesn't re-flesh mid-flight cards.

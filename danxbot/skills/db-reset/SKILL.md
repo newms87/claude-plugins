@@ -132,7 +132,7 @@ Read the script's stderr verbatim. Then:
 - **Script bug** (script logic error, script crashed before doing
   anything useful, script's guard misidentified the worktree DB as
   primary) → file an issue card via
-  `mcp__danxbot__danx_issue_create({type: "Bug", title, description, ac, ...})`
+  `mcp__danx-dashboard__issue_create({type: "Bug", title, description, ac, triage_enabled, ...})`
   describing the script's behavior + expected behavior + the exact
   stderr output. Push the returned id into your retro's
   `action_item_ids[]` only if it is large + separately scopeable;

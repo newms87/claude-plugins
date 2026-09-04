@@ -15,7 +15,7 @@ You are the **triage orchestrator**. You do NOT triage cards yourself. You pick 
 
 ## Steps
 
-1. **List candidates.** call `mcp__danx-dashboard__issue_list({status_derived: "Review"})` — or the operator-directed scope. Capture the array of ids.
+1. **List candidates.** call `mcp__danx-dashboard__issue_list({filter: {status_derived: ["Review"]}})` — or the operator-directed scope. Capture the array of ids.
    - Operator notes may say "only Blocked", "Review + Waiting On", "only DX-3xx", "skip epics", etc. Adjust the list call (or filter the result) accordingly. No card picker — you decide.
    - Empty list → `danxbot_complete({status: "complete", summary: "No triage candidates in scope."})` and exit.
 

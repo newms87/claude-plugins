@@ -33,7 +33,7 @@ a file / module your card does not modify.
 3. **Failure unrelated to your card, root-caused by READING the
    problem code path (not by stashing or reverting), AND too involved
    to fix in 30 min** → create an Action Item card via
-   `danx_issue_create({type: "Bug", title, description, ac, ...})`
+   `issue_create({type: "Bug", title, description, ac, triage_enabled, ...})`
    with the actual root-cause hypothesis you traced. Push the returned
    `<PREFIX>-N` into `retro.action_item_ids[]`. Check the AC off (your
    card's tests pass) and proceed.
