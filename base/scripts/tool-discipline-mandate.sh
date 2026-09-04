@@ -30,7 +30,11 @@ PRE-WRITE CHECK (every Bash invocation, mechanical, no exceptions):
 
 3. About to capture output via `> /tmp/<name>.log 2>&1` so you can `tail -f` later? → That IS the shell-backgrounding instinct. Harness streams stdout + manages its own `output_file`. Don't make your own.
 
-ANTI-RATIONALIZATIONS: "user authorized the launch" (scopes WHAT, not HOW) / "I'll background it real quick" / "I want a logfile to tail" — these are the failure mode, not reasoning.
+4. About to run the SAME independent probe again (N repetitions, replayed API calls, competing prompt variants, per-file checks)? → Fire ALL of them CONCURRENTLY in ONE batch — async HTTP / promise pool / one message with parallel tool calls. Never one-at-a-time across separate rounds. If the bar is "prove it N times", N is the batch size, not the round count.
+
+5. About to ask the operator which of two arms to run? → Price running BOTH first. Cheaper than the round-trip of the question? → run both, report both, don't ask. A question you could have answered by testing is micromanagement you inflicted on them.
+
+ANTI-RATIONALIZATIONS: "user authorized the launch" (scopes WHAT, not HOW) / "I'll background it real quick" / "I want a logfile to tail" / "I'll do one first to see if it works" (that IS the serial failure — batch it) / "this needs a decision" (only if BOTH arms cost more than asking) — these are the failure mode, not reasoning.
 
 FILE OPS: Read/Edit/Write, NOT cat/head/tail/sed/awk. Bash for shell-only operations.
 
