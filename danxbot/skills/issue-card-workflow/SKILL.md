@@ -16,6 +16,12 @@ Missing it = do not call `issue_create`. (Quality-gate decisions are a server-en
 
 Universal rules for issue cards. **Dashboard Postgres DB is sole source of truth.** Agent path uses the dashboard MCP tools exclusively — that is the entire surface an agent ever touches for card state.
 
+## LEAD WITH THE PROBLEM IN PLAIN WORDS — the reader was NOT on your investigation
+
+Every card body MUST open with a `## The problem` section a reader with **zero** context understands: what is going wrong, a concrete real example with real values, and why it matters — in ordinary words, before any file path, line number, code block, or service name. Write it for someone who has never seen this subsystem, because that is exactly who gets dispatched.
+
+**Mechanical pre-`issue_create` check:** re-read your draft's first paragraph with your own investigation forgotten. If it names a class, file, or method before it names the wrong behavior, the card is REJECTED — rewrite it. Code receipts are the *evidence* section, never the opening; they go after the problem, under their own heading.
+
 ## ⚠ TOOL-NAME PREFIX IS CONTEXT-DEPENDENT — resolve it before your first call
 
 The tool prefix is derived from the MCP **server key in the config that loaded it**, and the two contexts key it differently. **Both spellings below are real; neither is universally correct.**
