@@ -2,6 +2,38 @@
 
 Source of truth for the `newms-plugins` marketplace. Every plugin here is consumed by every Claude Code session on this machine — the operator's main sessions, host-mode dispatched workers, and container workers.
 
+## The OPERATING CONTRACT is canon — exactly one copy, and this is where it lives
+
+`base/scripts/operating-contract.sh` holds the operator's four standing principles — orchestrate
+by default / never act without verified evidence / validate a proposal by experiment / never
+assume when answering the operator. It is wired in `base/hooks/hooks.json` on `SessionStart`
+with **no matcher**, so it fires on every source including `compact`, putting the full text back
+in context after each compaction. `UserPromptSubmit` gets a one-line pointer, not a second copy.
+
+**Nothing else may restate those four principles** — not a `CLAUDE.md`, not a rule file, not a
+`SKILL.md`, not another hook. A skill may only POINT at the contract or EXPAND it with concrete
+situation-specific procedure (a mechanical checklist, a worked incident, named commands/tables).
+To change a principle, edit that one script and publish `base`. If you find a second copy, delete
+it and leave a pointer.
+
+## Hook scripts must never depend on `jq` — it is not installed
+
+Verified 2026-09-05 with a live probe hook: hooks execute under **Git Bash** (`MINGW64_NT`, bash
+5.3.15) and `jq` is **absent** from the hook runtime PATH, from PowerShell's PATH, and from WSL.
+Every mandate script that piped its text through `jq -n ... additionalContext` therefore emitted
+nothing and injected nothing — installed, silent, useless — for as long as it existed on this
+machine. All of them were converted to plain stdout on 2026-09-05.
+
+- **To INJECT context:** `printf '%s\n' "$MANDATE"` and `exit 0`. Claude Code adds plain-text
+  stdout to the model's context for `SessionStart`, `UserPromptSubmit`, `UserPromptExpansion`
+  and `PostModelSwitch` — no JSON envelope needed.
+- **To PARSE the stdin payload:** use `node` (it ships with Claude Code), copying the proven
+  idiom already in `base/scripts/deny-destructive-git.sh`. Never `jq`.
+
+A hook that fails this way is worse than no hook, because it is trusted: the same absence made
+`deny-destructive-db.sh` fail OPEN for its entire life, letting through every command it existed
+to block.
+
 ## Publishing is TWO steps, and the second one is not optional
 
 A plugin edit is not shipped until BOTH happen:
