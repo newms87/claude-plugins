@@ -1,9 +1,31 @@
 ---
 name: artifact-plan
-description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY things the human must still decide or still do — never progress reports, "here is what shipped", or anything whose own recommendation reads "nothing needed", all of which are Timeline entries; a recommended option is not a decision; and an entry leaves that tab the moment it stops needing them, whether they answered, YOU resolved it yourself, or it stopped mattering. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". EVERY ENTRY IS WRITTEN FOR A STRANGER — an experienced engineer with zero knowledge of this codebase: the title leads with the domain and says the thing in plain words, and the context ORIENTS before it goes deep. Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
+description: 'THE way to work with a human. TURN GATE, mechanical: the LAST action of every turn is writing this turn findings into the page and publishing, BEFORE any chat reply; never wait to be asked. A chat message may not contain information the page lacks — no tables, evidence, options, questions or root-cause prose in chat; over ~10 lines is a defect. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY things the human must still decide or still do — never progress reports, "here is what shipped", or anything whose own recommendation reads "nothing needed", all of which are Timeline entries; a recommended option is not a decision; and an entry leaves that tab the moment it stops needing them, whether they answered, YOU resolved it yourself, or it stopped mattering. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". EVERY ENTRY IS WRITTEN FOR A STRANGER — an experienced engineer with zero knowledge of this codebase: the title leads with the domain and says the thing in plain words, and the context ORIENTS before it goes deep. Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
 ---
 
 # The Artifact Is the Record
+
+## THE TURN GATE — mechanical, check it every turn
+
+Once a page exists, two actions bracket EVERY turn. Neither is conditional on the
+operator asking, and neither waits for a reminder in their prompt.
+
+1. **FIRST, before any other tool call** — if the previous turn produced anything the
+   page does not yet hold, write it in.
+2. **LAST, before you type a single line of chat** — put every finding, number, option,
+   question and decision from this turn into the page, and publish.
+
+**You may not write a chat message containing information that is not in the page.**
+Before sending, scan your own draft: if it contains a table, an evidence block, a list
+of options, a question for the operator, a root-cause explanation, or a quoted log
+line — that content belongs in the page. Move it, publish, and let chat point at it.
+
+Chat may contain exactly three things: the direct answer to a direct question, one line
+on what changed, and the pointer (`W-12 needs your call`). **A reply over ~10 lines is
+a defect** — it means the page is missing what you just typed into the void.
+
+The trigger is the END OF THE TURN, not the operator noticing. If they have to ask
+"is the artifact updated?", the gate already failed.
 
 Chat scrolls away and compacts. A published page persists, is searchable, keeps stable IDs the operator can point at ("W-3 is wrong, do option B"), and outlives the session that made it.
 
