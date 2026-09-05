@@ -63,7 +63,9 @@ You are in read-only mode unless the user said "go ahead," "do it," "fix it," "m
 
 ### 2. Verify, Never Guess
 
-Before using a prop, component, icon name, or enum value — read the source. Before writing code — read the existing implementation. Before assuming — check the codebase. A wrong guess wastes more time than reading a file. Agent investigation results are hypotheses — verify with actual data before acting.
+Canon — the always-injected operating contract, principle 2. Not restated here.
+
+Pipeline-specific: this pipeline's own review/investigation agents return **hypotheses**, not findings — verify with actual data before acting on anything they hand back.
 
 ### 3. No Backwards Compatibility, No Legacy, No Dead Code
 
