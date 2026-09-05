@@ -51,6 +51,8 @@ Inline (working a card yourself in this session) is NEVER a judgment call. The o
 
 There is NO "exploratory / tiny / lower-latency / I'm already here / the work is small" exception — every one of those is the rationalization this gate blocks. "Help me fix this" / "can you fix X" / "this is broken" are NOT inline instructions — they are card-creation requests fulfilled by the worker. When in doubt, it is NOT inline.
 
+**Two different axes — do not cross them.** This gate decides ROUTING: does the card go to the poller's worker, or is it worked in this session. Canon principle 1 decides EXECUTION: once work is legitimately yours, do you orchestrate sub-agents or dig yourself. Orchestrating is never permission to bypass this gate — a card the operator did not explicitly hand you inline stays the worker's, and fanning it out to your own sub-agents is still self-pickup, not delegation.
+
 ## DECIDE FIRST: ready-for-worker vs build-in-session (default = WORKER)
 
 Before ANY implementation, answer one question: **does the operator want this work BUILT now in this session, or FILED for the danxbot worker to build autonomously?** On a worker-backed board the **DEFAULT is FILE + `ready` → the poller dispatches a worker** — that is the entire point of danxbot. Do NOT implement the card yourself in the operator's session unless the operator EXPLICITLY said "build/implement/do it now (here/yourself)". "We need X" / "improve X" / a feature description = a request to FILE the cards and ready them, NOT to spend the operator's interactive session coding. When unsure which they want, ASK — never assume build-in-session. Self-pickup (below) applies ONLY once you have CONFIRMED in-session build is intended.
@@ -272,7 +274,7 @@ Collect the UNIQUE ids from the matched comment lines; for each, call `mcp__danx
 
 ## General Rules
 
-- One card at a time; no orchestrator, no subagents
+- **A dispatched worker processing a card:** one card at a time; no orchestrator, no subagents. Scoped to that path only — it does not bind a main session doing general work, which orchestrates per canon principle 1.
 - Call MCP tools only for all card operations
 - **`triage_enabled` explicit on EVERY `issue_create`** (root + each phase child) — absent → false, never auto-triaged (see "Auto-Triage Opt-In" above)
 - `type:` ∈ `Epic` | `Feature` | `Story` | `Bug` | `Chore` — required (pick via the Card Taxonomy gate above)

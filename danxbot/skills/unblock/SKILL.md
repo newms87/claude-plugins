@@ -5,7 +5,9 @@ description: 'Unblock-report contract: extract blocker, what is done vs what ope
 
 # Unblock Skill
 
-Purpose: turn a `Blocked` card (or one with non-null `waiting_on`) into a one-screen operator playbook. Never re-litigate the bug. Never re-plan the fix. The card's last `comments[]` entry from the agent is authoritative — your job is to extract + present it.
+Purpose: turn a `Blocked` card (or one with non-null `waiting_on`) into a one-screen operator playbook. Never re-litigate the bug. Never re-plan the fix. The card's last `comments[]` entry from the agent is what you RELAY — extract + present it, don't re-investigate it.
+
+**Relayed ≠ verified.** Another agent's comment is a lead, never a finding (canon principle 2). Attribute it in the report — "the agent reports X" — never assert it as fact in your own voice. If a step the operator is about to run is IRREVERSIBLE (deploy, destructive command, data change, credential rotation), that step's premise must be verified against real evidence before you present it as safe to run; if you could not verify it, say so in the step.
 
 ## v4 vocabulary primer
 
@@ -28,7 +30,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
 
 1. **Load the card.** Call `mcp__danx-dashboard__issue_get({id})`. If user gave a vague ask ("unstick the urgent one"), call `mcp__danx-dashboard__issue_list({filter: {status_derived: ['Blocked']}})`, then pick by priority signals — Bug type > Feature; production-impact phrases ("storm", "outage", "stuck", "401", "5xx") > stretch goals; oldest timestamp first if priority ties.
 
-2. **Find the authoritative blocker comment.** Scan `comments[]` from newest to oldest. The last comment containing a "Blocked" / "Operator action" / "What's still needed" section is the contract. If absent, fall back to card description + `blocked.reason` + open AC items.
+2. **Find the blocker comment to relay.** Scan `comments[]` from newest to oldest. The last comment containing a "Blocked" / "Operator action" / "What's still needed" section is what you relay — as the agent's claim, attributed, not as your own finding. If absent, fall back to card description + `blocked.reason` + open AC items.
 
 3. **MISCLASSIFICATION AUDIT — run before writing the report.** Inspect every "operator must do" step. If EVERY step is locally executable, the card was wrongly punted. Demote it + execute yourself, do NOT produce a playbook.
 
@@ -56,7 +58,7 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
    - Skip steps 4–5 of this skill.
 
 4. **Extract four fields:**
-   - **Blocker (1 sentence):** what state the card is in + why it cannot self-progress.
+   - **Blocker (1 sentence):** what state the card is in + why it cannot self-progress. Attributed ("the agent reports …") unless you verified it yourself.
    - **Done:** commits shipped, ACs already `checked: true`, tests added.
    - **Operator must do:** numbered steps. Each step ≤2 lines. Include exact commands (env vars, artisan/make/yarn invocations, file paths, log greps).
    - **Outcome branches:** what success looks like, what failure looks like, what to report back. Always two branches — never single-path.
@@ -103,7 +105,7 @@ Overlap found → invoke `unblock` on the upstream card FIRST and surface the de
 
 | Wrong | Right |
 |---|---|
-| Re-read the source files to verify the bug | Trust the agent's last comment; report it |
+| Re-investigate the bug from source, or assert the agent's comment as fact in your own voice | Relay the agent's last comment ATTRIBUTED as its claim; verify only the premise of a step the operator will act on irreversibly |
 | Propose a different fix | Card already chose a fix; report what's needed to verify it |
 | Edit the card's AC checks during the report | AC moves only after operator reports back |
 | Single-path "do these steps and you're done" | Always two outcome branches |

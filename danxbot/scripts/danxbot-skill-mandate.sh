@@ -39,5 +39,4 @@ DOMAIN-MATCH (load via Skill tool):
 - danx-epic-link: auto-fires on Epic with empty children[].
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"
