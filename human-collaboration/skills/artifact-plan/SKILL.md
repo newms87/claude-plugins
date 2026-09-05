@@ -1,6 +1,6 @@
 ---
 name: artifact-plan
-description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY undecided things the human must act on — a recommended option is not a decision, and anything decided leaves that tab the moment it is decided. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". EVERY ENTRY IS WRITTEN FOR A STRANGER — an experienced engineer with zero knowledge of this codebase: the title leads with the domain and says the thing in plain words, and the context ORIENTS before it goes deep. Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
+description: 'THE way to work with a human. A single shared HTML page — published with the `Artifact` tool — is the record for every task beyond a quick cleanup: the plan, the accumulated context, every question for the operator, the monitoring log, and the handoff. It REPLACES all other planning methods; there is no plan file, no `~/.claude/plans/*.md`, no repo `.md`, no chat summary standing in for it, and no separate handoff skill. Tabs are fixed, not a menu: Needs Attention / In Progress / Completed / Goals / Architecture / Rules / Caveats / Timeline. Needs Attention holds ONLY things the human must still decide or still do — never progress reports, "here is what shipped", or anything whose own recommendation reads "nothing needed", all of which are Timeline entries; a recommended option is not a decision; and an entry leaves that tab the moment it stops needing them, whether they answered, YOU resolved it yourself, or it stopped mattering. Triggers — starting any multi-step plan or build; ANY question whose answer affects a plan (only a trivial clarification with zero plan impact stays in chat); monitoring anything over time; context running low, which is written INTO the page as a Resume-here entry. Invoke `Skill(artifact-plan)` before creating a page. You do NOT need it to EDIT one: the template is self-documenting, so re-reading the page you are editing restores the full contract plus every bit of session context — which is what makes this survive compaction. CHAT IS A TLDR AND A POINTER, NOTHING ELSE — never a question, never a finding, never reasoning or citations; a question for the operator is a Needs Attention entry and chat says only "W-3 needs your call". EVERY ENTRY IS WRITTEN FOR A STRANGER — an experienced engineer with zero knowledge of this codebase: the title leads with the domain and says the thing in plain words, and the context ORIENTS before it goes deep. Update the page after every action and every new finding, including "checked, nothing changed"; every entry carries a real `ts` read from the clock, never estimated.'
 ---
 
 # The Artifact Is the Record
@@ -25,7 +25,23 @@ a hit means the title is still unfilled.
 Every work item needs a `priority` (`critical` → `lowest`). The page sorts by it by
 default, so Needs Attention reads as a ranked queue; rank by **consequence if ignored**,
 never by how long the investigation took. The template's contract block spells out the
-tiers. Then publish:
+tiers.
+
+**Two mechanical checks before every publish — Needs Attention is a queue of the
+human's OPEN work, not a log of yours:**
+
+1. **Writing an entry there?** State which the human must do: *make a decision only
+   they can make*, or *take an action only they can take*. Neither → it is a Timeline
+   entry. "Here is what shipped", "all N fixed", "no action needed", progress of any
+   kind — Timeline. An entry whose own recommendation reads "nothing needed" is the
+   tell you got this wrong.
+2. **Every entry already there:** does it STILL need them? Remove it the moment that
+   stops being true — they answered, **or you resolved it yourself**, or it stopped
+   mattering. Self-resolved items are the ones that rot, because nothing prompts you
+   to revisit them. A tab that is part-noise gets skimmed, and then the one entry that
+   needed them is the one they miss.
+
+Then publish:
 
 ```
 Artifact({ file_path, favicon, description })
