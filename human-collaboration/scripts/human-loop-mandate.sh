@@ -8,8 +8,13 @@
 
 set -euo pipefail
 
+# node, NOT jq. jq is not installed on every host these hooks run on — it is
+# absent on the operator's Windows machine, where the missing binary made this
+# hook parse nothing and emit nothing for its entire life. node ships with
+# Claude Code, so it is the one interpreter a hook can depend on. The trailing
+# `|| true` + empty-string catch keep a parse failure from aborting the turn.
 INPUT=$(cat)
-PROMPT=$(echo "$INPUT" | jq -r '.prompt // empty')
+PROMPT=$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)
 
 if [ -z "$PROMPT" ]; then
     exit 0
@@ -26,5 +31,6 @@ Diagnostic mode overrides ALL behaviors:
 
 NEVER assume question implies action. NEVER use tool calls without fresh verb."
 
-    jq -n --arg ctx "$GATE" '{hookSpecificOutput:{hookEventName:"UserPromptSubmit",additionalContext:$ctx}}'
+    # UserPromptSubmit adds plain stdout to the model's context — no JSON envelope.
+    printf '%s\n' "$GATE"
 fi

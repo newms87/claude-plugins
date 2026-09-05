@@ -25,9 +25,11 @@ Local dev environment. PHP/Laravel changes apply instantly. Vue/TypeScript uses 
 
 User's environment identical to yours. HMR → every saved file live instantly. Never ask "which commit?", "which environment?", "can you confirm your setup?" — investigate code instead.
 
+The identical-environment premise justifies not ASKING; it never licenses ASSUMING which tree / host / container you actually read from. When that is load-bearing to a claim, name it and check it.
+
 ## Long-Running Commands: Background Only
 
-Commands matching these patterns MUST use `run_in_background: true` with NO timeout: `make backtest`, `make hyperopt`, `make monthly-opt`, `make adaptive-*`, `make analyze`, `make signal-stability`, `make gate-analysis`, `make sweep-thresholds`, `make feature-importance`, `docker compose run.*freqtrade`. Check if previous instance running before launching (`docker top` for containerized commands). Wait for background completion notification — do NOT poll or launch duplicates. First attempt appears stuck → verify with `docker top` before launching another — competing CPU-bound processes make each 3x slower.
+Commands matching these patterns MUST use `run_in_background: true` with NO timeout: `make backtest`, `make hyperopt`, `make monthly-opt`, `make adaptive-*`, `make analyze`, `make signal-stability`, `make gate-analysis`, `make sweep-thresholds`, `make feature-importance`, `docker compose run.*freqtrade`. Check if previous instance running before launching (`docker top` for containerized commands). Wait for background completion notification — do NOT poll or launch duplicates. First attempt appears stuck → verify with `docker top` before launching another — competing CPU-bound processes make each 3x slower. "Do not poll" is not "sit idle": get on with other work while it runs (canon principle 1) — what is banned is burning turns re-checking, not using them.
 
 ## "File Not Found" — Wrong Path, or Wrong Filesystem. Never "Lag"
 
