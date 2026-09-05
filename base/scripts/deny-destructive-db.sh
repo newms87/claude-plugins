@@ -20,8 +20,13 @@
 
 set -euo pipefail
 
+# node, NOT jq (DX-guard): jq is absent on the operator Windows host, where this
+# guard therefore died at its first call and exited non-zero — which Claude Code
+# treats as a hook ERROR, not a block, so every command it exists to stop ran
+# anyway. It failed OPEN for its entire life on that machine. node ships with
+# Claude Code and is the only interpreter a hook can depend on.
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+COMMAND=$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.tool_input?.command??""))}catch{process.stdout.write("")}})')
 
 if [ -z "$COMMAND" ]; then
   exit 0
@@ -43,10 +48,10 @@ fi
 
 REASON="BLOCKED: destructive database operation detected (\"$MATCH\"). Direct destructive commands are NEVER permitted at the Bash boundary. DO NOT try to accomplish the same effect by another route (raw psql DROP, TRUNCATE loops, delete-then-migrate, recreating the docker volume, chmod-ing or editing the sanctioned script, copying its body into your own command, etc.) — every workaround is also forbidden and will be blocked. The sanctioned path for resetting the WORKTREE'S OWN database is the \`danxbot:db-reset\` skill — invoke it via the Skill tool. The skill loads the contract and points you at \`<worktree>/.danxbot/safe-reset-db.sh\`, the only command authorized to reset a worktree DB (safe because Phase 1 / DX-571 guarantees the worktree role cannot reach primary). If no \`safe-reset-db.sh\` exists at that path for this consumer repo, STOP and report to the human operator — do not invent a workaround. Continue your task without bypassing this guard."
 
-jq -n --arg reason "$REASON" '{
+REASON="$REASON" node -e 'process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",
-    permissionDecisionReason: $reason
-  }
-}'
+    permissionDecisionReason: process.env.REASON,
+  },
+}))'
