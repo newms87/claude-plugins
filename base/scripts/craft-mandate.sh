@@ -4,7 +4,11 @@
 # Fires on SessionStart AND UserPromptSubmit. Injects the "build the ideal
 # version, not the fast one" discipline into every session AND every turn so
 # it survives context compression and stays top-of-context at the moment
-# work actually starts — matches evidence-mandate.sh's always-on pattern.
+# work actually starts — matches operating-contract.sh's always-on pattern.
+#
+# SCOPE: build QUALITY only. The evidence / never-assume / orchestrate /
+# experiment-first principles live in operating-contract.sh and must not be
+# restated here.
 #
 # There is intentionally NO companion skill. This mandate IS the contract —
 # it must fire always, not wait for a trigger.
@@ -63,5 +67,4 @@ and nobody asked you to cut it. That is you inventing a lowered bar, not the
 user setting one. Stop and build the real thing instead.
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"

@@ -48,5 +48,4 @@ Hard MANDATORY triggers — match any one, load the skill immediately. Only inst
 NO rationalization. "I already know the rule" / "just one quick X" / "skill is overkill" / "load it after I orient and act" are violations, not reasoning. Load now, then act. "Forgot to load" is never an explanation — load it and redo the step.
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"

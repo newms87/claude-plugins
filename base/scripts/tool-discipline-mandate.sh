@@ -41,5 +41,4 @@ FILE OPS: Read/Edit/Write, NOT cat/head/tail/sed/awk. Bash for shell-only operat
 MCP CALLS: load schema via ToolSearch BEFORE calling unknown MCP tool. Calling without schema = InputValidationError.
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"

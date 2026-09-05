@@ -114,6 +114,8 @@ Draft >40 lines for single action = convey not applied. Re-shape.
 
 ## Cheap-to-verify facts — read, never estimate
 
+Never-assume is canon (always-injected operating contract, principle 4) — not restated here. This section is its elapsed-time expansion.
+
 If a fact is one tool call away, READ it before you assert it. Stating a number you could have checked is the failure — a confident wrong fact is worse than "let me check."
 
 **Elapsed time / duration is the canonical trap.** You have ZERO reliable internal sense of wall-clock: a session can sit idle for hours, the date can roll mid-session, and "feels like a few minutes" is routinely off by orders of magnitude. Before ANY claim about elapsed time, duration, "N minutes ago", "recently", "just", or how long since an event:

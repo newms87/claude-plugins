@@ -1,16 +1,16 @@
 {
-  "description": "Plugin skill load mandate + convey + tool-discipline + evidence + craft mandates (SessionStart, all sources), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation and destructive-git deny guards (PreToolUse Bash), and live time + elapsed-since-last-fire + evidence + craft discipline injection (UserPromptSubmit + PostToolUse).",
+  "description": "OPERATING CONTRACT (the four canonical operating principles — SessionStart, no matcher, so it fires on every source INCLUDING compact; plus a one-line pointer on UserPromptSubmit). Then plugin skill load mandate + convey + tool-discipline + craft mandates (SessionStart), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation and destructive-git deny guards (PreToolUse Bash), and live time injection (UserPromptSubmit + PostToolUse).",
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/inject-time.sh UserPromptSubmit"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/operating-contract.sh UserPromptSubmit"
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/evidence-mandate.sh UserPromptSubmit"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/inject-time.sh UserPromptSubmit"
           },
           {
             "type": "command",
@@ -34,6 +34,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/operating-contract.sh SessionStart"
+          },
+          {
+            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plugin-skill-mandate.sh SessionStart"
           },
           {
@@ -47,10 +51,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/current-time-mandate.sh SessionStart"
-          },
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/evidence-mandate.sh SessionStart"
           },
           {
             "type": "command",

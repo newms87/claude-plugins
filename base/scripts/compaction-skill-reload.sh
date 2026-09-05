@@ -50,5 +50,4 @@ MECHANICAL CHECK, before your first mutating action (Edit/Write/MCP mutate/git c
 "It's already in my context" / "I can still read the rule" / "I only need the part I remember" / "re-loading wastes tokens" are the exact rationalizations this gate blocks. The whole failure mode is that the truncated fragment looks sufficient. It is not.
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"

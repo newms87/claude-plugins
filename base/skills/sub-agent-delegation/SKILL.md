@@ -5,6 +5,9 @@ description: Sub-agent dispatch checklist — synthesis ratio, isolation justifi
 
 # Sub-Agent Delegation Rules
 
+EXPANDS canon principle 1 (orchestrate by default) with the dispatch mechanics.
+The principle itself lives in the always-injected operating contract and is not restated here.
+
 Sub-agents exist for synthesis, judgment, parallelism, context isolation — NOT raw data passthrough.
 
 ## Forbidden pattern
@@ -24,6 +27,8 @@ Sub-agent paid tokens to fetch. Orchestrator pays tokens re-reading result. Same
 4. **Does this brief re-open anything THIS SESSION already settled with evidence?** List those decisions and write them into the brief as fixed constraints. Never hand one back as a choice ("decide from evidence", "pick one", "evaluate both") — the sub-agent has none of your history, so your brief is the only guard, and a measured-and-rejected option offered as an option gets implemented and shipped as "the only solution". Can't recall what was measured? Re-read before dispatching.
 
 Q1-3 all no → sub-agent is passthrough. Cut it. Q4 unanswered → the brief is a regression risk.
+
+**Scope of Q1-3 — they stop PASSTHROUGH, they do not license staying inline.** Their only target is wrapping a Read or a tool fetch in an agent that returns the same bytes. They are NOT a general exemption from canon principle 1: investigation-shaped and multi-file work is dispatched by DEFAULT, and Q3's "keep inline" answers the passthrough case only. A probe or experiment that consumes a large surface and returns a small verdict PASSES Q2 — that is the shape Q2 is asking for, not the shape it rejects.
 
 ## Fixes
 

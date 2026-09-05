@@ -26,7 +26,14 @@ set -euo pipefail
 EVENT="${1:-UserPromptSubmit}"
 PAYLOAD="$(cat)"
 
-SID="$(printf '%s' "$PAYLOAD" | jq -r '.session_id // "nosession"')"
+# node, NOT jq. jq is not installed on every host these hooks run on — it is
+# absent on the operator's Windows machine, where the missing binary made this
+# hook parse nothing and emit nothing for its entire life. node ships with
+# Claude Code, so it is the one interpreter a hook can depend on. A parse
+# failure must never abort the turn: `|| true` plus the fallback below keep the
+# hook on a shared "nosession" state file rather than exiting non-zero.
+SID="$(printf '%s' "$PAYLOAD" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.session_id??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
+[ -n "$SID" ] || SID="nosession"
 STATE="/tmp/claude-time-hook-${SID}"
 
 NOW="$(date +%s)"
@@ -67,5 +74,4 @@ fi
 
 printf '%s %s\n' "$NOW" "$DATE_KEY" > "$STATE"
 
-jq -n --arg event "$EVENT" --arg ctx "${STAMP} ${DUR}" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "${STAMP} ${DUR}"

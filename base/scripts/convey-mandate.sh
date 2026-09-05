@@ -31,9 +31,6 @@ Plain English (no codebase knowledge needed); concepts before paths (identifiers
 Scaffold: ## headline (≤12w) → Goal (1 sentence) → Behavior diff table → Flow (ASCII, multi-actor only) → Caveats → Verify (`cmd` → ✅ N/N). Per-channel budgets + anti-patterns in the full skill.
 
 Self-trigger: "Summary"/"Report"/"Findings"/"Results" in draft, wall of paths, 3+ paragraphs on one change, or >40 lines for one action → apply.
-
-CHEAP-TO-VERIFY FACTS — read, never estimate. If a fact is one tool call away, READ it before asserting; a confident wrong fact is worse than "let me check." ELAPSED TIME is the canonical trap — you have ZERO reliable internal sense of wall-clock (sessions idle for hours, dates roll mid-session). Before ANY claim about duration / "N min ago" / "recently" / "just" / how-long-since: read the current clock, read the source timestamp, compute the difference, state THAT. Never narrate a duration from feel. Same for any one-lookup fact: current branch/HEAD, a row's status, file existence.
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"
