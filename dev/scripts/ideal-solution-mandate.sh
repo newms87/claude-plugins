@@ -28,5 +28,4 @@ SELF-TRIGGER GATES — invoke the skill via Skill tool BEFORE the offending acti
   • dev:repo-optimize — operator says `/repo-optimize`, "audit my rules", "optimize CLAUDE.md", "reduce token usage".
 EOF
 
-jq -n --arg event "$EVENT" --arg ctx "$MANDATE" \
-   '{hookSpecificOutput:{hookEventName:$event, additionalContext:$ctx}}'
+printf '%s\n' "$MANDATE"

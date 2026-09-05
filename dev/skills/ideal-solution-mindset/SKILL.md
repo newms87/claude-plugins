@@ -144,8 +144,9 @@ Mechanical, in order:
 3. **Reuse audit.** What in the codebase already does part of this? Cite paths.
 4. **Legacy audit.** What in the codebase will my change make obsolete? List paths; commit to deleting them in scope.
 5. **Complexity check.** What's the simplest shape that is still correct? Is the current plan that shape, or is it one layer above?
-6. **Removal audit.** Does the plan remove anything I built that is merely unfinished or imperfect, rather than wrong? If yes — that is #2b; fix it forward instead, or name which of the four exceptions applies.
-7. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" / "that's faster to ship" thought shape the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
+6. **Experiment check.** Could a quick experiment confirm or kill this proposal? If yes — dispatch a sub-agent to RUN it and fold the real result into the plan, rather than reasoning about what the result would be. Not an experiment: one that re-implements the rule it is testing, and one that reads a constant, docblock or comment and declares the behavior confirmed.
+7. **Removal audit.** Does the plan remove anything I built that is merely unfinished or imperfect, rather than wrong? If yes — that is #2b; fix it forward instead, or name which of the four exceptions applies.
+8. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" / "that's faster to ship" thought shape the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
 
 If any step changes the plan, restart from step 2. The plan is ready when one full pass produces no edits.
 
