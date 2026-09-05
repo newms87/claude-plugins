@@ -66,4 +66,4 @@ Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; c
 - Read + edit cards exclusively via `mcp__danx-dashboard__issue_*` tools; no tracker calls.
 - Never write `status:` literals.
 - Never append `## Retro` to `comments[]` — worker auto-renders.
-- `/loop` ONLY for in-card async (triggered builds/tests); never wait for human, never wait for next card.
+- **Never `/loop`, `ScheduleWakeup`, or background-then-end-turn.** A dispatch is `claude -p` with stdin ignored, so a wakeup can never fire — arming one and ending your turn abandons the card and wastes every token spent (6/6 abandoned dispatches audited 2026-09-05 died exactly this way). Wait in the FOREGROUND with an explicit `timeout`; if the job outlives the dispatch budget, release the card via `issue_transition({action: "rollback_pickup"})` with a comment saying what is running. Full contract: `danxbot:danx-start`.

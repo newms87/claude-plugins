@@ -41,7 +41,11 @@ skill shares it (ISS-135 / ISS-136).
   scope.
 - Arming `/loop` and then calling `danxbot_complete` in the same dispatch.
   Loop owns completion timing — if you call complete, disarm the loop
-  first; if a loop is active, do not call complete.
+  first. **If a loop is somehow already armed, disarm it
+  (`ScheduleWakeup({stop: true})`) and complete anyway** — never end the
+  turn without completing. A dispatch is `claude -p` with stdin ignored, so
+  a wakeup can never fire: leaving one armed and ending the turn abandons
+  the card and wastes the whole dispatch.
 
 **RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
 during this dispatch must be disarmed (or have already fired and exited).

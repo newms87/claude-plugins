@@ -13,24 +13,51 @@ Before processing ANY card, call `mcp__danx-dashboard__issue_get({id})`. If `sta
 
 This guards against the May-7 incident: an orphan-resumed agent that re-runs `/danx-start` from scratch against a card whose prior session already shipped the work creates duplicate retro comments and duplicate `danxbot_complete` calls. The self-check is a 30-second read that costs zero tokens of redo.
 
-## /loop and ScheduleWakeup — narrow contract
+## /loop and ScheduleWakeup — FORBIDDEN in a dispatch
 
-You may use Claude Code's `/loop` skill (and the underlying
-`ScheduleWakeup` tool) ONLY for in-card async monitoring. Anything else is
-a workflow violation — dispatched agents have one exit
-(`danxbot_complete`); using `/loop` to defer completion or wait for state
-outside this card's scope is the May-7 failure mode (ISS-135 / ISS-136).
+**A scheduled wakeup can NEVER fire in a dispatch. Arming one ends the
+dispatch permanently.** A dispatched agent is spawned as `claude -p` with
+stdin ignored (`src/agent/spawn-docker-mode.ts` — `stdio: ["ignore",
+"ignore", "pipe"]`), so the process is structurally incapable of receiving
+a wakeup. `ScheduleWakeup` will still answer:
 
-**ALLOWED:**
+> Next wakeup scheduled for … Nothing more to do this turn — the harness
+> re-invokes you when the wakeup fires or a task-notification arrives.
 
-- Polling an async pipeline whose result IS part of this card's AC (e.g.
-  dispatch a build, `/loop` every 5 min until it finishes, then verify the
-  artifact and proceed).
-- Monitoring a long-running test whose pass/fail is the AC under test.
-- Watching for the next state of an external system you triggered AS PART
-  OF THIS CARD's WORK.
+**That promise is false here.** You end your turn, the process prints its
+result and exits 0, and nothing wakes you. The worker records
+`exited without danxbot_complete — abandoned`, the card stays claimed, and
+every token you spent is wasted.
 
-**FORBIDDEN:**
+This is measured, not theoretical: 6 of 6 abandoned dispatches audited on
+2026-09-05 ended exactly this way, tens of millions of tokens between them.
+Each agent was following this section as it was previously written — it
+used to ALLOW "monitoring a long-running test", which is the single
+instruction that killed them. That is why the allowance is gone.
+
+**FORBIDDEN — no exceptions, this card's AC included:**
+
+- `ScheduleWakeup`, `/loop`, or any "I'll check back in N minutes".
+- Starting work in the background and ending your turn to wait for it —
+  `Bash{run_in_background: true}`, a detached test runner, a watcher
+  process. If your last message would say "waiting for X to finish", you
+  are about to abandon the card.
+- `TaskOutput` polling that outlives your turn. Blocking on it is fine;
+  ending the turn because it timed out is the same abandonment.
+
+**Instead, when this card's AC genuinely depends on a long-running job:**
+
+1. **Wait in the FOREGROUND, bounded.** Run it with an explicit
+   `timeout` inside your turn. You keep control, you see the result, and
+   you can act on it. This covers almost every real case.
+2. **If it cannot finish inside the dispatch's runtime budget, release the
+   card non-terminally** — `issue_transition({action: "rollback_pickup"})`
+   — and say in a card comment what is running and what the next dispatch
+   should check. The next tick picks the card up and continues. **A
+   released card is recoverable; an abandoned one is not.**
+3. **Never** complete a card by asserting a result you did not observe.
+
+**ALSO FORBIDDEN (the original ISS-135 / ISS-136 cases):**
 
 - Waiting for a human to reply (use `status: Blocked` instead — the
   operator opens the card, answers, moves it back).
@@ -38,14 +65,13 @@ outside this card's scope is the May-7 failure mode (ISS-135 / ISS-136).
   this card is done).
 - "Let me check on this in N minutes" for anything outside this card's
   scope.
-- Arming `/loop` and then calling `danxbot_complete` in the same dispatch.
-  Loop owns completion timing — if you call complete, disarm the loop
-  first; if a loop is active, do not call complete.
 
-**RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
-during this dispatch must be disarmed (or have already fired and exited).
-Active loop + complete signal = workflow violation; the next resume will
-re-fire the loop after the dispatch is logically over.
+**If you have ALREADY armed one this dispatch**, you are not stuck: disarm
+it (`ScheduleWakeup({stop: true})`) and finish the turn normally by
+calling `danxbot_complete`, or release the card with `rollback_pickup` if
+the work is genuinely unfinished. The failure is ending the turn WITHOUT
+one of those two — never the arming itself. Do not "wait and see whether it
+fires": it will not.
 
 ## Steps
 
