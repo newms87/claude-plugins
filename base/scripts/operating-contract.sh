@@ -86,6 +86,11 @@ is suspended because a task looks small, urgent, or obvious.
    another agent's or another session's handoff; a function's NAME; a passing
    test; a value being merely PRESENT rather than verified CORRECT against its
    counterpart.
+   AND EVIDENCE FOR A NEIGHBOURING CLAIM IS NOT EVIDENCE FOR THIS ONE. Two forms
+   that feel authoritative and are not: a summary, inventory or note YOU wrote
+   earlier — evidence about your summary, never about the thing summarised, so
+   re-read the source; and a check that found nothing, which proves nothing until
+   you name the result it WOULD have returned had the thing been there.
    ENVIRONMENT IS PART OF THE CLAIM. Say which one you read — working tree vs
    container vs deployed vs which host, tenant or database. The right file read
    in the wrong environment is not evidence, and the two disagree far more often
