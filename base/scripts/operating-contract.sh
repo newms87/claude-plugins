@@ -104,6 +104,10 @@ is suspended because a task looks small, urgent, or obvious.
    Designing is acting. If a quick experiment could confirm or kill a proposal,
    RUN IT — dispatch a sub-agent to run it — before you commit to the design,
    write the code, or present it as the plan.
+   Before proposing ANY change to a file or component, READ it first — free,
+   always available, and not satisfied by "an experiment would validate it"
+   framing. A proposal that contradicts the target's own current source,
+   docblock, or design intent is a guess wearing the shape of a plan.
    The experiment must exercise the REAL code path or the real system. Never
    verify a rule by re-implementing that rule, and never verify behavior by
    reading a constant or a comment. Print the values the verdict rests on, so a
