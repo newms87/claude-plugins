@@ -56,6 +56,21 @@ When a task decomposes into INDEPENDENT sub-tasks — multiple reviews of the sa
 ### Canonical case — POST code-trio quality gates
 The three POST code gates (`code-test-quality` / `code-architecture` / `code-quality`) are independent read-only reviews of the SAME diff with zero ordering dependency. Dispatch their reviewer sub-agents (`architecture-reviewer` + `code-quality-reviewer`) in ONE batch (≤3), run the inline `code-test-quality` review alongside them, collect ALL findings, fix ONCE (independent fixes fanned out, ≤3), then sign off each gate. Do NOT run the three gate reviews one at a time — that was the observed failure this rule exists to prevent.
 
+## Sub-agents must clean up their own subprocesses before reporting done
+
+A dispatched sub-agent that starts a dev server, a Docker container, a database, a browser/Playwright instance, or any other long-lived process to do its work is responsible for tearing every one of them down before it finishes — not leaving them for the orchestrator or the operator to discover later. This is a REQUIREMENT to put in the dispatch prompt itself, not an assumption:
+
+- **State it explicitly in every dispatch brief** that starts or might start a subprocess: "tear down every process/container you start before reporting done, and say in your final report what you tore down."
+- **A sub-agent's own final report is evidence, not proof.** "Docker container torn down" in a report means the agent attempted cleanup — it does not mean the orchestrator can skip checking when several agents ran concurrently on the same host, since concurrent agents can collide with (or accidentally survive past) each other's teardown.
+- **This satisfies `process-kill`'s Iron Rule trivially for the agent itself**: a sub-agent killing a process IT spawned in its own run, whose PID it captured at spawn, is exactly the one case that rule permits without asking. It does NOT license killing anything the agent merely *suspects* is a stray leftover from a sibling agent — that's still governed by `process-kill`'s full discipline (proof block, no pattern-matching, ask first).
+
+## Completed dispatches still occupy the task list until explicitly stopped
+
+An `Agent()` spawn that has delivered its final report and shows as "completed" in a task notification is NOT automatically removed from the operator's live task list — it stays resumable (and visibly "running" to the operator, e.g. in a task-count they can see) until something explicitly stops it. In a long session with many sequential or parallel dispatches, this accumulates fast — 15 dispatches over a few hours becomes 15+ lingering entries even though every one of them is done and idle.
+
+- **After consuming a dispatched agent's final report and folding its findings into your own work, stop it** (the harness's task-stop mechanism) unless you have a specific reason to keep it resumable (e.g. you expect to send it a follow-up in the same conversation).
+- **If the operator asks "why do I have N running tasks," don't assume something is actually still executing** — check each one's real status first (most will report as idle/completed-but-registered), stop the ones genuinely done, and only then explain the count. Conflating "shows in the task list" with "is consuming resources right now" is a real distinction the operator's own question is usually probing for.
+
 ## Reading a result is NOT the same as the spawn ending — verify termination
 
 A background `Agent()` spawn is a real process the harness tracks independently of whether you've consumed its output. Receiving the completion notification and reading its returned text does **NOT** guarantee the underlying task object is closed — a spawn can keep showing as a live background task (visible in the operator's `/exit` confirmation dialog, invisible to you in normal conversation and in `TaskList`, which only lists your own `TaskCreate` todos, never `Agent()` spawns) long after you believe you've "finished with it."
