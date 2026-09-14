@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture document, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -28,7 +28,7 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 | The outcome the work is measured against | Goal record (`G-n`) | `plan_add_record({kind:"goal"})` |
 | A constraint that must hold while working | Rule record (`R-n`) | `plan_add_record({kind:"rule"})` |
 | A surprising fact, known gap, verified-vs-assumed note | Caveat record (`CAV-n`) | `plan_add_record({kind:"caveat"})` |
-| How the work is shaped (components, data flow, decisions and their reasons) | Architecture document (one markdown doc) | `plan_set_architecture` |
+| How the work is shaped (components, data flow, decisions and their reasons) | Architecture sections (each independently editable, hash-guarded markdown) | `plan_add_architecture_section` / `plan_update_architecture_section` |
 | A piece of actionable work | A card on the board of the repo it changes, attached to the plan | `issue_create` → `plan_add_card` |
 | A card attached to the wrong plan | Remove the membership (the card itself is untouched) | `plan_remove_card({plan_id, card_id})` |
 | A plan whose name no longer fits | Rename it | `plan_rename({plan_id, name})` |
@@ -48,7 +48,7 @@ working memory only), and a chat summary.
   the session and reports `movedFrom`. Never switch plans mid-task to "just write one record"
   on another plan — that silently moves every later write too.
 - **Write tools take no plan id.** `plan_add_record`, `plan_update_record`,
-  `plan_delete_record`, `plan_add_card`, `plan_set_architecture` all act on the connected
+  `plan_delete_record`, `plan_add_card` and the `plan_*_architecture_section` tools all act on the connected
   plan. Not connected → `{error:"session_not_connected"}`.
 - **Sub-agents share the parent session's identity**, so their plan writes land on the same
   plan with no coordination. Exactly ONE writer — the main session — calls plan write
@@ -115,10 +115,15 @@ command is `npx -y @thehammer/danx-dashboard-mcp@<version> listen --stream '<das
   `plan_get` / `plan_get_record` / `plan_add_record`. On `stale_plan_record` the refusal
   carries `currentHash` + `currentBody`: merge your change into `currentBody`, retry with
   `content_hash: currentHash`. Never resend the old hash.
-- **Architecture:** call `plan_get` IMMEDIATELY before `plan_set_architecture`, pass
-  `architecture.contentHash` as `base_hash` (`""` only for a never-written document). The
-  write replaces the whole document — send the full merged markdown. On
-  `stale_plan_architecture`: `plan_get` again, re-merge into the fresh content, retry.
+- **Architecture is sections, not one document (DX-2726).** `plan_add_architecture_section({title,
+  content})` appends one; `plan_update_architecture_section({section_id, base_hash, title?,
+  content?})` edits only what changed; `plan_delete_architecture_section({section_id, base_hash})`
+  soft-deletes; `plan_reorder_architecture_section({order})` takes EVERY live section id once and
+  needs no hash. `base_hash` = the section's `contentHash` from the immediately prior `plan_get` /
+  `plan_get_architecture_section`. On `stale_plan_architecture_section` the refusal carries
+  `currentHash` + `currentTitle` + `currentContent`: merge into those, retry with `currentHash` —
+  for a delete, first confirm it is still the section you meant to remove. One section per
+  concern, so an edit to one never stales a concurrent edit to another.
 - **Solutions:** `issue_solution` edit/remove need `base_hash` = the solution's
   `content_hash` from the last `list`; on `stale_solution` merge against `currentSolution`.
 
@@ -198,9 +203,9 @@ half-done that the next session would otherwise trip over.
   `frontend/dist/` for the `plans` route prefix, assets under `/react-assets/`). The plan
   detail screen shows the plan's cards plus Goals / Architecture / Rules / Caveats tabs.
   The old per-board `/plan` screen is gone (DX-2680) — "Plan" and "Plans" are not two areas.
-- **Tables** (`src/db/migrations/`): `plans` (id, name, created_at, plus the
-  `architecture_*` columns — the architecture document is one-to-one on the plan row,
-  content-hash guarded); `plan_cards` (plan_id, card_id, unique pair, cascade on either
+- **Tables** (`src/db/migrations/`): `plans` (id, name, created_at); plan architecture
+  sections (title, markdown content, sort order, per-section content hash, soft delete —
+  DX-2726); `plan_cards` (plan_id, card_id, unique pair, cascade on either
   side); `plan_records` (kind `goal|rule|caveat`, permanent `ref_num`, body, content hash,
   soft delete via `deleted_at` — refs are never reused); `plan_sessions` (session_id =
   `CLAUDE_CODE_SESSION_ID` primary key, nullable plan_id — one plan per session);
@@ -209,7 +214,8 @@ half-done that the next session would otherwise trip over.
   comment/answer/requires_human/block events, 7-day retention) and
   `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
 - **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`): `/api/plans`
-  (list/create), `/api/plans/:id` (+ `/cards`, `/records`, `/architecture`, `/full`),
+  (list/create/rename, paged with `limit`/`offset`/`sort`/`q`), `/api/plans/:id` (+ `/cards`,
+  `/records`, `/full`), `/api/plans/mine/architecture/sections[/:sid|/reorder]`,
   session-scoped `/api/plans/mine/*`, `/api/plan-sessions/me/plan` (connect),
   `/api/issues/:id/solutions[/:sid]`, `/api/issues/:id/answer` (records a decision, releases
   the gates, refuses machine tokens), `/api/plan-sessions/stream` (the ticket-authed
@@ -218,7 +224,10 @@ half-done that the next session would otherwise trip over.
   `@thehammer/danx-dashboard-mcp`): `plan_list`, `plan_get`, `plan_create`, `plan_connect`,
   `plan_add_record`, `plan_get_record`, `plan_update_record`, `plan_delete_record`,
   `plan_add_card`, `plan_remove_card` and `plan_rename` (both take an explicit `plan_id`,
-  idempotent / immediate — DX-2740), `plan_set_architecture`, plus `issue_solution` and
+  idempotent / immediate — DX-2740), `plan_get_architecture_section`,
+  `plan_add_architecture_section`, `plan_update_architecture_section`,
+  `plan_delete_architecture_section`, `plan_reorder_architecture_section` (DX-2726; the old
+  whole-document `plan_set_architecture` is gone), plus `issue_solution` and
   `issue_requires_human`. Prefix is `mcp__danx_dashboard__` in an operator session and
   `mcp__danx-dashboard__` in a dispatched worker — load a tool's schema with `ToolSearch`
   before the first call. Plans are global, not board-scoped; their cards come from any board.
