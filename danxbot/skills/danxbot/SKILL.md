@@ -160,6 +160,10 @@ Each MCP server consumed by a danxbot dispatch has an owner repo with a `make pu
 ## Cross-References
 
 - `danxbot:issue-card-workflow` skill — universal issue card DB schema + MCP tools
+- `danxbot:plan-workflow` skill — the "Plan" feature (goals/rules/caveats/architecture):
+  real DB schema, MCP tools, HTTP routes, and the unshipped-frontend trap (a fully-built
+  React Plans UI exists in source but is not wired into deploy — read this before ever
+  claiming a Plans page does or doesn't exist)
 - `danxbot:prod-access` skill — proxy / SSH / `docker exec` recipes for deployed targets
 - `danxbot:dispatch-deep` skill — resume protocol, staged_files, multi-block usage dedup, claude-auth diagnostic
 - `danxbot:docker-deep` skill — root `.mcp.json` inject, `.env.<target>` overlays, Laravel `.env.{APP_ENV}` trap
