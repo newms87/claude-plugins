@@ -84,6 +84,19 @@ command is `npx -y @thehammer/danx-dashboard-mcp@<version> listen --stream '<das
 
 ## Writing records
 
+- **Records are short.** A goal/rule/caveat `body` is ONE plain statement of at most **250
+  characters** — the server refuses anything longer. Evidence, history, examples and detail go in
+  the record's markdown `context` (`plan_add_record({kind, body, context})`; `plan_update_record`
+  keeps context when omitted, `null` clears it). One fact per record, never a numbered list.
+- **Kinds mean different things.** A GOAL is an outcome the work is measured against. A RULE is a
+  constraint that must hold while the plan is worked. A CAVEAT is a lasting trade-off or limitation
+  of the ARCHITECTURE. Progress, status, deploy results, "blocked until X" notes and session
+  dialog are NEVER records — they are comments on the card they concern (create the card if the
+  work has none).
+- **Card states are always true.** Before a local sub-agent works a card, `pickup manual:true`
+  with `assigned_agent` (read it back). Buildable work goes to the danxbot worker by `ready`
+  (isolated worktrees, every quality gate). Shipped work is completed (checklist → gate verdicts
+  → complete → retro) the moment it lands.
 - **Write for a stranger**: an experienced engineer who has never seen this codebase or this
   conversation. Plain text (records are not markdown). Define a domain word before using it.
 - **Carry real evidence and current status** in the body: ids (`#WR-727`, `DX-2683`), commit
