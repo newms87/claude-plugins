@@ -1,144 +1,177 @@
 ---
 name: plan-workflow
-description: 'The danxbot "Plan" feature (goals/rules/caveats/architecture/cards) — real DB schema, MCP tools, HTTP routes, and the critical trap: a fully-built frontend that is NOT wired into deploy.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture document, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect). Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
-# Plan Workflow — DB Schema, Tools, and the Unshipped-Frontend Trap
+# Plan Workflow — the danxbot Plan Is the Record
 
-A Plan is danxbot's native replacement for a one-off HTML "artifact" tracking page
-(`human-collaboration:artifact-plan`) — a durable, queryable record of Goals, Rules,
-Caveats, an Architecture document, and linked Cards, connected to a live session so an
-agent's ongoing work has one canonical place to read/write context instead of a local
-file. Source of truth for everything below: `<DANXBOT_REPO>` on this dev box
-(`C:\Users\newms\projects\danxbot`, the checkout with the real `.git` — never the
-separate, independently-historied WSL checkout at `~/projects/newms87/danxbot`).
-Verified 2026-09-14 by reading the actual source, not by clicking around the UI — see
-the trap below for exactly why that distinction mattered here.
+A **Plan** is a named, dated record on the danxbot dashboard that holds everything about
+one piece of human-driven work: what it is for, what must hold, what is awkward, how it is
+designed, and every card of work or question for the operator. It survives compaction,
+session restarts and handoffs because it lives in Postgres, not in the conversation.
 
-## TodoWrite Checklist (mandatory on first invoke)
+## TodoWrite checklist (mandatory on first invoke)
 
-1. Confirm which surface you're using: MCP tools (`mcp__danx-dashboard__plan_*` /
-   `mcp__danx_dashboard__plan_*` — prefix depends on context, same rule as
-   `issue-card-workflow`), the raw JSON API (`/api/plans/*`), or (rare — see the trap)
-   the React frontend.
-2. If you are about to tell anyone "there is no Plans page" or "the /plans route is
-   broken" — STOP and re-read "The Unshipped-Frontend Trap" below first.
-3. If you are about to add a field to `plan_records`/`plans`/`plan_cards` — read the
-   real migration files named below before guessing a column name.
+1. `plan_list` — read `session.planId`. Connected to the right plan already? Skip to 3.
+2. Find the plan for this effort in `plans[]` (read candidates with `plan_get({plan_id})`).
+   Found → `plan_connect({plan_id})`. None → `plan_create({name})`, then `plan_connect`.
+3. `plan_get` (no id) — read the whole connected plan before doing anything else.
+4. Before every chat reply this session: run the Turn Gate below.
 
-## Data Model (real tables, verified via migration files)
+## What goes where — no other planning surface exists
 
-| Table | Purpose | Key columns |
+| Content | Where it goes | Tool |
 |---|---|---|
-| `plans` | One row per Plan. | `id BIGSERIAL PK`, `name TEXT`, `created_at`, plus 4 nullable `architecture_*` columns (see below) |
-| `plan_cards` | Junction: which issue cards are attached to a Plan. | `plan_id` FK→`plans` ON DELETE CASCADE, `card_id` FK→`issues` ON DELETE CASCADE, `UNIQUE(plan_id, card_id)` |
-| `plan_records` | Goals / Rules / Caveats — ONE flat table, discriminated by `kind`. | `kind` (`'goal'\|'rule'\|'caveat'`), `ref_num` (permanent, e.g. the `4` in `CAV-4`), `body`, soft-deleted via `deleted_at` — `uniq_plan_records_ref` covers tombstones too, so a deleted ref number is never reused |
-| `plans.architecture_*` | The Architecture document. NOT a separate table — 4 nullable columns living directly on `plans` (one-to-one), hash-guarded by a `plans_architecture_content_hash_paired` CHECK constraint (mirrors the content-hash pattern used elsewhere in the dashboard — see `content-hash.ts`). | — |
-| `plan_sessions` | Which live agent session is connected to which Plan. | `session_id TEXT PK` = `CLAUDE_CODE_SESSION_ID`, `plan_id` nullable FK ON DELETE SET NULL — **a session connects to at most one Plan at a time** |
+| The outcome the work is measured against | Goal record (`G-n`) | `plan_add_record({kind:"goal"})` |
+| A constraint that must hold while working | Rule record (`R-n`) | `plan_add_record({kind:"rule"})` |
+| A surprising fact, known gap, verified-vs-assumed note | Caveat record (`CAV-n`) | `plan_add_record({kind:"caveat"})` |
+| How the work is shaped (components, data flow, decisions and their reasons) | Architecture document (one markdown doc) | `plan_set_architecture` |
+| A piece of actionable work | A card on the board of the repo it changes, attached to the plan | `issue_create` → `plan_add_card` |
+| A question only the operator can answer | A `Task` card with solutions, attached to the plan | see "Operator questions" |
+| Progress, findings, evidence on a specific piece of work | A comment on that card | `issue_comment` |
 
-Migration files (real names, for when you need to read the actual column list rather
-than trust this table): `src/db/migrations/1788777206081-9e32f9_plans_and_plan_cards.ts`,
-`1788840717839-114963_plan_records.ts`, `1788842091287-d9c9b8_*` (architecture columns),
-`1788844285731-e92e76_*` (`plan_sessions`). All forward-only, no `down` — matches this
-repo's Core Principle 1 (no legacy paths).
+Forbidden substitutes: a plan file, `~/.claude/plans/*.md`, a repo `.md` spec or handoff doc,
+an HTML page, a `.junk/` notes file, in-session `TaskCreate`/`TaskList` as the record (it is
+working memory only), and a chat summary.
 
-## HTTP Routes (all JSON, none serve HTML)
+## Connecting — one session, one plan, one writer
 
-Everything lives in `src/issues/plans-routes.ts` (registered in `src/dashboard/server.ts`
-behind `url.pathname.startsWith("/api/plans")`), plus a sibling
-`src/issues/plan-sessions-routes.ts` for `/api/plan-sessions`:
+- `plan_list` returns `session: {sessionId, planId, planName, ...}`. `planId: null` = not
+  connected. `session: null` = this process is not inside a Claude Code session (the MCP
+  server keys the session on `CLAUDE_CODE_SESSION_ID`) — plan write tools cannot work there.
+- **A session is connected to at most one plan.** `plan_connect` to a different plan MOVES
+  the session and reports `movedFrom`. Never switch plans mid-task to "just write one record"
+  on another plan — that silently moves every later write too.
+- **Write tools take no plan id.** `plan_add_record`, `plan_update_record`,
+  `plan_delete_record`, `plan_add_card`, `plan_set_architecture` all act on the connected
+  plan. Not connected → `{error:"session_not_connected"}`.
+- **Sub-agents share the parent session's identity**, so their plan writes land on the same
+  plan with no coordination. Exactly ONE writer — the main session — calls plan write
+  tools. Every sub-agent brief says: "Do not call any `plan_*` write tool; return findings to
+  me." Sub-agents MAY call `plan_get` to read.
 
-```
-GET/POST   /api/plans
-GET/DELETE /api/plans/:id
-POST       /api/plans/:id/cards
-DELETE     /api/plans/:id/cards/:cardId
-CRUD       /api/plans/:id/records[/:rid]
-GET/PUT    /api/plans/:id/architecture
-GET        /api/plans/:id/full          <- one call, the whole Plan (records + architecture + cards)
-*          /api/plans/mine/*            <- session-scoped, resolves via plan_sessions
-```
+## Writing records
 
-Confirmed live on real production: `curl https://danxbot.sageus.ai/api/plans` → `401`
-(route exists, needs the session cookie — this is the SAME backend every
-`mcp__danx-dashboard__plan_*` call already goes through).
+- **Write for a stranger**: an experienced engineer who has never seen this codebase or this
+  conversation. Plain text (records are not markdown). Define a domain word before using it.
+- **Carry real evidence and current status** in the body: ids (`#WR-727`, `DX-2683`), commit
+  SHAs, file paths, timestamps read from the clock, and whether each claim is VERIFIED
+  (you checked it this session, name how) or UNVERIFIED.
+- **Keep records current, not appended to.** A changed fact is an edit of the existing
+  record (`plan_update_record`); a record that stopped being true is deleted
+  (`plan_delete_record`). The `G-n`/`R-n`/`CAV-n` ref never moves on edit and is never
+  reused after delete, so cards and commits can cite it.
 
-## MCP Tools
+## Hash-guarded writes — mechanical
 
-`plan_create`, `plan_list`, `plan_get`, `plan_get_record`, `plan_connect`,
-`plan_add_record`, `plan_update_record`, `plan_delete_record`, `plan_add_card`,
-`plan_set_architecture` — same tool-prefix rule as `issue-card-workflow` (hyphen
-`danx-dashboard` in a dispatched worker, underscore `danx_dashboard` in an operator
-session keyed that way in `.mcp.json`). `plan_update_record`/`plan_delete_record` are
-hash-guarded (pass the record's current content hash; a stale hash is refused with the
-current body returned, same pattern as everywhere else content-hash is used in this
-app) — read the tool's own schema via `ToolSearch` before calling it blind.
+- **Records:** pass `content_hash` = the record's `contentHash` from the immediately prior
+  `plan_get` / `plan_get_record` / `plan_add_record`. On `stale_plan_record` the refusal
+  carries `currentHash` + `currentBody`: merge your change into `currentBody`, retry with
+  `content_hash: currentHash`. Never resend the old hash.
+- **Architecture:** call `plan_get` IMMEDIATELY before `plan_set_architecture`, pass
+  `architecture.contentHash` as `base_hash` (`""` only for a never-written document). The
+  write replaces the whole document — send the full merged markdown. On
+  `stale_plan_architecture`: `plan_get` again, re-merge into the fresh content, retry.
+- **Solutions:** `issue_solution` edit/remove need `base_hash` = the solution's
+  `content_hash` from the last `list`; on `stale_solution` merge against `currentSolution`.
 
-## ⚠ THE UNSHIPPED-FRONTEND TRAP — read this before ever concluding "no Plans page"
+## Operator questions — a Task card, never chat, never AskUserQuestion
 
-**The backend above is fully live in production. There is also a complete, real React
-UI for it in source. Neither implies the other is deployed — and right now, the UI is
-not.**
+**Gate first. Ask the operator ONLY what only the operator can answer:** domain intent, a
+business/UX judgment, scope or authority, or an action only they can take (a credential, a
+login, hardware). Everything else you decide and record. These are NOT operator questions —
+each has been wrongly escalated before:
 
-danxbot is mid-migration from an old Vue dashboard (`dashboard/`) to a new React one
-(`frontend/`, React 19 + react-router 7). The Plans feature was built ONLY in the new
-`frontend/` app:
+- **A status report or "here is what shipped"** → a comment on the card or a record update.
+- **A self-correction** ("I was wrong about X") → fix the record/card, note it in a comment.
+- **A known bug blocked only on mechanics** (a flaky tool, a missing restart, a step you can
+  run) → do the step or file actionable work; it waits on nobody.
+- **A card that already carries a recommended or chosen option, or has work in flight** →
+  it is decided. Proceed on the recommendation; do not re-ask.
+- **Implementation choices** (file placement, library, approach A vs B differing only in
+  effort) → `dev:ideal-solution-mindset` decides them.
 
-- `frontend/src/app/routes.tsx` registers `/plans` (list) and `/plans/:planId` (detail).
-- `frontend/src/app/nav.ts` lists Plans as the second primary nav item.
-- Real screens exist: `frontend/src/routes/plans/{PlansListScreen,PlanDetailScreen,
-  PlanCardList,PlanRecordList,PlanArchitectureDocument,ConnectSessionDialog}.tsx`.
+Filing a real question, in order:
 
-**None of that is wired into what actually gets built or served.**
-`src/dashboard/server.ts` hardcodes `distDir = "../../dashboard/dist"` — the OLD Vue
-app's build output is the only SPA shell ever served, and the file says exactly why any
-other path 404s on purpose: *"Only GET / serves the SPA shell. Any unknown path ... must
-404 so the SPA's router can't pretend to own routes it doesn't."* `frontend/dist`
-appears nowhere in the Dockerfile, any `docker-compose*.yml`, or any build script —
-grepped, zero hits. Commit `760db03c` (2026-09-07, "Plans move to the new dashboard and
-the Vue version is deleted") deleted the OLD Vue Plans code as part of this migration —
-and then the new one was never plugged into deploy. The currently-served Vue app's own
-live tab list (`dashboard/src/components/DashboardHeader.vue`'s `TabId` union) has zero
-"plans" entry, confirming the same fact from the served-app side.
+1. `issue_create` on the board of the repo the question concerns (the MCP server's default
+   board, or pass `board: "<repo>:<slug>"`), with:
+   - `type: "Task"` — a planning record; a Task is never dispatched to a worker.
+   - `title` — leads with the domain, then says the question in plain words
+     ("Demand list vs detail page — which name wins when they disagree?"), never a symbol name.
+   - `summary` — 1–3 plain-language sentences, no markdown, no jargon: what is undecided and
+     why it matters. It must stand on its own — not a second title, not a teaser.
+   - `description` — the evidence: ids, file paths, log lines, how to see it. Markdown is
+     fine. Options do NOT go here.
+2. `issue_solution({action:"add"})` once per viable option: `title` (short name), `body`
+   (what the option actually does), `pro`, `con`. Exactly ONE option gets
+   `recommended: true`.
+3. `issue_requires_human({set:true, reason, steps})` — `reason` is one plain sentence; the
+   response's `solutions_reminder.solution_count` must be ≥ 2 (or 1 for a single approval).
+4. `plan_add_card({card_id})`.
+5. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
 
-**So: `GET https://danxbot.sageus.ai/plans` returning a raw `{"error":"Not found"}` is
-not a bug, not a wrong URL, and not evidence the feature doesn't exist — it is the
-correct, designed behavior of an app whose frontend migration has an unshipped gap.**
-`GET /api/plans` on the same host returns `401` (route exists) in the same breath —
-proving the backend/frontend split, not contradicting the 404.
+The operator answers in the dashboard. Read the answer with
+`issue_get({id, fields:["solutions"]})` → `decisions[]` (chosen solution + optional note, or
+a free-form answer). Then act on it, clear the gate (`issue_requires_human({set:false})`),
+and record the outcome (comment on the card; update any affected record or the architecture).
 
-Before ever reporting "no Plans UI exists" (or, in the other direction, trying to "fix"
-the 404 as if it were a routing regression): check `server.ts`'s `distDir` and whether
-`frontend/dist` has been wired into the build/deploy path yet. This file will not be
-updated automatically when that changes — if the trap above no longer matches what you
-observe, the migration has progressed; update this file in the same breath as noticing
-it, the same discipline `docker-deep`/`settings-deep` already hold for their own domains.
+## Actionable work cards
 
-## How to actually SEE the real Plans UI today (without deploying anything)
+Create through `danxbot:issue-card-workflow` (load it before choosing a card type), on the
+board of the repo the work changes, then `plan_add_card`. Follow that skill's create →
+ready → re-read verification. A card may sit on several plans; `plan_add_card` is idempotent
+and never edits the card.
 
-`frontend/` has a plain local dev server (`npm run dev`, Vite, hardcoded port `5567`,
-`frontend/vite.config.ts`) that proxies every `/api/*` call to a configurable target:
+## THE TURN GATE — before every chat reply
 
-```bash
-cd frontend && VITE_API_TARGET=https://danxbot.sageus.ai npm run dev
-```
+1. Everything learned, decided, verified or disproven this turn is in the plan: a record
+   added/updated/deleted, the architecture merged, a card created/commented/answered.
+2. Every question for the operator is a Task card per the section above — none in chat.
+3. Chat is a short TLDR (what happened, what is next) plus a pointer: a record ref
+   (`CAV-4`), a card id (`DX-2683`), or the plan URL `https://danxbot.sageus.ai/plans/<id>`.
+   No tables, evidence blocks, option lists or root-cause prose in chat — that content
+   belongs in the plan, so move it there first.
 
-Opening `http://localhost:5567/plans/1` then renders the REAL React Plans screens
-against REAL production data — zero deploy risk, nothing about production changes.
+If the operator has to ask "is the plan updated?", the gate already failed.
 
-**The one thing this cannot do for you: authenticate.** The dashboard's session is an
-HttpOnly cookie scoped per-origin (`vite.config.ts`'s own comment explains why the proxy
-exists at all — no CORS preflight support server-side, so a direct cross-origin call is
-refused before it ever leaves the tab). Being signed into `danxbot.sageus.ai` in one tab
-does **not** carry a session into `localhost:5567` in another — that origin needs its own
-sign-in. **Never type the operator's password into that form on their behalf, no
-exception** — the same absolute rule as everywhere else in this repo's rules; ask the
-operator to sign in on that tab themselves, the same account, same password, just a
-second tab.
+## Resuming and handing off
 
-## Cross-References
+There is no resume page and no handoff document. A new or post-compaction session:
+`plan_list` → `plan_connect` (if not connected) → `plan_get`, then `issue_get` the attached
+cards that are in progress or carry `requires_human`. Before stopping with work unfinished,
+the Turn Gate already guarantees the plan holds current state; add a caveat for anything
+half-done that the next session would otherwise trip over.
 
-- `danxbot:danxbot` (main orientation skill) — points here for anything Plan-specific
-- `danxbot:issue-card-workflow` — the card/issue side a Plan attaches to via `plan_cards`
-- `human-collaboration:artifact-plan` — the HTML-artifact pattern a Plan is meant to
-  eventually replace for durable cross-session tracking
+## Feature facts (verified 2026-09-14 against `C:\Users\newms\projects\danxbot` at `fb461cdb`)
+
+- **UI:** production serves the React Plans UI at `https://danxbot.sageus.ai/plans` and
+  `/plans/:planId` (`frontend/src/app/routes.tsx`; `src/dashboard/server.ts` serves
+  `frontend/dist/` for the `plans` route prefix, assets under `/react-assets/`). The plan
+  detail screen shows the plan's cards plus Goals / Architecture / Rules / Caveats tabs.
+  The old per-board `/plan` screen is gone (DX-2680) — "Plan" and "Plans" are not two areas.
+- **Tables** (`src/db/migrations/`): `plans` (id, name, created_at, plus the
+  `architecture_*` columns — the architecture document is one-to-one on the plan row,
+  content-hash guarded); `plan_cards` (plan_id, card_id, unique pair, cascade on either
+  side); `plan_records` (kind `goal|rule|caveat`, permanent `ref_num`, body, content hash,
+  soft delete via `deleted_at` — refs are never reused); `plan_sessions` (session_id =
+  `CLAUDE_CODE_SESSION_ID` primary key, nullable plan_id — one plan per session);
+  `issue_solutions` + `issue_decisions` (a card's candidate answers, at most one live
+  recommended, and the operator's recorded answers).
+- **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`): `/api/plans`
+  (list/create), `/api/plans/:id` (+ `/cards`, `/records`, `/architecture`, `/full`),
+  session-scoped `/api/plans/mine/*`, `/api/plan-sessions/me/plan` (connect),
+  `/api/issues/:id/solutions[/:sid]`.
+- **MCP tools** (`packages/danx-dashboard-mcp/src/index.ts`, published as
+  `@thehammer/danx-dashboard-mcp`): `plan_list`, `plan_get`, `plan_create`, `plan_connect`,
+  `plan_add_record`, `plan_get_record`, `plan_update_record`, `plan_delete_record`,
+  `plan_add_card`, `plan_set_architecture`, plus `issue_solution` and
+  `issue_requires_human`. Prefix is `mcp__danx_dashboard__` in an operator session and
+  `mcp__danx-dashboard__` in a dispatched worker — load a tool's schema with `ToolSearch`
+  before the first call. Plans are global, not board-scoped; their cards come from any board.
+  The board Brief (`brief_*`) is a different feature.
+
+## Cross-references
+
+- `danxbot:issue-card-workflow` — card types, lifecycle, comments; the card side a plan attaches.
+- `human-collaboration:human-loop` — when an ask is legitimate and the brief shape it takes.
+- `dev:ideal-solution-mindset` — the principles a plan's design must satisfy.
