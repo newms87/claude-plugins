@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture document, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect). Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture document, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -15,8 +15,11 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 1. `plan_list` — read `session.planId`. Connected to the right plan already? Skip to 3.
 2. Find the plan for this effort in `plans[]` (read candidates with `plan_get({plan_id})`).
    Found → `plan_connect({plan_id})`. None → `plan_create({name})`, then `plan_connect`.
-3. `plan_get` (no id) — read the whole connected plan before doing anything else.
-4. Before every chat reply this session: run the Turn Gate below.
+3. Arm the live listener from the `plan_connect` reply — see "Live events" below. Already
+   connected (step 1 skipped connect)? Check `sessionListenerAttached` in `plan_list`; `false`
+   → call `plan_connect` for the same plan to mint a fresh listener, then arm it.
+4. `plan_get` (no id) — read the whole connected plan before doing anything else.
+5. Before every chat reply this session: run the Turn Gate below.
 
 ## What goes where — no other planning surface exists
 
@@ -49,6 +52,35 @@ working memory only), and a chat summary.
   plan with no coordination. Exactly ONE writer — the main session — calls plan write
   tools. Every sub-agent brief says: "Do not call any `plan_*` write tool; return findings to
   me." Sub-agents MAY call `plan_get` to read.
+
+## Live events — the operator's answers and comments reach you as notifications, never by polling
+
+Every `plan_connect` reply carries `listener: {command, persistent: true, instruction}`. The
+command is `npx -y @thehammer/danx-dashboard-mcp@<version> listen --stream '<dashboard>/api/plan-sessions/stream' --ticket '<ticket>' --lease-ms 900000`
+— the ticket is minted inside `plan_connect` and scoped to this session.
+
+- **Arm it immediately** with the `Monitor` tool, `persistent: true`, running `listener.command`
+  EXACTLY as returned. Never build or edit the command by hand, never paste your own token
+  into it. `plan_connect` failing with `listener_not_armed` means you are connected but NOT
+  listening — fix the reported problem and call `plan_connect` again.
+- **What arrives:** one notification line per event on a card attached to the connected plan,
+  shaped `[<CARD-ID> "<title>" <repo:board>] <who> <what>`, where `<what>` is one of
+  `commented: "…"`, `answered: chose "<solution>" — note: "…"`, `answered: "<free text>"`,
+  `set requires_human: "…"`, `cleared requires_human`, `blocked the card: "…"`,
+  `unblocked the card`. Long text is cut with `…` — `issue_get` the card for the full body.
+  Your own session's writes never appear. Keep-alives and reconnects print nothing.
+- **Act on an event** the way you would on an operator message: an `answered:` line means read
+  `issue_get({id, fields:["solutions"]})` → `decisions[]`, act on the decision, record the
+  outcome. (An answer already releases `requires_human` and `blocked` server-side — do not
+  re-clear them.)
+- **Final lines** start `[danx-dashboard listen]`. `stopped: another listener … took over` —
+  a newer `plan_connect` replaced it; re-arm only if that was not you. `stopped: … (revoked)`
+  or `gave up: …` — call `plan_connect` again (same plan is fine) and arm the new command.
+- **After a session restart or `/resume`:** the old Monitor is gone. `plan_connect` again and
+  arm the new command; the old ticket is superseded automatically.
+- **Never poll** comments, answers or gate state (`issue_get` loops, `sleep` loops, scheduled
+  wakeups). If `sessionListenerAttached` is `false` while connected, you are not listening —
+  re-arm; do not substitute a poll.
 
 ## Writing records
 
@@ -110,10 +142,12 @@ Filing a real question, in order:
 4. `plan_add_card({card_id})`.
 5. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
 
-The operator answers in the dashboard. Read the answer with
-`issue_get({id, fields:["solutions"]})` → `decisions[]` (chosen solution + optional note, or
-a free-form answer). Then act on it, clear the gate (`issue_requires_human({set:false})`),
-and record the outcome (comment on the card; update any affected record or the architecture).
+The operator answers in the dashboard ("Use this", "This but…" with a note, or a free-form
+answer). The answer arrives as an `answered:` line from the live listener — never poll for
+it. Read it with `issue_get({id, fields:["solutions"]})` → `decisions[]` (chosen solution +
+optional note, or a free-form answer). Answering already released `requires_human` and
+`blocked`; act on the decision and record the outcome (comment on the card; update any
+affected record or the architecture).
 
 ## Actionable work cards
 
@@ -142,7 +176,7 @@ cards that are in progress or carry `requires_human`. Before stopping with work 
 the Turn Gate already guarantees the plan holds current state; add a caveat for anything
 half-done that the next session would otherwise trip over.
 
-## Feature facts (verified 2026-09-14 against `C:\Users\newms\projects\danxbot` at `fb461cdb`)
+## Feature facts (verified 2026-09-14 against `C:\Users\newms\projects\danxbot` at `fb461cdb`; live events at `ae230aee`, MCP 0.1.53)
 
 - **UI:** production serves the React Plans UI at `https://danxbot.sageus.ai/plans` and
   `/plans/:planId` (`frontend/src/app/routes.tsx`; `src/dashboard/server.ts` serves
@@ -156,11 +190,15 @@ half-done that the next session would otherwise trip over.
   soft delete via `deleted_at` — refs are never reused); `plan_sessions` (session_id =
   `CLAUDE_CODE_SESSION_ID` primary key, nullable plan_id — one plan per session);
   `issue_solutions` + `issue_decisions` (a card's candidate answers, at most one live
-  recommended, and the operator's recorded answers).
+  recommended, and the operator's recorded answers); `issue_activity_events` (durable
+  comment/answer/requires_human/block events, 7-day retention) and
+  `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
 - **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`): `/api/plans`
   (list/create), `/api/plans/:id` (+ `/cards`, `/records`, `/architecture`, `/full`),
   session-scoped `/api/plans/mine/*`, `/api/plan-sessions/me/plan` (connect),
-  `/api/issues/:id/solutions[/:sid]`.
+  `/api/issues/:id/solutions[/:sid]`, `/api/issues/:id/answer` (records a decision, releases
+  the gates, refuses machine tokens), `/api/plan-sessions/stream` (the ticket-authed
+  session event stream the `listen` bin consumes).
 - **MCP tools** (`packages/danx-dashboard-mcp/src/index.ts`, published as
   `@thehammer/danx-dashboard-mcp`): `plan_list`, `plan_get`, `plan_create`, `plan_connect`,
   `plan_add_record`, `plan_get_record`, `plan_update_record`, `plan_delete_record`,
