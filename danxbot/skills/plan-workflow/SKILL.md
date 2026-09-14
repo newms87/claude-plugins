@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -40,6 +40,88 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 Forbidden substitutes: a plan file, `~/.claude/plans/*.md`, a repo `.md` spec or handoff doc,
 an HTML page, a `.junk/` notes file, in-session `TaskCreate`/`TaskList` as the record (it is
 working memory only), and a chat summary.
+
+## Scope — a plan serves its goals and nothing else
+
+**Incident (plan 2 "danxbot planning integration", 2026-09-14).** The goals were the Plans UI and
+agent-driven planning. Over one day the session attached every problem it tripped over to the
+connected plan: worker dispatch bugs, deploy disk, test-suite failures, npm tokens. By evening
+36 of 48 cards were worker reliability, one of them had taken ten review rounds, and a rule
+tied to that one card was holding every production deploy. Meanwhile the two cards that WERE
+the goal sat untouched in ToDo, and status reports described worker progress as plan progress.
+The operator had to ask "do all these cards accomplish the goal?" to surface it. The fix was a
+split into two plans. Everything below exists so that question never has to be asked again.
+
+### The scope gate — before `plan_add_card`, and before attaching any `issue_create`
+1. **Name the goal.** Write down which `G-n` this card moves toward done. If you cannot name
+   one, the card does NOT go on this plan.
+2. **"Found while working this plan" is not membership.** A bug in the worker, the deploy
+   pipeline, a test suite, a tool or another repo gets its own card on the plan whose goals it
+   serves. If no such plan exists, create one or leave the card off every plan and say so.
+   Being connected to a plan is never the reason a card joins it.
+3. **Enabling work joins only when it blocks a goal today.** A deploy fix or a flaky test belongs
+   on this plan only while it stands between a goal and done. In that case its first comment
+   names the goal it unblocks. When it stops blocking, remove it (`plan_remove_card`).
+
+### Keep checking — the drift audit
+Run it when you start work, after any card lands, and every time you report status. Sort the
+plan's open cards by the goal each one advances.
+
+| What the audit shows | What you do |
+|---|---|
+| Every open card names a goal | Carry on |
+| Goal cards untouched while other cards got the effort | Stop the other work. Ready or pick up the goal cards first |
+| Cards cluster around a theme no goal names | Split the plan (below) |
+| A card outside the goals is blocking goal work (a deploy hold, a shared rule) | Name the block in chat now, then move that card to its own plan |
+| One card reaches its third review round and still turns up new high-severity findings | File a Needs Help Task card with solutions on narrowing or splitting it. Never start round 4 silently |
+
+### Splitting a plan — mechanical
+1. `plan_create` the new plan, named after its theme.
+2. Write the new plan's goals, rules, caveats and architecture about **that theme only**.
+   - **Copy** rules that govern both plans, such as git, deploy and test-environment rules.
+   - **Move** caveats that belong to the new theme: add them there, delete them here.
+   - **Never carry across** records about the old plan's subject, or session history.
+3. **Write without moving your session.** MCP write tools act only on the connected plan, and
+   `plan_connect` to the other plan moves your session and your listener. Use the id-scoped
+   routes instead:
+   - `POST /api/plans/:id/records {kind, body, context}`
+   - `POST /api/plans/:id/architecture/sections {title, content}`
+   - `POST /api/plans/:id/cards {card_id}`
+   - `DELETE /api/plans/:id/records/:rid {content_hash}`
+   - `plan_remove_card({plan_id, card_id})`, or `DELETE /api/plans/:id/cards/:card_id`
+4. Add each moved card to the new plan, then remove it from the old one. A card sits on both
+   plans only when it truly advances a goal on each.
+5. On every in-progress card you move, leave a handoff comment covering:
+   - its current state and what is already on main;
+   - what is started but not finished;
+   - who holds the claim, and how to take it (`rollback_pickup`, then your own pickup);
+   - any rule it is currently tripping.
+6. Stop every sub-agent, monitor and background task you were running for the moved work, and
+   list them in chat. A builder left running pushes into work someone else now owns.
+7. Read both plans back before reporting: card counts, records, sections.
+8. Tell the operator:
+   - the new plan's id and URL;
+   - its goal, rule, caveat and card counts;
+   - what you stopped;
+   - that you are back on this plan's goals.
+
+### Dos and don'ts
+**Do**
+- Report status goal by goal: what moved toward done, and what is blocking each goal. Label
+  anything else plainly as outside this plan.
+- Keep goal cards flowing before chasing side problems. Ready buildable goal cards for the
+  worker instead of letting them wait behind infrastructure work.
+- When the operator asks whether the work serves the goal, answer from a fresh read of the
+  goals and cards, never from memory. Admit the drift if there is any.
+- When you said you would stop and check scope "if X happens", stop the moment X happens.
+
+**Don't**
+- Attach a card to the connected plan just because you are connected to it.
+- Let a rule written for one side problem silently block goal work, as a deploy hold did in
+  the incident.
+- Present side work as plan progress.
+- `plan_connect` to another plan to write one record there.
+- Keep the same open card on two plans with two different owners working it.
 
 ## Connecting — one session, one plan, one writer
 
