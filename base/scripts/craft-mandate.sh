@@ -54,7 +54,7 @@ FIVE HARD RULES:
    satisfy the literal request." When the two diverge, build to the former
    and say so.
 
-WHEN WRITING A PLAN OR AN ARTIFACT: state these standards explicitly (a short
+WHEN WRITING A PLAN (a danxbot Plan's architecture document or records): state these standards explicitly (a short
 banner naming zero-tech-debt / fully-responsive / real-chrome / DRY+SOLID /
 go-all-out) so how this is built is never ambiguous to whoever reads it next
 — and land the durable version of this contract in the project's own

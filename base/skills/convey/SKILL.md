@@ -20,18 +20,20 @@ Finished artifact someone reads to decide → convey applies.
 
 ## Where the artifact lives — NEVER in the consumer repo
 
-Agent-authored long-form transient artifacts — handoff docs, plans, scratch
-specs, investigation reports, multi-step working notes — go under `/tmp/`,
-**NEVER into the consumer repo's `docs/` tree** (or any other in-repo path).
-The repo is production source; agents dropping handoffs into `docs/handoffs/`
-clutters git, forces every future contributor's `git status` to ignore-list
-dance over the path, and leaves stale prose nobody owns the moment the
-receiving agent finishes.
+Plans, handoffs and decisions are never files: in a human-driven session they
+are written into the connected danxbot Plan (`danxbot:plan-workflow`); work
+records live on cards (`danxbot:issue-card-workflow`). Agent-authored transient
+scratch — probe output, investigation notes, multi-step working files — goes
+under `/tmp/`, **NEVER into the consumer repo's `docs/` tree** (or any other
+in-repo path). The repo is production source; agents dropping handoffs into
+`docs/handoffs/` clutters git, forces every future contributor's `git status`
+to ignore-list dance over the path, and leaves stale prose nobody owns the
+moment the receiving agent finishes.
 
 | Artifact | Path |
 |---|---|
-| Handoff for the next agent | `/tmp/handoffs/<TITLE>.md` |
-| Multi-file scratch / plan / investigation notes | `/tmp/<topic>/` |
+| Plan, handoff, operator question | the connected danxbot Plan — no file |
+| Multi-file scratch / investigation notes | `/tmp/<topic>/` |
 | One-shot inline report (the convey scaffold above) | emit in chat — no file |
 
 Only commit a doc to the consumer repo when the user **explicitly** asks for
