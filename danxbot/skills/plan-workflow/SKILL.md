@@ -18,7 +18,9 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 3. Arm the live listener from the `plan_connect` reply — see "Live events" below. Already
    connected (step 1 skipped connect)? Check `sessionListenerAttached` in `plan_list`; `false`
    → call `plan_connect` for the same plan to mint a fresh listener, then arm it.
-4. `plan_get` (no id) — read the whole connected plan before doing anything else.
+4. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
+   before doing anything else. A BARE `plan_get` returns only cheap scalars (`plan`, `boards`,
+   `cardCount`, `bucketCounts`, session state, `available_field_groups`) — see "Reading a plan".
 5. Before every chat reply this session: run the Turn Gate below.
 
 ## What goes where — no other planning surface exists
@@ -188,11 +190,28 @@ and never edits the card.
 
 If the operator has to ask "is the plan updated?", the gate already failed.
 
+## Reading a plan — ask only for what you need (DX-2727)
+
+- **Bare `plan_get` is small:** `{plan, boards, cardCount, bucketCounts, session,
+  sessionListenerAttached, available_field_groups}` — no cards, records or architecture.
+  Use it when you only need the plan's identity or your connection state.
+- **`fields` opts in, each group returning exactly what it names:** `cards` (member cards,
+  capped at 200 — `cards_total` carries the true count, so compare the two), `records` (every
+  goal/rule/caveat keyed by kind) or `records:goal` / `records:rule` / `records:caveat` (one
+  kind only), `architecture` (`{sections:[...]}` with each section's `contentHash`), `sessions`
+  (every session connected to the plan). An unknown group name is a 400 naming the allowed set.
+- **Before a hash-guarded edit** read only the group that carries the hash: `records:<kind>`
+  for a record, `architecture` (or `plan_get_architecture_section`) for a section.
+- **Read many cards in ONE call:** `issue_get({ids:["DX-1","ENG-7",...], fields:[...]})` resolves
+  every id globally (across boards) and returns `{issues, not_found}` — an unknown id lands in
+  `not_found` instead of failing the call. Pass exactly one of `id` / `ids`.
+
 ## Resuming and handing off
 
 There is no resume page and no handoff document. A new or post-compaction session:
-`plan_list` → `plan_connect` (if not connected) → `plan_get`, then `issue_get` the attached
-cards that are in progress or carry `requires_human`. Before stopping with work unfinished,
+`plan_list` → `plan_connect` (if not connected) → `plan_get({fields:["records","architecture","cards"]})`,
+then ONE `issue_get({ids:[...]})` for the attached cards that are in progress or carry
+`requires_human`. Before stopping with work unfinished,
 the Turn Gate already guarantees the plan holds current state; add a caveat for anything
 half-done that the next session would otherwise trip over.
 
@@ -216,6 +235,9 @@ half-done that the next session would otherwise trip over.
 - **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`): `/api/plans`
   (list/create/rename, paged with `limit`/`offset`/`sort`/`q`), `/api/plans/:id` (+ `/cards`,
   `/records`, `/full`), `/api/plans/mine/architecture/sections[/:sid|/reorder]`,
+  `/full` and `/mine` both take `?fields=cards,records|records:<kind>,architecture,sessions`
+  (bare = scalars only — DX-2727), `GET /api/issues/batch?ids=...` (the global batch card read
+  behind `issue_get({ids})` — DX-2727),
   session-scoped `/api/plans/mine/*`, `/api/plan-sessions/me/plan` (connect),
   `/api/issues/:id/solutions[/:sid]`, `/api/issues/:id/answer` (records a decision, releases
   the gates, refuses machine tokens), `/api/plan-sessions/stream` (the ticket-authed
