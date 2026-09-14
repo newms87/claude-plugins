@@ -195,8 +195,11 @@ If the operator has to ask "is the plan updated?", the gate already failed.
 - **Bare `plan_get` is small:** `{plan, boards, cardCount, bucketCounts, session,
   sessionListenerAttached, available_field_groups}` — no cards, records or architecture.
   Use it when you only need the plan's identity or your connection state.
-- **`fields` opts in, each group returning exactly what it names:** `cards` (member cards,
-  capped at 200 — `cards_total` carries the true count, so compare the two), `records` (every
+- **`fields` opts in, each group returning exactly what it names:** `cards` (one page of member
+  cards — `cards_limit` 1..1000, default 200, and `cards_offset`, default 0; the response
+  carries `cards_total` and `cards_offset`, so keep paging with a larger `cards_offset` while
+  `cards_offset + cards.length < cards_total`; either paging param without `fields` including
+  `cards` is a 400), `records` (every
   goal/rule/caveat keyed by kind) or `records:goal` / `records:rule` / `records:caveat` (one
   kind only), `architecture` (`{sections:[...]}` with each section's `contentHash`), `sessions`
   (every session connected to the plan). An unknown group name is a 400 naming the allowed set.
@@ -204,7 +207,9 @@ If the operator has to ask "is the plan updated?", the gate already failed.
   for a record, `architecture` (or `plan_get_architecture_section`) for a section.
 - **Read many cards in ONE call:** `issue_get({ids:["DX-1","ENG-7",...], fields:[...]})` resolves
   every id globally (across boards) and returns `{issues, not_found}` — an unknown id lands in
-  `not_found` instead of failing the call. Pass exactly one of `id` / `ids`.
+  `not_found` instead of failing the call. Pass exactly one of `id` / `ids`, at most 100 distinct
+  ids per call (more is a 400 — split the list). `board` is refused alongside `ids`, because a
+  batch read is never board-scoped.
 
 ## Resuming and handing off
 
@@ -236,8 +241,9 @@ half-done that the next session would otherwise trip over.
   (list/create/rename, paged with `limit`/`offset`/`sort`/`q`), `/api/plans/:id` (+ `/cards`,
   `/records`, `/full`), `/api/plans/mine/architecture/sections[/:sid|/reorder]`,
   `/full` and `/mine` both take `?fields=cards,records|records:<kind>,architecture,sessions`
-  (bare = scalars only — DX-2727), `GET /api/issues/batch?ids=...` (the global batch card read
-  behind `issue_get({ids})` — DX-2727),
+  (bare = scalars only) plus `cards_limit`/`cards_offset` paging for the cards group,
+  `GET /api/issues/batch?ids=...` (the global batch card read behind `issue_get({ids})`, at most
+  100 ids — all DX-2727, MCP 0.1.62),
   session-scoped `/api/plans/mine/*`, `/api/plan-sessions/me/plan` (connect),
   `/api/issues/:id/solutions[/:sid]`, `/api/issues/:id/answer` (records a decision, releases
   the gates, refuses machine tokens), `/api/plan-sessions/stream` (the ticket-authed
