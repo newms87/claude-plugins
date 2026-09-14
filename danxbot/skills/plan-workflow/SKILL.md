@@ -30,6 +30,8 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 | A surprising fact, known gap, verified-vs-assumed note | Caveat record (`CAV-n`) | `plan_add_record({kind:"caveat"})` |
 | How the work is shaped (components, data flow, decisions and their reasons) | Architecture document (one markdown doc) | `plan_set_architecture` |
 | A piece of actionable work | A card on the board of the repo it changes, attached to the plan | `issue_create` → `plan_add_card` |
+| A card attached to the wrong plan | Remove the membership (the card itself is untouched) | `plan_remove_card({plan_id, card_id})` |
+| A plan whose name no longer fits | Rename it | `plan_rename({plan_id, name})` |
 | A question only the operator can answer | A `Task` card with solutions, attached to the plan | see "Operator questions" |
 | Progress, findings, evidence on a specific piece of work | A comment on that card | `issue_comment` |
 
@@ -215,7 +217,8 @@ half-done that the next session would otherwise trip over.
 - **MCP tools** (`packages/danx-dashboard-mcp/src/index.ts`, published as
   `@thehammer/danx-dashboard-mcp`): `plan_list`, `plan_get`, `plan_create`, `plan_connect`,
   `plan_add_record`, `plan_get_record`, `plan_update_record`, `plan_delete_record`,
-  `plan_add_card`, `plan_set_architecture`, plus `issue_solution` and
+  `plan_add_card`, `plan_remove_card` and `plan_rename` (both take an explicit `plan_id`,
+  idempotent / immediate — DX-2740), `plan_set_architecture`, plus `issue_solution` and
   `issue_requires_human`. Prefix is `mcp__danx_dashboard__` in an operator session and
   `mcp__danx-dashboard__` in a dispatched worker — load a tool's schema with `ToolSearch`
   before the first call. Plans are global, not board-scoped; their cards come from any board.
