@@ -328,13 +328,15 @@ inherit the session's own model.
 
 | Card effort | Model / effort | Dispatch via |
 |---|---|---|
-| min, very_low | haiku / minimal, haiku / low | `danxbot:worker-haiku-low` |
+| min, very_low | haiku / low | `danxbot:worker-haiku-low` |
 | low | haiku / high | `danxbot:worker-haiku-high` |
 | medium | sonnet / low | `danxbot:worker-sonnet-low` |
 | high | sonnet / medium | `danxbot:worker-sonnet-medium` — the default for most build, fix, test and investigation work |
 | very_high | sonnet / high | `danxbot:worker-sonnet-high` |
 | max | opus / high | `danxbot:worker-opus-high` — the minimum for any architecture agent, including architecture-gate reviewers |
 | above max | opus/fable, high | `danxbot:worker-fable-high` — extra-complex stories only |
+
+Danxbot's own effort ladder includes `haiku / minimal` for `min` card effort, but Claude Code sub-agents have no `minimal` effort level, so from a planning session both `min` and `very_low` dispatch as `danxbot:worker-haiku-low`.
 
 Most work is card effort `high`: cards have precise acceptance criteria, tests and quality
 gates, so Sonnet at medium effort rarely gets it wrong. Bulk, mechanical or "turk" edits go to
