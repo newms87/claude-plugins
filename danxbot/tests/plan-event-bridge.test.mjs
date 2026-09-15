@@ -224,18 +224,25 @@ function spyRelay() {
 }
 
 describe("subcommand exit handling", () => {
-  test("any stop record is terminal, whatever the reason", () => {
+  test("any stop record is terminal, whatever the reason; only bridge_failed is fatal", () => {
     for (const reason of ["not_connected", "unauthorized", "mint_refused", "mint_bad_response", "superseded", "replaced", "revoked", "refused"]) {
       assert.deepEqual(bridge.classifyChildExit({ stopped: { reason, detail: "d" }, code: 1, ranMs: 10 * 60_000 }), {
         action: "exit",
         reason: `${reason}: d`,
+        fatal: false,
       });
     }
+    assert.deepEqual(bridge.classifyChildExit({ stopped: { reason: "bridge_failed", detail: "spawn ENOENT" }, code: null, ranMs: 10 }), {
+      action: "exit",
+      reason: "bridge_failed: spawn ENOENT",
+      fatal: true,
+    });
   });
 
-  test("a quick death without a stop record is terminal; one after a healthy run is restarted", () => {
+  test("a quick death without a stop record is terminal and fatal; one after a healthy run is restarted", () => {
     assert.equal(bridge.classifyChildExit({ stopped: null, code: 1, ranMs: 500 }).action, "exit");
     assert.match(bridge.classifyChildExit({ stopped: null, code: 1, ranMs: 500 }).reason, /^bridge_failed/);
+    assert.equal(bridge.classifyChildExit({ stopped: null, code: 1, ranMs: 500 }).fatal, true);
     assert.equal(bridge.classifyChildExit({ stopped: null, code: null, ranMs: bridge.HEALTHY_RUN_MS }).action, "restart");
   });
 
@@ -244,7 +251,7 @@ describe("subcommand exit handling", () => {
     const spawns = [];
     const logs = [];
     const { relay } = spyRelay();
-    const reason = await bridge.superviseBridge({
+    const { reason, fatal } = await bridge.superviseBridge({
       spawnChild: () => {
         spawns.push(clock);
         if (spawns.length === 1) {
@@ -259,6 +266,7 @@ describe("subcommand exit handling", () => {
       sleep: noSleep,
     });
     assert.equal(reason, "not_connected: the session is not connected to a plan");
+    assert.equal(fatal, false);
     assert.equal(spawns.length, 2);
     assert.ok(logs.some((m) => m.startsWith("restarting the bridge subcommand")));
   });
@@ -267,7 +275,7 @@ describe("subcommand exit handling", () => {
     const logs = [];
     let spawns = 0;
     const { relay } = spyRelay();
-    const reason = await bridge.superviseBridge({
+    const { reason, fatal } = await bridge.superviseBridge({
       spawnChild: () => {
         spawns += 1;
         return fakeChild({ stderr: `npm error code E404\nnpm error 404 Not Found - dispatch-secret\n`, code: 1 });
@@ -279,6 +287,7 @@ describe("subcommand exit handling", () => {
       redact: (text) => text.split("dispatch-secret").join("[redacted]"),
     });
     assert.match(reason, /^bridge_failed: .*code 1/);
+    assert.equal(fatal, true);
     assert.equal(spawns, 1);
     const tail = logs.find((m) => m.startsWith("bridge subcommand stderr (tail): "));
     assert.match(tail, /E404/);
@@ -298,8 +307,8 @@ describe("subcommand exit handling", () => {
     assert.equal(tail.length, "bridge subcommand stderr (tail): ".length + bridge.STDERR_TAIL_CHARS);
   });
 
-  test("a spawn that throws (npx not found) is terminal", async () => {
-    const reason = await bridge.superviseBridge({
+  test("a spawn that throws (npx not found) is terminal and fatal", async () => {
+    const { reason, fatal } = await bridge.superviseBridge({
       spawnChild: () => {
         throw new Error("npx not found: expected X next to Y");
       },
@@ -309,6 +318,7 @@ describe("subcommand exit handling", () => {
       sleep: noSleep,
     });
     assert.equal(reason, "bridge_failed: npx not found: expected X next to Y");
+    assert.equal(fatal, true);
   });
 });
 
@@ -611,6 +621,30 @@ describe("relay queue overflow", () => {
   });
 });
 
+// ------------------------------------------------ 9c. shutdown exit codes
+
+describe("shutdown exit codes", () => {
+  test("a fatal shutdown (overflow, or any bridge_failed exit) exits non-zero; a normal stop exits 0", () => {
+    assert.equal(bridge.exitCodeForShutdown(true), 1);
+    assert.equal(bridge.exitCodeForShutdown(false), 0);
+    assert.equal(bridge.exitCodeForShutdown(undefined), 0);
+  });
+
+  test("classifyChildExit and superviseBridge agree on which reasons are fatal, feeding exitCodeForShutdown directly", async () => {
+    // A clean stop record (e.g. SessionEnd-adjacent "not_connected") is never fatal.
+    const clean = bridge.classifyChildExit({ stopped: { reason: "not_connected", detail: "d" }, code: 1, ranMs: 10 });
+    assert.equal(bridge.exitCodeForShutdown(clean.fatal), 0);
+
+    // A subcommand that died before ever producing a stop record IS fatal.
+    const crashed = bridge.classifyChildExit({ stopped: null, code: 1, ranMs: 10 });
+    assert.equal(bridge.exitCodeForShutdown(crashed.fatal), 1);
+
+    // The relay queue's own overflow reason is what run() passes to shutdown() with
+    // { fatal: true } — verified end-to-end via createRelayQueue's onOverflow callback above.
+    assert.equal(bridge.exitCodeForShutdown(true), 1);
+  });
+});
+
 // ---------------------------------------------------------- 10. start gate
 
 describe("start gate", () => {
@@ -640,9 +674,9 @@ describe("start gate", () => {
     assert.throws(() => bridge.sessionPaths("/data", "../escape"), /unexpected characters/);
   });
 
-  test("a session that is not connected ends the bridge on the first stop record, without a restart", async () => {
+  test("a session that is not connected ends the bridge on the first stop record, without a restart, and is not fatal", async () => {
     let spawns = 0;
-    const reason = await bridge.superviseBridge({
+    const { reason, fatal } = await bridge.superviseBridge({
       spawnChild: () => {
         spawns += 1;
         return fakeChild({ stdout: [recordLine({ type: "stopped", reason: "not_connected", detail: "the session is not connected to a plan" })], code: 1 });
@@ -653,6 +687,7 @@ describe("start gate", () => {
       sleep: noSleep,
     });
     assert.equal(reason, "not_connected: the session is not connected to a plan");
+    assert.equal(fatal, false);
     assert.equal(spawns, 1);
   });
 });

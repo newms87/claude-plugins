@@ -463,16 +463,23 @@ export function createRelayQueue({ post, record, log, sleep, isStopped = () => f
   };
 }
 
-/** What to do when the subcommand exits: `exit` the bridge with a reason, or `restart` it. */
+/**
+ * What to do when the subcommand exits: `exit` the bridge with a reason, or `restart` it.
+ * An exit carries `fatal`: true for a `bridge_failed` stop (the subcommand's own spawn/mint
+ * failure) or a death too quick to have produced any stop record at all; false for every
+ * clean stop record the subcommand reports on purpose (`not_connected`, `superseded`,
+ * `revoked`, ...). `run()` threads this straight through to `shutdown()`'s own exit code —
+ * see `exitCodeForShutdown` — so nothing here duplicates that decision.
+ */
 export function classifyChildExit({ stopped, code, ranMs }) {
-  if (stopped) return { action: "exit", reason: `${stopped.reason}: ${stopped.detail}` };
+  if (stopped) return { action: "exit", reason: `${stopped.reason}: ${stopped.detail}`, fatal: stopped.reason === "bridge_failed" };
   if (ranMs >= HEALTHY_RUN_MS) {
     return {
       action: "restart",
       reason: `the bridge subcommand exited (code ${code}) without a stop record after running ${Math.round(ranMs / 1000)} s`,
     };
   }
-  return { action: "exit", reason: `bridge_failed: the bridge subcommand exited (code ${code}) without a stop record` };
+  return { action: "exit", reason: `bridge_failed: the bridge subcommand exited (code ${code}) without a stop record`, fatal: true };
 }
 
 /** Runs the subcommand once. Resolves with its stop record (or null) and exit code. */
@@ -513,13 +520,16 @@ function runChildOnce({ spawnChild, relay, log, redact }) {
   });
 }
 
-/** Run the subcommand until it reports a terminal outcome or dies too early to restart. Returns the exit reason. */
+/**
+ * Run the subcommand until it reports a terminal outcome or dies too early to restart.
+ * Returns `{ reason, fatal }` — see `classifyChildExit` for what makes an exit fatal.
+ */
 export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, redact = (text) => text }) {
   for (;;) {
     const startedAt = now();
     const outcome = await runChildOnce({ spawnChild, relay, log, redact });
     const decision = classifyChildExit({ ...outcome, ranMs: now() - startedAt });
-    if (decision.action === "exit") return decision.reason;
+    if (decision.action === "exit") return { reason: decision.reason, fatal: decision.fatal };
     log(`restarting the bridge subcommand: ${decision.reason}`);
     await sleep(RESTART_DELAY_MS);
   }
@@ -527,6 +537,18 @@ export async function superviseBridge({ spawnChild, relay, log, now = Date.now, 
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The process exit code for a shutdown, so a FATAL condition (a relay-queue overflow, a
+ * subcommand that never produced a stop record) is distinguishable from a normal stop
+ * (SessionEnd, yielding to a fresher bridge, the parent process ending, a clean stop record
+ * like `not_connected`) by anything watching this process's exit code alone. The ONE call
+ * site (`shutdown`, in `run()`) decides `fatal` from where it was called, never duplicating
+ * this mapping.
+ */
+export function exitCodeForShutdown(fatal) {
+  return fatal ? 1 : 0;
 }
 
 async function run(sessionId, env = process.env) {
@@ -543,13 +565,13 @@ async function run(sessionId, env = process.env) {
   let child = null;
   let stopping = false;
 
-  const shutdown = (why) => {
+  const shutdown = (why, { fatal = false } = {}) => {
     if (stopping) return;
     stopping = true;
     log(`exiting: ${why}`);
     if (child) killTree(child.pid);
     if (readJsonFile(paths.pid)?.pid === process.pid) fs.rmSync(paths.pid, { force: true });
-    process.exit(0);
+    process.exit(exitCodeForShutdown(fatal));
   };
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => shutdown(`received ${signal}`));
 
@@ -576,11 +598,11 @@ async function run(sessionId, env = process.env) {
     log,
     sleep,
     isStopped: () => stopping,
-    onOverflow: (reason) => shutdown(reason),
+    onOverflow: (reason) => shutdown(reason, { fatal: true }),
   });
 
   log(`bridge started for session ${sessionId} (pid ${process.pid})`);
-  const reason = await superviseBridge({
+  const { reason, fatal } = await superviseBridge({
     spawnChild: () => {
       const resumeIds = readCursor(paths.cursor);
       const { command, args } = bridgeCommand({ resumeIds });
@@ -600,7 +622,7 @@ async function run(sessionId, env = process.env) {
   });
   child = null;
   await Promise.race([relay.idle(), sleep(DRAIN_ON_EXIT_MS)]);
-  shutdown(reason);
+  shutdown(reason, { fatal });
 }
 
 // ------------------------------------------------------------------------ main
