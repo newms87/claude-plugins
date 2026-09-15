@@ -38,6 +38,16 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    out of existence instead. Every plan states this standard, and every card is scoped so that finishing it leaves
    none of these behind; anything that cannot land in the same card becomes its own card before the work starts.
    (Engineering detail for code: the base CRAFT mandate. Operating principles: the base OPERATING CONTRACT.)
+
+3. RUNNING A PLAN WITH SUB-AGENTS (see danxbot:plan-workflow "Running a plan with sub-agents").
+   Size every sub-agent: set the card's effort_level first, then dispatch the matching
+   danxbot:worker-<model>-<effort> agent — never let a sub-agent inherit the session's own model.
+   Card status is always true: In Progress only while something is actively working it; when
+   nobody is, rollback_pickup then ready, restoring assigned_agent.
+   Liveness claims need live evidence: never call a dispatch "running" or "making progress" from
+   a status field alone — cite two timestamped progress reads 60s+ apart, or a JSONL last-entry age.
+   Session names match: this session's name on the plan is its Claude session title, never the
+   repo folder.
 EOF
 
 printf '%s\n' "$MANDATE"

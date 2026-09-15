@@ -15,10 +15,13 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 1. `plan_list` — read `session.planId`. Connected to the right plan already? Skip to 3.
 2. Find the plan for this effort in `plans[]` (read candidates with `plan_get({plan_id})`).
    Found → `plan_connect({plan_id})`. None → `plan_create({name})`, then `plan_connect`.
-3. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
+3. Set this plan session's title to match your Claude session title, never the repo folder —
+   `PATCH /api/plan-sessions/:sessionId {"title": "<Claude session title>"}` (read the title with
+   the Desktop session tool, `get_session` with `self`). See "Running a plan with sub-agents".
+4. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
    before doing anything else. A BARE `plan_get` returns only cheap scalars (`plan`, `boards`,
    `cardCount`, `bucketCounts`, session state, `available_field_groups`) — see "Reading a plan".
-4. Before every chat reply this session: run the Turn Gate below.
+5. Before every chat reply this session: run the Turn Gate below.
 
 ## What goes where — no other planning surface exists
 
@@ -226,10 +229,15 @@ the bridge holds the session's one stream ticket.
   of the ARCHITECTURE. Progress, status, deploy results, "blocked until X" notes and session
   dialog are NEVER records — they are comments on the card they concern (create the card if the
   work has none).
-- **Card states are always true.** Before a local sub-agent works a card, `pickup manual:true`
-  with `assigned_agent` (read it back). Buildable work goes to the danxbot worker by `ready`
-  (isolated worktrees, every quality gate). Shipped work is completed (checklist → gate verdicts
-  → complete → retro) the moment it lands.
+- **Card states are always true.** A card is In Progress only while something is actively
+  working it: this session, a sub-agent, or a worker dispatch. Before a local sub-agent works a
+  card, `pickup manual:true` with `assigned_agent` (read it back). Buildable work goes to the
+  danxbot worker by `ready` (isolated worktrees, every quality gate). Shipped work is completed
+  (checklist → gate verdicts → complete → retro) the moment it lands. The moment nobody is
+  working a card, `issue_transition rollback_pickup` then `ready` — `rollback_pickup` clears
+  `assigned_agent`, so restore the claim with `POST /api/issues/:id/assigned-agent {"name":
+  "<agent>"}` if the same agent should keep it. Update a card's state as the work happens, never
+  in a batch at the end.
 - **Write for a stranger**: an experienced engineer who has never seen this codebase or this
   conversation. Plain text (records are not markdown). Define a domain word before using it.
 - **Carry real evidence and current status** in the body: ids (`#WR-727`, `DX-2683`), commit
@@ -307,12 +315,74 @@ board of the repo the work changes, then `plan_add_card`. Follow that skill's cr
 ready → re-read verification. A card may sit on several plans; `plan_add_card` is idempotent
 and never edits the card.
 
+## Running a plan with sub-agents
+
+Standing operator directives, 2026-09-15. Apply these to every sub-agent and worker dispatch a
+planning session launches — not just to the plan record.
+
+### Size every sub-agent before you dispatch it
+
+Decide how much reasoning the task needs and set that as `effort_level` on the card it serves,
+before dispatching. Then launch the model/effort pair the ladder maps to — never let a sub-agent
+inherit the session's own model.
+
+| Card effort | Model / effort | Dispatch via |
+|---|---|---|
+| min, very_low | haiku / minimal, haiku / low | `danxbot:worker-haiku-low` |
+| low | haiku / high | `danxbot:worker-haiku-high` |
+| medium | sonnet / low | `danxbot:worker-sonnet-low` |
+| high | sonnet / medium | `danxbot:worker-sonnet-medium` — the default for most build, fix, test and investigation work |
+| very_high | sonnet / high | `danxbot:worker-sonnet-high` |
+| max | opus / high | `danxbot:worker-opus-high` — the minimum for any architecture agent, including architecture-gate reviewers |
+| above max | opus/fable, high | `danxbot:worker-fable-high` — extra-complex stories only |
+
+Most work is card effort `high`: cards have precise acceptance criteria, tests and quality
+gates, so Sonnet at medium effort rarely gets it wrong. Bulk, mechanical or "turk" edits go to
+Haiku. Architecture work is Opus at minimum.
+
+**Mechanism.** The Agent tool's per-call `model` parameter wins over agent frontmatter, but
+effort can only be set through an agent definition's `effort` frontmatter — there is no per-call
+effort parameter. So dispatch through the plugin's `worker-<model>-<effort>` agent definitions
+(each pre-sets both fields), not by passing `model` alone and hoping effort follows. Plugin
+agents are namespaced by plugin name — once this plugin is installed, invoke them as
+`subagent_type: "danxbot:worker-<model>-<effort>"`, not the bare filename.
+
+**Mechanical check.** Before every `Agent(...)` call, name the card's `effort_level` and the
+`subagent_type` the ladder row maps it to. A plain `general-purpose` call or an unspecified
+`subagent_type` silently inherits the session's own model.
+
+### Liveness claims need live evidence
+
+`status: running` on a dispatch row does not prove an agent is working. Before telling the
+operator a dispatch is running or making progress, do one of:
+- read a progress counter (e.g. `tokensOut` from `GET /api/issues/:id/dispatches`) twice, at
+  least 60 seconds apart, and report both timestamps and values; or
+- read the dispatch's session JSONL (the row carries `jsonlPath` on the worker host) and state
+  how long ago its last entry was.
+
+Always name which source you read.
+
+**Incident, 2026-09-15.** A planning session told the operator three worker dispatches were
+"still producing output" after one read of the dashboard rows, never having seen the JSONL. The
+operator had to ask where that came from.
+
+### Session names match
+
+A planning session's name on the plan must equal its Claude session title, never the repo
+folder — several sessions can share one repo. Until card DX-2816 automates it, set it yourself
+at connect time (TodoWrite checklist step 3): `PATCH /api/plan-sessions/:sessionId {"title":
+"<Claude session title>"}`. Read the Claude title with the Desktop session tool, `get_session`
+with `self`.
+
 ## THE TURN GATE — before every chat reply
 
 1. Everything learned, decided, verified or disproven this turn is in the plan: a record
    added/updated/deleted, the architecture merged, a card created/commented/answered.
 2. Every question for the operator is a Task card per the section above — none in chat.
-3. Chat is a short TLDR (what happened, what is next) plus a pointer: a record ref
+3. Any claim this turn that a dispatch or sub-agent is running or making progress cites two
+   timestamped reads at least 60 seconds apart, or a named JSONL last-entry age — never a status
+   field alone. See "Liveness claims need live evidence" above.
+4. Chat is a short TLDR (what happened, what is next) plus a pointer: a record ref
    (`CAV-4`), a card id (`DX-2683`), or the plan URL `https://danxbot.sageus.ai/plans/<id>`.
    No tables, evidence blocks, option lists or root-cause prose in chat — that content
    belongs in the plan, so move it there first.
