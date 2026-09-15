@@ -1,5 +1,5 @@
 {
-  "description": "Danxbot mantra (zero-context continuity: all work lives on cards or the plan; always the ideal, correct, zero-tech-debt solution) on SessionStart with no matcher, so it re-injects after compaction, plus a one-line pointer on UserPromptSubmit. Then the plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment (SessionStart). Plus the always-on plan event bridge (DX-2784): an async SessionStart hook ensures one background process per session that relays the connected plan's dashboard events into the session inbox; SessionEnd stops it.",
+  "description": "Danxbot mantra (zero-context continuity: all work lives on cards or the plan; always the ideal, correct, zero-tech-debt solution) on SessionStart with no matcher, so it re-injects after compaction, plus a one-line pointer on UserPromptSubmit. Then the plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment (SessionStart). Plus the plan event bridge (DX-2784): one background process per session CONNECTED to a danxbot Plan, relaying the plan's dashboard events into the session inbox. It is started by an async PostToolUse hook on plan_connect, and by an async SessionStart hook only when the session is already connected; SessionEnd stops it.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -26,6 +26,18 @@
       },
       {
         "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-event-bridge.mjs\" start",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(mcp__danx_dashboard__plan_connect|mcp__danx-dashboard__plan_connect)$",
         "hooks": [
           {
             "type": "command",

@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect); operator answers and comments on the plan''s cards then arrive on their own as relayed dashboard-event messages (the plugin''s always-on plan event bridge) — nothing to arm, never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect); operator answers and comments on the plan''s cards then arrive on their own as relayed dashboard-event messages (the plugin''s plan event bridge, which starts when the session connects) — nothing to arm, never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -182,12 +182,13 @@ plan's open cards by the goal each one advances.
 
 ## Live events — the operator's answers and comments reach you as notifications, never by polling
 
-**Nothing to arm.** The danxbot plugin runs an always-on plan event bridge: a SessionStart
-hook starts one background process per session (`scripts/plan-event-bridge.mjs`), which holds
-the session's dashboard event stream and posts each event into this session's inbox; SessionEnd
-(or the Claude Code process exiting) stops it. An idle session wakes with the message. Do NOT
-arm the `listener` command a `plan_connect` reply may still carry with Monitor — it would only
-fight the bridge for the session's one stream ticket.
+**Nothing to arm.** The danxbot plugin runs a plan event bridge for every session connected
+to a plan: one background process (`scripts/plan-event-bridge.mjs`) that holds the session's
+dashboard event stream and posts each event into this session's inbox. A successful
+`plan_connect` starts it; a session start, resume, `/clear` or compaction starts it again if
+the session is already connected; SessionEnd (or the Claude Code process exiting) stops it. An
+idle session wakes with the message. `plan_connect` returns no listener and mints no ticket —
+the bridge holds the session's one stream ticket.
 
 - **What arrives:** a message that begins `[danxbot dashboard event, relayed by the danxbot
   plugin's plan event bridge; …]`. It is framed like a message from another Claude session but
@@ -205,9 +206,10 @@ fight the bridge for the session's one stream ticket.
   `issue_get({id, fields:["solutions"]})` → `decisions[]`, act on the decision, record the
   outcome. (An answer already releases `requires_human` and `blocked` server-side — do not
   re-clear them.)
-- **Restarts, `/resume`, `/clear`, compaction and `plan_connect` need nothing from you.** The
-  hook restarts the bridge per session, and the bridge re-mints its ticket whenever one is
-  superseded (every `plan_connect` mints a new one) or lapses.
+- **Restarts, `/resume`, `/clear`, compaction and `plan_connect` need nothing from you.** A
+  restarted bridge resumes from the last event it delivered, so events that land while it is
+  down arrive when it comes back, once each. Moving to another plan keeps the same bridge; the
+  dashboard filters by the plan you are connected to at each event.
 - **Never poll** comments, answers or gate state (`issue_get` loops, `sleep` loops, scheduled
   wakeups). If `sessionListenerAttached` is `false` for more than a minute while connected, the
   bridge is not running — tell the operator (its log is under the plugin data directory,
