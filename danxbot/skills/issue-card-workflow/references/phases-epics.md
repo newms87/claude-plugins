@@ -60,7 +60,12 @@ If either fails, three options — all keep this dispatch's terminal signal hone
 
 - **Finish remaining work in-session** (default). Apply Step 1.5 fix-it-yourself filter. If you could plausibly finish in remaining 10–30 minutes, do it.
 - **Split into fresh sibling card** if residue is genuinely separate scope. Current card narrows AC set to what landed; new card carries residue. Document split in `comments[]` entry.
-- **Move to Blocked / Waiting On** if real human action / external dep gates remainder (per Step 10 / 10b — read no-false-blockers patterns first).
+- **Hold (Blocked), escalate (open a problem), or Waiting On** if the remainder is genuinely
+  gated: `blocked` when a later dispatch can resolve it itself, an open problem
+  (`issue_problem` add) when only a human can decide or act, `waiting_on` when it's queued
+  behind another card's completion (per `danx-next` Step 10 / 10b — read `no-false-blockers`
+  patterns first). Blocked alone never reaches the operator; use the open problem for anything
+  that genuinely needs one.
 
 **`danxbot_complete({status: "complete"})` on a container (`type: Epic` OR `type: Feature`) is FORBIDDEN.** A container's terminal state is DERIVED from child terminal states (rollup), never written directly — neither type is ever dispatched or completed in its own right. Planning-style dispatch whose candidate IS a container (split-into-children pattern) ends with `danxbot_complete({status: "complete"})` ONLY when every child already terminal — rare; planning typically split-and-handoff rather than split-and-rollup. Common case the planning dispatch should:
 

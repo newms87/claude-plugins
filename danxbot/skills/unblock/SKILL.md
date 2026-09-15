@@ -9,12 +9,13 @@ Purpose: turn a `Blocked` card (or one with non-null `waiting_on`) into a one-sc
 
 **Relayed ≠ verified.** Another agent's comment is a lead, never a finding (canon principle 2). Attribute it in the report — "the agent reports X" — never assert it as fact in your own voice. If a step the operator is about to run is IRREVERSIBLE (deploy, destructive command, data change, credential rotation), that step's premise must be verified against real evidence before you present it as safe to run; if you could not verify it, say so in the step.
 
-## v4 vocabulary primer
+## v5 vocabulary primer
 
-- **`blocked: {at, reason}`** — **self-block.** Setting `blocked` via `issue_transition({action: 'block', reason})` derives the card's status to `Blocked` via `deriveStatus` (rule 3). The card itself cannot proceed (formerly `Needs Help`). A human or next dispatch must clear it. Invariant: `blocked.at !== null` → derived status is `Blocked`.
+- **`blocked: {at, reason}`** — **hold.** Setting `blocked` via `issue_transition({action: 'block', reason})` derives the card's status to `Blocked` via `deriveStatus` (rule 3) and stops auto-dispatch until the blocker is resolved. It does NOT mean a human is needed and never puts the card in front of the operator. Whoever resolves the blocker — often the next agent — clears it with `unblock`. Answering a problem never clears it. Invariant: `blocked.at !== null` → derived status is `Blocked`.
+- **An open problem** — **the only way a card reaches a human.** A card needs a human exactly when it has an open problem (`open_problem_count > 0`, computed automatically — there is no separate flag). Read them via `issue_get({id, fields: ["problems"]})`; each problem carries its own `solutions[]`. The count drops to zero automatically the moment the operator answers (or someone removes) the last open one.
 - **`waiting_on: {reason, timestamp, by[]}`** — **dep-chain dispatch gate, independent of `status`.** The card is fine; it's waiting for the issues in `by[]` to terminal-finish. Picker skips dispatch while any dep is non-terminal; the record itself is durable (never auto-cleared by the system).
 
-This skill applies to BOTH — derived `Blocked` (because a human likely needs to act) and `waiting_on` (because the operator may want to know what the card is queued behind).
+This skill applies to BOTH — derived `Blocked` (to find out whether an agent can resolve it or a human genuinely must act) and `waiting_on` (because the operator may want to know what the card is queued behind).
 
 ## When to invoke
 
@@ -49,6 +50,8 @@ Do NOT invoke when: card is `ToDo`/`InProgress`/`Done`/`Cancelled` AND has `wait
    **Not human-only (DX-758 worker zero-trust):** git env failures on the agent's worktree (`git fetch` errored, rebase conflict, dirty tree, push race). The agent owns env state — there is no worker-side recovery to wait for. A Blocked card with `blocked.reason` like "operator must reset worktree" / "operator must rebase" / "worker must sync" is misclassified; the next dispatched agent handles env in its prep skill. Such cards should be demoted: clear `blocked: null`, leave a recovery comment, and let the next dispatch run prep again.
 
    Mixed (some local, some human-only) → write the playbook only for the human-only steps; execute the local steps yourself first, then surface only what remains.
+
+   **Human-only steps on a card with no open problem** → the operator has never seen them: a blocked card does not reach a human on its own. Say so in the report's **Blocker** line. The escalation the card is missing is `issue_problem` add (the human-only step as the statement, options as solutions, one recommended).
 
    **Demote procedure:**
    - Call `issue_transition({id, action: 'unblock'})` to clear the block. The server derives status away from `Blocked` once `blocked.at` is null.
@@ -119,6 +122,6 @@ Overlap found → invoke `unblock` on the upstream card FIRST and surface the de
 
 ## Blocked Gate (Pre-Write Check)
 
-Before calling `issue_transition({id, action: 'block', reason})` on any card: walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation.
+Before calling `issue_transition({id, action: 'block', reason})` on any card: walk every "operator must do" step. If EVERY step is a local shell command (make/npm/yarn/artisan/composer/edit-config/restart-service) runnable from THIS shell with creds already on disk → **DO NOT escalate. Run it.** "Destructive" or "production-affecting" alone is NOT a human-only signal; only credential-rotation, deploy access the agent lacks, or genuine design decisions outside the card's scope warrant escalation — and escalation is an open problem (`issue_problem` add, with solutions), never a block alone, because a blocked card never reaches the operator.
 
 This is the symmetric write-side check: `unblock` (above) catches misclassified cards on the read side. The Blocked gate catches them on the write side. A card that fails this check should never have been marked `Blocked` in the first place — fix the work, not the status.

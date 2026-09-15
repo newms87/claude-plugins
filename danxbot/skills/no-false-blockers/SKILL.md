@@ -6,9 +6,11 @@ audience: worker
 
 # Don't Block On These — False Blocker Patterns
 
-Three patterns commonly mistaken for human-action blockers. **None of them
-are valid reasons to stamp `blocked: {at, reason}` (which derives the card to
-`Blocked` via `deriveStatus`).** Use the in-session resolution below; keep the
+Three patterns commonly mistaken for blockers. **None of them are valid
+reasons to stamp `blocked: {at, reason}` (which derives the card to `Blocked`
+via `deriveStatus` and stops auto-dispatch), and none are valid reasons to
+escalate to the operator (opening a problem via `issue_problem`, the only way
+a card reaches a human).** Use the in-session resolution below; keep the
 card moving.
 
 These extend (do NOT override) `danx-next/SKILL.md` Step 10 — Step 10 stays
@@ -185,9 +187,13 @@ derivation function IS the verification.
 
 ## Generalized rule
 
-A card derives to **Blocked** (via `issue_transition({action: 'block'})`) only when a HUMAN ACTION
-(credential rotation, external repo write access, ambiguous spec needing a
-design decision) is the next step. Three things that are NOT human actions:
+Resolve a blocker yourself whenever you can. A card is held with **Blocked**
+(`issue_transition({action: 'block'})`) only when its blocker cannot be
+resolved in this dispatch; blocked stops auto-dispatch but never reaches the
+operator. A card goes to the operator — by opening a problem via
+`issue_problem` add — only when a HUMAN ACTION or decision (credential
+rotation, external repo write access, a design decision only the operator
+can make) is the next step. Three things that are NOT blockers at all:
 
 | Apparent blocker | Actual class | Resolution |
 |---|---|---|
@@ -195,14 +201,15 @@ design decision) is the next step. Three things that are NOT human actions:
 | "Manual UI smoke" AC | Wording defect or programmatic substitute available | Component test → playwright → rewrite AC |
 | Post-terminal-save behavior verification | Self-referential AC | Rewrite AC to point at the unit test for the code path |
 
-Before calling `issue_transition({action: 'block'})`, mechanically run this checklist:
+Before calling `issue_transition({action: 'block'})` or escalating with `issue_problem` add, mechanically run this checklist:
 
-1. Does this require a HUMAN to act (rotate credentials, push to SSM,
-   make a design decision, edit a repo I cannot write to)? **No → not
-   Blocked.**
+1. Is this unresolvable by me in this dispatch — and, for an escalation,
+   does it require a HUMAN to act or decide (rotate credentials, push to SSM,
+   make a design decision, edit a repo I cannot write to)? **No →
+   neither block nor escalate; resolve it.**
 2. Does any existing tool in my dispatch (Bash, playwright MCP, dashboard token file, component test runner, unit test runner) produce evidence equivalent to what the AC asks for? **Yes → use it.**
 3. If the AC's literal wording demands something only a human can do,
    does its INTENT have a programmatic substitute? **Yes → rewrite the
    AC to the substitute, add a comment via `issue_comment` explaining the rewrite, verify, check off.**
 
-Only after answering all three "no" do you proceed to Step 10.
+Only after answering all three "no" do you proceed to Step 10 (hold with `blocked`, or escalate by opening a problem).

@@ -1,6 +1,6 @@
 ---
 name: autonomous-mode
-description: 'Zero-interactive-prompt contract for dispatched workers: decide unilaterally, escalate via Blocked, never AskUserQuestion or plan-mode pause.'
+description: 'Zero-interactive-prompt contract for dispatched workers: decide unilaterally, escalate via an open problem, never AskUserQuestion or plan-mode pause.'
 audience: worker
 ---
 
@@ -34,8 +34,8 @@ Process skills you may have learned in interactive sessions
 (`brainstorming`, `writing-plans`, decision-prompt patterns, `EnterPlanMode`)
 are SUPPRESSED on a dispatched agent. Anything those skills accomplish via a
 question must be resolved another way — by reading the card, by deciding
-unilaterally and documenting the choice, or by escalating to Needs Help
-with the question on the card.
+unilaterally and documenting the choice, or by escalating to the operator
+with the question as an open problem on the card.
 
 ## What to do when you'd otherwise ask
 
@@ -47,16 +47,21 @@ Pick exactly one of the following. Do not pause first.
    challenge it later. Reasonable defaults are almost always correct
    here — the operator can revert in seconds; the dispatch costs tokens.
 
-2. **Escalate to Blocked with the question on the card.** When the
+2. **Escalate to the operator with the question as a problem.** When the
    choice is genuinely irreversible / architectural / requires
-   credentials or design intent you don't have, follow Step 10 of
-   `danx-next/SKILL.md`:
+   credentials or design intent you don't have, follow Step 10 (Escalate)
+   of `danx-next/SKILL.md`:
    - Stop processing.
-   - Call `issue_transition({id, action: 'block', reason: "<question>"})` with the blocking reason.
-   - Call `issue_comment({id, action: 'add', text: "<question phrased the way you'd have asked>"})` with the question phrased the way you'd have asked the human, every option you considered, and your recommended choice with reasoning.
-   - Exit. The poller stops dispatching this card; a human
-     answers via the dashboard or by editing; the next dispatch releases the
-     card.
+   - Call `issue_problem({id, action: 'add', statement: "<question>", solutions: [...]})`:
+     - `statement` — the question phrased the way you'd have asked the human.
+     - `solutions[]` — every option you considered, each with `title`, `body`, `pro` and `con`,
+       and exactly one `recommended: true`.
+   - Do NOT use `issue_transition({action: 'block'})` for this. Blocked only stops dispatch and
+     never reaches the operator, so your question would sit unseen.
+   - Exit with `danxbot_complete({status: "complete"})`. The poller stops dispatching this card
+     while it has an open problem. The operator answers it in the dashboard, and answering the
+     last open problem is what makes the card stop needing a human — nothing to clear directly.
+     The next dispatch reads the decision via `issue_get({id, fields: ["problems"]})`.
 
 3. **Escalate to waiting_on.** If the question is "should we do X first?"
    and X is real work tracked on another card, use Step 10b instead — call `issue_dependency({id, action: 'add', kind: 'depends_on', target_id: "<PREFIX>-N>"})` to set a dependency on the other card. Don't ask, don't

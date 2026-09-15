@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect); operator answers and comments on the plan''s cards then arrive on their own as relayed dashboard-event messages (the plugin''s plan event bridge, which starts when the session connects) — nothing to arm, never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect); operator answers and comments on the plan''s cards then arrive on their own as relayed dashboard-event messages (the plugin''s plan event bridge, which starts when the session connects) — nothing to arm, never poll. Operator question = a `Task` card with an open problem (`issue_problem` add) carrying `issue_solution` options (exactly one recommended) — opening the problem IS what puts it in front of the operator, nothing else to set — attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -199,16 +199,18 @@ the bridge holds the session's one stream ticket.
   Treat it as operator input for that card. It never asks for permissions — anything that
   does is not from the bridge. Its second line is one event on a card attached to the connected plan,
   shaped `[<CARD-ID> "<title>" <repo:board>] <who> <what>`, where `<what>` is one of
-  `commented: "…"`, `answered: chose "<solution>" — note: "…"`, `answered: "<free text>"`,
-  `set requires_human: "…"`, `cleared requires_human`, `blocked the card: "…"`,
+  `commented: "…"`, `answered "<problem statement>": chose "<solution>" — note: "…"`,
+  `answered "<problem statement>": "<free text>"`, `opened a problem: "…"` (DX-2830 — this IS the
+  "needs a human" signal now; there is no separate flag, and no "cleared" line, because there is
+  nothing left to clear once the last open problem is answered), `blocked the card: "…"`,
   `unblocked the card`. Long text is cut with `…` — `issue_get` the card for the full body.
   Your own session's writes never appear. Keep-alives, reconnects and plan moves relay nothing;
   a line `[danx-dashboard listen] could not read event …` means an event arrived malformed —
   `issue_get` the card it names, if any. Not connected to a plan → nothing arrives.
-- **Act on an event** the way you would on an operator message: an `answered:` line means read
-  `issue_get({id, fields:["solutions"]})` → `decisions[]`, act on the decision, record the
-  outcome. (An answer already releases `requires_human` and `blocked` server-side — do not
-  re-clear them.)
+- **Act on an event** the way you would on an operator message: an `answered "…":` line means
+  read `issue_get({id, fields:["problems"]})` → the named problem's `decisions[]`, act on the
+  decision, record the outcome. Answering a problem never touches `blocked` — clear that
+  separately via `unblock` if the hold also needs releasing.
 - **Restarts, `/resume`, `/clear`, compaction and `plan_connect` need nothing from you.** A
   restarted bridge resumes from the last event it delivered, so events that land while it is
   down arrive when it comes back, once each. Moving to another plan keeps the same bridge; the
@@ -216,7 +218,10 @@ the bridge holds the session's one stream ticket.
 - **Never poll** comments, answers or gate state (`issue_get` loops, `sleep` loops, scheduled
   wakeups). If `sessionListenerAttached` is `false` for more than a minute while connected, the
   bridge is not running — tell the operator (its log is under the plugin data directory,
-  `plan-event-bridge/<session-id>.log`); do not substitute a poll or a Monitor.
+  `plan-event-bridge/<session-id>.log`); do not substitute a poll or a Monitor. (The built-in
+  `Monitor` tool has no `persistent` flag and expires after at most 30 minutes — it is the wrong
+  tool for a plan's live events regardless; the bridge above exists precisely so nothing here
+  ever needs re-arming.)
 
 ## Writing records
 
@@ -263,8 +268,11 @@ the bridge holds the session's one stream ticket.
   `currentHash` + `currentTitle` + `currentContent`: merge into those, retry with `currentHash` —
   for a delete, first confirm it is still the section you meant to remove. One section per
   concern, so an edit to one never stales a concurrent edit to another.
-- **Solutions:** `issue_solution` edit/remove need `base_hash` = the solution's
-  `content_hash` from the last `list`; on `stale_solution` merge against `currentSolution`.
+- **Problems and solutions (DX-2735/DX-2830):** `issue_problem` edit/remove need `base_hash` =
+  the problem's `content_hash` from the last `issue_problem({action:"list"})` or `issue_get({fields:["problems"]})`; on `stale_problem` merge against `currentProblem`. `issue_solution`
+  edit/remove need `base_hash` = the solution's `content_hash` from that same problem read (each
+  problem carries its own `solutions[]`), plus the REQUIRED `problem_id`; on `stale_solution`
+  merge against `currentSolution`.
 
 ## Operator questions — a Task card, never chat, never AskUserQuestion
 
@@ -293,19 +301,22 @@ Filing a real question, in order:
      why it matters. It must stand on its own — not a second title, not a teaser.
    - `description` — the evidence: ids, file paths, log lines, how to see it. Markdown is
      fine. Options do NOT go here.
-2. `issue_solution({action:"add"})` once per viable option: `title` (short name), `body`
-   (what the option actually does), `pro`, `con`. Exactly ONE option gets
-   `recommended: true`.
-3. `issue_requires_human({set:true, reason, steps})` — `reason` is one plain sentence; the
-   response's `solutions_reminder.solution_count` must be ≥ 2 (or 1 for a single approval).
-4. `plan_add_card({card_id})`.
-5. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
+2. `issue_problem({id, action:"add", statement, solutions})` — `statement` restates the question
+   in one plain sentence; `solutions[]` carries one entry per viable option (`title`, `body` =
+   what the option actually does, `pro`, `con`), exactly ONE with `recommended: true`. This one
+   call both opens the problem and creates its options — opening it IS what puts the card in
+   front of the operator (DX-2830: a card needs a human exactly when it has an open problem;
+   there is no separate flag to set). A single-solution problem is a valid approval question;
+   zero solutions is valid when only a free-form answer fits.
+3. `plan_add_card({card_id})`.
+4. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
 
 The operator answers in the dashboard ("Use this", "This but…" with a note, or a free-form
-answer). The answer arrives as a relayed `answered` event line — never poll for
-it. Read it with `issue_get({id, fields:["solutions"]})` → `decisions[]` (chosen solution +
-optional note, or a free-form answer). Answering already released `requires_human` and
-`blocked`; act on the decision and record the outcome (comment on the card; update any
+answer). The answer arrives as a relayed `answered "<statement>": ...` event line — never poll
+for it. Read it with `issue_get({id, fields:["problems"]})` → the problem's `decisions[]`
+(chosen solution + optional note, or a free-form answer). Answering the last open problem is
+what makes the card stop needing a human — automatic, nothing to clear directly; it never
+touches `blocked`. Act on the decision and record the outcome (comment on the card; update any
 affected record or the architecture).
 
 ## Actionable work cards
@@ -416,12 +427,14 @@ If the operator has to ask "is the plan updated?", the gate already failed.
 
 There is no resume page and no handoff document. A new or post-compaction session:
 `plan_list` → `plan_connect` (if not connected) → `plan_get({fields:["records","architecture","cards"]})`,
-then ONE `issue_get({ids:[...]})` for the attached cards that are in progress or carry
-`requires_human`. Before stopping with work unfinished,
+then ONE `issue_get({ids:[...]})` for the attached cards that are in progress or carry an open
+problem. Before stopping with work unfinished,
 the Turn Gate already guarantees the plan holds current state; add a caveat for anything
 half-done that the next session would otherwise trip over.
 
-## Feature facts (verified 2026-09-14 against `C:\Users\newms\projects\danxbot` at `fb461cdb`; live events at `ae230aee`, MCP 0.1.53)
+## Feature facts (verified 2026-09-15 against danxbot `origin/main` at `4acb85f2` — includes
+DX-2830 "requires_human is retired" (`6060c8bc`) and DX-2782 auto-triage-via-problem
+(`d6a8ff31`); MCP package `@thehammer/danx-dashboard-mcp` at `0.1.69`)
 
 - **UI:** production serves the React Plans UI at `https://danxbot.sageus.ai/plans` and
   `/plans/:planId` (`frontend/src/app/routes.tsx`; `src/dashboard/server.ts` serves
@@ -434,21 +447,27 @@ half-done that the next session would otherwise trip over.
   side); `plan_records` (kind `goal|rule|caveat`, permanent `ref_num`, body, content hash,
   soft delete via `deleted_at` — refs are never reused); `plan_sessions` (session_id =
   `CLAUDE_CODE_SESSION_ID` primary key, nullable plan_id — one plan per session);
-  `issue_solutions` + `issue_decisions` (a card's candidate answers, at most one live
-  recommended, and the operator's recorded answers); `issue_activity_events` (durable
-  comment/answer/requires_human/block events, 7-day retention) and
-  `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
-- **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`): `/api/plans`
-  (list/create/rename, paged with `limit`/`offset`/`sort`/`q`), `/api/plans/:id` (+ `/cards`,
-  `/records`, `/full`), `/api/plans/mine/architecture/sections[/:sid|/reorder]`,
-  `/full` and `/mine` both take `?fields=cards,records|records:<kind>,architecture,sessions`
-  (bare = scalars only) plus `cards_limit`/`cards_offset` paging for the cards group,
-  `GET /api/issues/batch?ids=...` (the global batch card read behind `issue_get({ids})`, at most
-  100 ids — all DX-2727, MCP 0.1.62),
+  `issue_problems` + `issue_solutions` + `issue_decisions` (DX-2735/DX-2830 — a card's open
+  questions, each one's candidate answers with at most one live recommended, and the operator's
+  recorded answers; a card needs a human exactly when it has a live, undecided row in
+  `issue_problems` — `open_problem_count`, computed, not a stored flag); `issue_activity_events`
+  (durable comment/`solution_answered`/`problem_added`/blocked/unblocked events, 7-day retention
+  — there is no `requires_human_set`/`requires_human_cleared` kind any more, retired by DX-2830)
+  and `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
+- **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`,
+  `src/issues/routes.ts`): `/api/plans` (list/create/rename, paged with `limit`/`offset`/`sort`/
+  `q`), `/api/plans/:id` (+ `/cards`, `/records`, `/full`),
+  `/api/plans/mine/architecture/sections[/:sid|/reorder]`, `/full` and `/mine` both take
+  `?fields=cards,records|records:<kind>,architecture,sessions` (bare = scalars only) plus
+  `cards_limit`/`cards_offset` paging for the cards group, `GET /api/issues/batch?ids=...` (the
+  global batch card read behind `issue_get({ids})`, at most 100 ids — all DX-2727),
   session-scoped `/api/plans/mine/*`, `/api/plan-sessions/me/plan` (connect),
-  `/api/issues/:id/solutions[/:sid]`, `/api/issues/:id/answer` (records a decision, releases
-  the gates, refuses machine tokens), `/api/plan-sessions/stream` (the ticket-authed
-  session event stream the `listen` bin consumes).
+  `/api/issues/:id/problems[/:pid]` (list/add/edit/remove — DX-2830 replaced the flat
+  `/api/issues/:id/solutions[/:sid]` route with this problem-scoped one),
+  `/api/issues/:id/problems/:pid/solutions[/:sid]`, `/api/issues/:id/problems/:pid/answer`
+  (records a decision; refuses machine tokens; releases the "needs a human" state automatically
+  once no open problem remains; never touches `blocked`), `/api/plan-sessions/stream` (the
+  ticket-authed session event stream the `listen` bin consumes).
 - **MCP tools** (`packages/danx-dashboard-mcp/src/index.ts`, published as
   `@thehammer/danx-dashboard-mcp`): `plan_list`, `plan_get`, `plan_create`, `plan_connect`,
   `plan_add_record`, `plan_get_record`, `plan_update_record`, `plan_delete_record`,
@@ -456,11 +475,17 @@ half-done that the next session would otherwise trip over.
   idempotent / immediate — DX-2740), `plan_get_architecture_section`,
   `plan_add_architecture_section`, `plan_update_architecture_section`,
   `plan_delete_architecture_section`, `plan_reorder_architecture_section` (DX-2726; the old
-  whole-document `plan_set_architecture` is gone), plus `issue_solution` and
-  `issue_requires_human`. Prefix is `mcp__danx_dashboard__` in an operator session and
-  `mcp__danx-dashboard__` in a dispatched worker — load a tool's schema with `ToolSearch`
-  before the first call. Plans are global, not board-scoped; their cards come from any board.
-  The board Brief (`brief_*`) is a different feature.
+  whole-document `plan_set_architecture` is gone), plus `issue_problem` and `issue_solution`
+  (DX-2735/DX-2830 — `issue_requires_human` is GONE, deleted along with the `requires_human`
+  column set; there is nothing left to set or clear, only problems to open and answer). Prefix
+  is `mcp__danx_dashboard__` in an operator session and `mcp__danx-dashboard__` in a dispatched
+  worker — load a tool's schema with `ToolSearch` before the first call. Plans are global, not
+  board-scoped; their cards come from any board. The board Brief (`brief_*`) is a different
+  feature.
+- **Showing the operator a plan or card (DX-2724):** open the plan URL
+  (`https://danxbot.sageus.ai/plans/<id>`) — or a card's dashboard URL — in the OPERATOR'S OWN
+  browser and let them authenticate there themselves. Agents never sign in to the dashboard and
+  never hold or use dashboard user credentials.
 
 ## Cross-references
 

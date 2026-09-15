@@ -12,14 +12,13 @@ DANXBOT SKILL LOAD MANDATE. Load the matching skill BEFORE the first mutating ac
 HIGH-VIOLATION:
 (1) danxbot:issue-card-workflow — touching issue cards via mcp__danx-dashboard__issue_*, <PREFIX>-N card ids, "epic"/"phase"/"create a card"/"make a ticket". MECHANICAL ACTION-#1 CHECK: prompt/handoff contains a card id (<PREFIX>-N) for work THIS session will do → loading this skill + claiming the card (issue_transition pickup manual:true) is the FIRST action — BEFORE Read-orient-then-edit, BEFORE loading other dev skills, BEFORE the first Edit/Write. A scripted handoff that names the card but only mentions the terminal complete transition is NOT an exemption; "card already exists" / "handoff scripted the steps" are the rationalizations this check blocks. ALSO scope-trigger — NO keyword required, fires on work-shape: before the FIRST mutating step of operator-initiated work that is multi-phase / a deploy / launch / migration → load this skill + file a card FIRST. "User didn't say card" / "just an interactive session" is the rationalization this gate blocks — scope, not keyword. (The durable-work-record / spec-handoff vessel gate is the ⚠ VESSEL GATE block above — it fires without loading.) Epic creation atomic: "epic for X" = epic + every phase card in SAME turn. TYPE-IN-CHAT trigger — proposing/arguing a card TYPE (Epic/Feature/Story) in prose, BEFORE any tool call, fires this load: run the slice-count gate first. DEFAULT to the SMALLEST fitting type; Epic ONLY when the work splits into multiple Features. Migration-count / 2-subsystems / file-count / "feels big" are NOT Epic signals (a multi-file, multi-migration change shipping as a handful of green commits is a Feature). Calling it an Epic in chat without the gate is the failure this blocks.
 (2) danxbot:unblock — picking up Needs Help / Blocked card; "unblock"/"get unstuck"/"what does this need".
-(3) danxbot:issue-blocker — about to stamp `blocked: {at, reason}`, populate `waiting_on[]`/`conflict_on[]`, recommend Blocked, or call danxbot_complete with "operator must X" framing.
+(3) danxbot:issue-blocker — about to stamp `blocked: {at, reason}`, populate `waiting_on[]`/`conflict_on[]`, recommend Blocked, escalate to a human via `issue_problem` add (a card needs a human exactly when `open_problem_count > 0`), or call danxbot_complete with "operator must X" framing.
 (4) danxbot:no-false-blockers — assessing blocker is genuine vs ambiguous/recoverable (three false-blocker patterns).
-(5) danxbot:requires-human — stamping `requires_human: {reason, set_by, set_at}`; requires_human vs Blocked vs workaround.
-(6) danxbot:no-unauthorized-worker-launch — about to run `make launch-worker`/`make launch-all-workers`/`make deploy*`/any worker or prod start.
-(7) danxbot:autonomous-mode — dispatched to worker (DANXBOT_REPO_NAME set); no AskUserQuestion, no plan-mode pause, one exit via danxbot_complete.
-(8) danxbot:halt-flag — CRITICAL_FAILURE present, poller halted, or signaling `danxbot_complete({status:"critical_failure"})`.
-(9) danxbot:danxbot — touching <repo>/.danxbot/, running make launch-worker/deploy, investigating stuck dispatch, explaining dispatch runtime.
-(10) danxbot:db-reset — destructive DB reset (`migrate:fresh`, `DROP DATABASE`, etc.).
+(5) danxbot:no-unauthorized-worker-launch — about to run `make launch-worker`/`make launch-all-workers`/`make deploy*`/any worker or prod start.
+(6) danxbot:autonomous-mode — dispatched to worker (DANXBOT_REPO_NAME set); no AskUserQuestion, no plan-mode pause, one exit via danxbot_complete.
+(7) danxbot:halt-flag — CRITICAL_FAILURE present, poller halted, or signaling `danxbot_complete({status:"critical_failure"})`.
+(8) danxbot:danxbot — touching <repo>/.danxbot/, running make launch-worker/deploy, investigating stuck dispatch, explaining dispatch runtime.
+(9) danxbot:db-reset — destructive DB reset (`migrate:fresh`, `DROP DATABASE`, etc.).
 
 DOMAIN-MATCH (load via Skill tool):
 - comment-style: editing `description`/`comments[]`/`retro.*` on issue cards.

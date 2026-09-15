@@ -38,7 +38,7 @@ This applies to:
 - Cards in epic + phase fan-out (epic AND every phase start `Review`).
 - Action-item cards spawned mid-retro.
 
-**Why:** Card in `ToDo` is dispatchable next tick. If description half-written, AC vague, scope overlaps other in-flight work, poller wastes dispatch flailing. `Review` forces triage agent to read cold + decide: Approve (→ `ToDo` via `ready_at`), Cancel (→ `Cancelled` via `cancelled_at`), or Keep (refresh `expires_at`, +24h).
+**Why:** Card in `ToDo` is dispatchable next tick. If description half-written, AC vague, scope overlaps other in-flight work, poller wastes dispatch flailing. `Review` forces triage agent to read cold + decide: Approve (→ `ToDo` via `ready_at`), Cancel (→ `Cancelled` via `cancelled_at`), Defer (→ `Backlog` via `archived_at` + `ready_at: null`, and escalates), or Keep (escalates to the operator via an open problem, stays derived-Review — DX-2782/DX-2830, no TTL to refresh any more).
 
 **Promotion to ToDo is SEPARATE action, never co-located with creation.** Even when certain card is ready, leave it derived `Review`. Promotion via:
 - Triage agent ICE-scores Approve → stamps `ready_at = <now ISO>` (rule 5 → `ToDo`) — normal path.
@@ -59,7 +59,7 @@ The triage block on each card is owned by the **per-card triage agent** dispatch
 
 | Derived status | Triage decision | Trigger write | Default TTL |
 |---|---|---|---|
-| `Review` | Score `confidence` 0-5 → server picks Cancel / Defer(Park) / Keep / Approve | Cancel: stamps `cancelled_at` (terminal). Defer/Park: stamps `archived_at` AND `blocked_at`. Keep: stamps `blocked_at` + `blocked_reason`, stays derived-Review. Approve: stamps `ready_at` (optionally populate `requires_human`). **Keep and Defer now BLOCK the card — neither is a passive TTL refresh.** | 24h |
+| `Review` | Score `confidence` 0-5 → server picks Cancel / Defer(Park) / Keep / Approve | Cancel: stamps `cancelled_at` (terminal). Defer: stamps `archived_at` + `ready_at: null`, plus opens a problem (see below). Keep: no column stamp, stays derived-Review, opens a problem (see below). Approve: stamps `ready_at`. **Keep and Defer no longer stamp `blocked_at` (DX-2782/DX-2830 retired that) — both instead open a problem stating `"Triage: <reason>"` with exactly three solutions (`Approve and ready` / `Defer` / `Cancel`, one `recommended: true` — `Approve and ready` for Keep, `Defer` for Defer). Opening the problem is what puts the card in the operator's Needs You view (`open_problem_count > 0`); answering it auto-applies the outcome via the normal `issue_transition` actions. A freeform answer just closes the problem with no side effect.** | n/a — no TTL. `triage_expires_at` is dropped outright (DX-2820); the open-problem exclusion holds a Review card out of auto-triage eligibility for as long as the problem stays open, with no time window. |
 | `Blocked` | Hard Gate audit → Demote OR Confirm | Demote: clear `blocked: null`. Confirm: refresh `expires_at` + write `reassess_hint`. | 3h |
 | `Waiting On` | Re-check `waiting_on.by[]` — clear if every dep terminal | Clear: `waiting_on: null` (no trigger write; status-independent). | 1h |
 | `ToDo` / `In Progress` | Not triaged | n/a | n/a |
@@ -69,35 +69,40 @@ The triage block on each card is owned by the **per-card triage agent** dispatch
 
 **`Action Items` is not a status.** Action-item cards carry `status: Review` so triage picks them up alongside the Review list; the DB record stores `status: Review`.
 
-## Blocked vs Waiting On vs Requires Human
+## Blocked vs Waiting On vs an Open Problem (needs a human)
 
-Three different "this card cannot dispatch right now" signals — NOT interchangeable; dashboard surfaces three distinct indicators; picker checks as independent gates.
+Three different "this card cannot dispatch right now" signals — NOT interchangeable; dashboard surfaces three distinct indicators; picker checks each as an independent gate.
 
 | Signal | Field | When | Cleared by |
 |---|---|---|---|
-| **Blocked** | `blocked: {at, reason}` (derived `Blocked` via rule 3) | Card *itself* stuck — human must supply info / action agent cannot (credentials, deploy access, ambiguous spec needing design call, missing decision, write-only repo). | Human writes comment / clears `blocked: null` — derived status falls through next trigger. |
-| **Requires Human** | `requires_human: {reason, steps[], set_by, set_at}` (status-independent) | Card needs human to act on system agent has zero reach into (3rd-party token rotation, external dashboard access, manual external infra deploy). | Human via dashboard "Mark Resolved" (PATCHes `requires_human: null`). |
+| **Blocked** | `blocked: {at, reason, by}` (derived `Blocked` via rule 3) | Dispatch paused on THIS card (card-specific tool failure, a hold with a named release condition, an ambiguous spec/decision an agent can settle itself). Does NOT by itself mean a human is needed — `block` only holds dispatch, it never asks a human, and the agent (or a later dispatch) can often resolve it itself. | Whoever resolves the blocker calls `issue_transition({action: 'unblock'})` — derived status falls through to the next trigger. Answering a problem never clears a `blocked` card. |
+| **Open Problem** (needs a human) | `problems` field group; `open_problem_count` scalar (status-independent) | A human must decide or act: a decision only the operator can make, or an action on a system the agent has zero reach into (3rd-party token rotation, external dashboard access, manual external infra deploy). **The only thing that puts a card in the operator's Needs You view is `open_problem_count > 0`.** There is no separate flag — escalate via `issue_problem({action: 'add', statement, solutions?})`. | Automatically when the operator answers the card's last open problem (a card with several problems stays in Needs You until every one is answered), or when the last open problem is removed (`issue_problem remove` — always allowed, even as the last one). |
 | **Waiting On** | `waiting_on: {reason, timestamp, by[]}` (status-independent) | Card queued behind OTHER in-flight work (phase siblings, Action Items, separately-scoped task). | Picker dispatches moment every `by[]` blocker reaches Done / Cancelled. `waiting_on` record stays as durable dep-history. |
 
-**All four dispatch gates may coexist** (blocked, waiting_on, requires_human, conflict_on[]): each models different real-world cause; picker AND-s them; dispatch only when every null/empty. Card may legitimately carry all four at once. Each cleared by different actor/event independently.
+**All three dispatch gates may coexist** (blocked, an open problem, waiting_on, plus `conflict_on[]`): each models a different real-world cause; picker AND-s them; dispatch only when every one is clear. A card may legitimately carry all of them at once. Each is cleared by a different actor/event independently.
 
 ### Coexistence
 
-`requires_human` fully independent of `blocked` + `waiting_on`; may coexist (rare). Example: card both `Blocked` (waiting clarifying comment) AND `requires_human` set (waiting token rotation as part of clearing block). Poller checks each gate independently; clearing all three required to dispatch.
+An open problem is fully independent of `blocked` and `waiting_on`; all may coexist (rare). Example: a card both `Blocked` (a card-specific tool failure the next agent re-checks) AND carrying an open problem (rotate a token) at the same time. Answering the problem clears it but leaves `blocked` untouched; the agent that resolves the tool failure calls `unblock` separately. Poller checks each gate independently; every one has to clear before the card dispatches.
 
-### Whitelist/Blacklist for `requires_human`
+### Whitelist/Blacklist for escalating to a human
 
-Full whitelist + blacklist lives in `danxbot:requires-human` plugin skill (load via Skill tool before populating). Condensed form:
+Full whitelist + blacklist for what warrants opening a problem (vs a self-resolvable `Blocked`) lives in the `issue-blocker` skill's Field Selection section — check there before deciding. Condensed form:
 
-**Whitelist:** 3rd-party token rotation, external dashboard access, manual external infra deploy, anything agent has zero programmatic reach.
+**Escalate (open a problem):** a decision only the operator can make (domain intent, business/UX judgement, scope/authority), 3rd-party token rotation, external dashboard access, manual external infra deploy, anything the agent has zero programmatic reach into.
 
-**Blacklist:** ambiguous spec, failing test, merge conflict, missing local dependency, clarifying question — those are `Blocked`, not `requires_human`.
+**Don't escalate — use `Blocked`, or just fix it:** an ambiguous spec the agent can settle, a failing test, a merge conflict, a missing local dependency, a clarifying question the agent can answer itself — those stay `Blocked` at most, never an open problem.
 
-### Termination contract for agent-set `requires_human`
+### Termination contract for escalating mid-dispatch
 
-When agent **sets** `requires_human` mid-dispatch (field flips `null` → populated), dispatch ends with `danxbot_complete({status: "complete", summary: "Set requires_human — see field"})`. Agent does NOT flip `status` terminal AND does NOT fill `retro` — human is next actor, field is only signal. Poller skips card every tick until human clears; fresh dispatch picks it up + continues.
+Opening a problem IS the whole escalation — there is no separate "set requires_human" step (DX-2830 deleted `issue_requires_human` and the `requires_human_reason`/`requires_human_set_by`/`requires_human_set_at`/`issue_requires_human_steps` columns entirely; DX-2801's mid-dispatch pickup-state gate on this was cancelled into DX-2830, so `issue_problem add` works on any non-terminal card regardless of pickup state). When an agent escalates mid-dispatch:
 
-Humans can also set `requires_human` via dashboard "Flag for human" (set_by: "human") when they want to park card on external action they'll perform.
+1. `issue_problem({id, action: 'add', statement, solutions?})` — zero solutions is valid; the operator then answers free-form.
+2. The dispatch still ends with `danxbot_complete({status: "complete", summary})` — same as any other finished turn. Do NOT flip `status` terminal and do NOT fill `retro` — the human is the next actor, the open problem is the only signal needed.
+3. The poller skips the card every tick while `open_problem_count > 0` — pickup, auto-triage eligibility, and dispatch all exclude it unconditionally, no TTL.
+4. Once the operator answers the card's last open problem (or an agent removes it), a fresh dispatch picks the card up and continues — read `issue_get({id, fields: ["problems"]})` for the operator's `decisions[]` first.
+
+Humans can also open a problem via the dashboard directly when they want to park a card on something they'll do themselves — same shape, no agent action required.
 
 ## Reopen (Terminal → Dispatchable)
 
@@ -126,7 +131,7 @@ A **container type** (Epic OR Feature) has its status **derivation-owned by serv
 
 Cancelled children excluded from rules 4–5 — single non-cancelled child shifts answer. Rule 6 fires only EVERY child Cancelled. Mixed terminal states leave parent's current status untouched.
 
-Parent rollup ignores orthogonal `requires_human` — checked only at dispatch, not propagated. Dashboard surfaces child-count subscript on epic children when any phase has `requires_human != null`.
+Parent rollup ignores an open problem on a child — checked only at dispatch, not propagated. Dashboard surfaces a child-count subscript on epic children when any phase has `open_problem_count > 0`.
 
 **Implications for agents (container = Epic OR Feature):**
 - When you finish a child card, call `issue_transition({id, action: 'complete', summary})` FIRST, THEN `danxbot_complete({status: 'complete'})` (DX-835 — `danxbot_complete` finalizes the DISPATCH row only and does NOT move the card). The poller propagates the parent container on the next tick. Do NOT touch the container — edit overwritten.

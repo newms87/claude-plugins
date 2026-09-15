@@ -20,7 +20,7 @@ See references/overview.md for full contract + probe rules + card edit checklist
 **Refuse paths (defense-in-depth):**
 - `status_derived: In Progress / Done / Cancelled` → card already launched, don't re-flesh mid-flight.
 - `status_derived: Blocked` AND `blocked.reason` doesn't start `"Awaiting flesh-out"` → non-sentinel self-block, human action required.
-- `waiting_on != null` OR `requires_human != null` → parked cards out of scope.
+- `waiting_on != null` OR `open_problem_count > 0` → parked cards out of scope.
 - `children[]` non-empty → epic already split, refuse to orphan phases.
 
 ## Workflow
@@ -46,7 +46,7 @@ See references/overview.md for full contract + probe rules + card edit checklist
 
 **Flesh-out:** half-baked Review/ToDo cards OR DX-544 sentinel-blocked cards.
 
-**Refuse:** In Progress / Done / Cancelled (mid-flight) OR non-sentinel self-blocks OR parked via `waiting_on`/`requires_human` OR epic already split with empty `children[]`.
+**Refuse:** In Progress / Done / Cancelled (mid-flight) OR non-sentinel self-blocks OR parked via `waiting_on`/an open problem (`open_problem_count > 0`) OR epic already split with empty `children[]`.
 
 ## Boundaries
 
@@ -55,6 +55,6 @@ See references/overview.md for full contract + probe rules + card edit checklist
 - No backend-tracker calls (the agent path uses `mcp__danx-dashboard__issue_*` only).
 - No subagents.
 - Do NOT implement the work — flesh-out is spec rewrite, not code change.
-- Do NOT alter `parent_id`, `blocked` (except DX-544 clear via `issue_transition`), `waiting_on` (except chains on epic split), `requires_human`, `retro`, `dispatch`.
+- Do NOT alter `parent_id`, `blocked` (except DX-544 clear via `issue_transition`), `waiting_on` (except chains on epic split), open problems (`issue_problem`), `retro`, `dispatch`.
 
 **Verify after MCP calls.** If an MCP tool returns `{ok: false, body: {error}}`, read `body.error` and abort the flesh-out. Surface the error in the final summary.

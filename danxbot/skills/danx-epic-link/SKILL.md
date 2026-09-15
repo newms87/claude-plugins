@@ -29,7 +29,7 @@ immediately — the epic is already linked.
 ## Step 1 — Identify candidate phase cards
 
 1. The orchestrator's dispatch prompt names the epic's id. Load it via `issue_get({id})`.
-2. Call `issue_list({filter: {parent_id: null, include_closed: false}})` to list all open cards without a parent.
+2. Call `issue_list({filter: {parent_id: null, include_closed: false}})` to list all open cards without a parent (`parent_id` in the filter accepts `null` — verified against the MCP tool's own schema).
 3. For each open card (excluding the epic itself), extract `id`, `parent_id`, `title`, `type`.
 4. Build a candidate set:
    - `parent_id == null` (already-linked phase cards aren't candidates).
@@ -42,9 +42,13 @@ immediately — the epic is already linked.
 
 If zero candidates match, the epic genuinely has no phase children —
 leave `children[]` empty and exit (call the appropriate `issue_transition` if the epic needs a status bump, or just return). There is no in-card phase
-checklist (ISS-81 retired that field). The orchestrator continues with
-normal Step 4 implementation directly on the epic itself; epics
-without phase children are implemented as a single card.
+checklist (ISS-81 retired that field). **An Epic is a container and is
+NEVER dispatched to a worker as if it were a single card** (see
+`issue-card-workflow`'s container-atomic rule) — a childless Epic simply
+cannot be readied, picked up, or completed; its lifecycle 409s on every
+transition. If the epic genuinely has no work to decompose into phases, it
+was mis-typed and should be re-typed to a Story/Bug/Chore by whoever
+created it, not "worked as-is" by the orchestrator.
 
 If one or more candidates match, proceed to Step 2.
 
@@ -76,10 +80,14 @@ For each candidate phase card, in the order from Step 2:
 1. Call `issue_edit({id: <phase-id>, parent_id: "<epic-id>"})`  to set the parent.
 2. Call `issue_comment({id: <phase-id>, action: 'add', text: "Linked to parent epic <epic-id> by danx-epic-link skill."})` to append a comment.
 
-After all phase cards are linked, edit the epic:
+After all phase cards are linked, add the linkage comment to the epic. **Do
+NOT call `issue_edit({children: [...]})` on the epic — `children` is not an
+allowed `issue_edit` key (the server refuses it 400).** `children[]` is
+derived server-side from each child's own `parent_id`, which the loop above
+already set on every phase card — there is nothing further to write on the
+epic itself:
 
-1. Call `issue_edit({id: <epic-id>, children: ["<phase-1-id>", "<phase-2-id>", ...]})` with the ordered phase id list.
-2. Call `issue_comment({id: <epic-id>, action: 'add', text: "## Epic linkage\n\n`danx-epic-link` wired the two-way parent_id ↔ children[] linkage for this epic's phase cards (created directly on the tracker UI without going through `issue_create`).\n\n**Children:**\n\n- <phase-1-id>: <phase-1-title>\n- <phase-2-id>: <phase-2-title>\n- ..."})` with the linkage comment.
+1. Call `issue_comment({id: <epic-id>, action: 'add', text: "## Epic linkage\n\n`danx-epic-link` wired the two-way parent_id ↔ children[] linkage for this epic's phase cards (created directly on the tracker UI without going through `issue_create`).\n\n**Children:**\n\n- <phase-1-id>: <phase-1-title>\n- <phase-2-id>: <phase-2-title>\n- ..."})` with the linkage comment.
 
 ---
 
@@ -144,12 +152,28 @@ that up via the normal pipeline.
 
 ## When in doubt
 
-If the candidate set is ambiguous (e.g. two cards could be Phase 1 of different epics, or a candidate's title doesn't clearly belong to this epic), abort and let the orchestrator move the epic to Blocked. Append a comment to the epic describing the ambiguity:
+If the candidate set is ambiguous (e.g. two cards could be Phase 1 of
+different epics, or a candidate's title doesn't clearly belong to this
+epic), this genuinely needs a human's judgment — abort and escalate. Open a
+problem on the epic (verified: the set path has no card-type check, so this
+works on an Epic exactly as it does on any other card — the only refusals
+are a terminal card, a started card, or none at all when adding):
 
 ```
-## Epic linkage — ambiguous
-
-`danx-epic-link` could not unambiguously identify this epic's phase cards. Candidates examined: <list of ids + titles + reasoning>. Human review needed to set `parent_id` on the right children + the matching `children[]` on this epic.
+issue_problem({
+  id: <epic-id>,
+  action: "add",
+  statement: "Which open cards are this epic's phase children?",
+  solutions: [
+    { title: "<candidate set A>", body: "<ids + titles + reasoning>", recommended: true },
+    { title: "<candidate set B>", body: "<ids + titles + reasoning>" },
+  ],
+})
 ```
 
-Then call `issue_transition({id, action: 'block', reason: "Ambiguous phase candidate set"})` to move to Blocked.
+Also block the card so it does not sit dispatchable while the question is
+open (blocking and escalating are independent — do both here since the
+epic must neither auto-dispatch nor silently proceed):
+`issue_transition({id, action: 'block', reason: "Ambiguous phase candidate set — see open problem"})`.
+Then return control to the orchestrator per Step 4 without calling
+`danxbot_complete` yourself.

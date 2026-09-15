@@ -14,9 +14,9 @@ git rev-list HEAD..origin/main --count
   ```
   Clean rebase → at HEAD = origin/main. Proceed.
 
-  **Rebase conflict:** worktree carried in-flight work the worker's `validate()` didn't flag. Add comment titled `## Operator action required` describing conflicting paths + pre-recovery dispatch, then follow Step 10 (Blocked).
+  **Rebase conflict:** worktree carried in-flight work the worker's `validate()` didn't flag. Add comment titled `## Operator action required` describing conflicting paths + pre-recovery dispatch, then follow Step 10 (Escalate).
 
-This step is read-only — if `git status` shows uncommitted changes BEFORE you do anything, worker mis-routed (should have caught dirty state). Same comment + Blocked.
+This step is read-only — if `git status` shows uncommitted changes BEFORE you do anything, worker mis-routed (should have caught dirty state). Same comment + Step 10 (Escalate).
 
 ## Step 1 — Read the Issue and Set Effort Level
 
@@ -61,9 +61,9 @@ Apply filter, in order:
 1. **Required for THIS card's ACs?** → Mandatory. Fix in this dispatch. Filing hotfix/follow-up for AC-required work is **rule violation.**
 2. **Unrelated but small** (few file edits, no big refactor, fits session)? → Fix in dispatch. Action items create debt + re-dispatch cost.
 3. **Unrelated AND large** (multi-phase refactor, cross-cutting redesign, needs own scoping, would derail THIS card)? → Action item OK.
-4. **Needs human decision or external access** (credentials, ambiguous spec, repo you can't write, secret rotation)? → Step 10 / action item. **NOT valid blocker:** "needs deploy", "needs prod smoke", "needs production verification", "manual UI smoke", "pre-existing flaky test in unrelated file", "post-terminal-save state I cannot observe". Card is **Done when code committed + tests pass locally** — deploys are operational, not verification gate.
+4. **Needs human decision or external access** (credentials, ambiguous spec only the operator can settle, repo you can't write, secret rotation)? → Step 10 (Escalate: open a problem) / action item. **NOT valid blocker:** "needs deploy", "needs prod smoke", "needs production verification", "manual UI smoke", "pre-existing flaky test in unrelated file", "post-terminal-save state I cannot observe". Card is **Done when code committed + tests pass locally** — deploys are operational, not verification gate.
 
-**Mechanical check:** before writing action item or Blocked move: **"Could I just do this in next 10–30 minutes?"** Yes → do it. Drop action item / cancel Blocked.
+**Mechanical check:** before writing action item, Blocked move or escalation: **"Could I just do this in next 10–30 minutes?"** Yes → do it. Drop action item / cancel Blocked.
 
 **Examples of work MUST be done in-session:**
 - Verification card whose verification fails on small in-scope bug → fix bug, re-verify. NOT hotfix card + Blocked.
@@ -79,7 +79,7 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 1. Read full `description`, all `comments[]`, all `ac[]` titles, existing `children[]` — request them explicitly: `issue_get({id, fields: ["description", "ac", "comments", "children"]})` (a bare `issue_get` returns MINIMAL scalars only). Call `issue_get` on each child id to see what is built.
 1.5. **Load issue-ref context from the code you'll touch (DEFAULT MODE).** Before designing changes, grep the files in scope for COMMENT-anchored card refs and load each one: `grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>` (anchor to comment markers — bare `[A-Z]+-[0-9]+` also hits test names / migration filenames / fixtures in this ref-dense repo) → for every UNIQUE id, `mcp__danx-dashboard__issue_get({id, fields: ["description", "ac", "comments"]})` and read those fields (a bare `issue_get({id})` returns MINIMAL scalars only — none of them). Those comments name standing constraints prior cards imposed on this code — editing past them without loading the card silently breaks original intent. (Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".)
 2. **Bug cards (`type: Bug`):** investigate root cause via `Read` / `Grep` / `Bash` before designing fix.
-3. **Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly. Step 10 (Blocked) ONLY for true human-action blockers (credentials, secret rotation, ambiguous spec, architectural ambiguity). **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required. Anything else → apply Step 1.5, fix yourself.
+3. **Escalate vs Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly. Step 10 ONLY for blockers you cannot resolve: a human decision or action (credentials, secret rotation, ambiguous spec only the operator can settle, architectural ambiguity) → Escalate (open a problem via `issue_problem`); an agent-resolvable blocker that must hold the card → Blocked. **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required. Anything else → apply Step 1.5, fix yourself.
 4. Design approach in head. No code yet.
 5. Invoke `/pipe-start` skill to reload pre-implementation rules.
 
@@ -88,8 +88,8 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 Check card's existing state. ANY condition = epic already split — DO NOT re-split, DO NOT call `issue_create`:
 
 1. **Card's `children: []` is non-empty.** Container (Epic OR Feature) fully linked — a container is NEVER worked directly; descend to a child. `issue_get` each child id, identify first with `status_derived: ToDo` (or `In Progress` if resuming), treat THAT child as work. Re-fetch that child card, restart workflow at Step 1 using the child card.
-2. **Card's `type: Epic` AND `children: []` empty.** Epic created without children linked (or by human on tracker) — phase cards may exist but lack `parent_id` linkage. **Invoke `danx-epic-link` skill via Skill tool.** It scans open issues, identifies epic's phase children, sets `parent_id` on each phase, sets `children[]` on epic. After return, re-fetch epic via `issue_get` — `children[]` now populated — jump back to Step 3.0 (first condition now matches).
-3. **Card's `type` is NOT Epic but other cards reference it as parent.** Call `mcp__danx-dashboard__issue_list({filter: {parent_id: "<this.id>"}})`. Any matches = card is actually epic that lost `Epic` label. Promote via `issue_edit({id, type: "Epic", ...})`, set `children[]` from matched cards (sorted like `danx-epic-link`). Jump back to Step 3.0.
+2. **Card's `type: Epic` AND `children: []` empty.** Epic created without children linked (or by human on tracker) — phase cards may exist but lack `parent_id` linkage. **Invoke `danx-epic-link` skill via Skill tool.** It scans open issues, identifies epic's phase children, sets `parent_id` on each phase (the epic's `children[]` derives from those; it is not writable). After return, re-fetch epic via `issue_get` — `children[]` now populated — jump back to Step 3.0 (first condition now matches).
+3. **Card's `type` is NOT Epic but other cards reference it as parent.** Call `mcp__danx-dashboard__issue_list({filter: {parent_id: "<this.id>"}})`. Any matches = card is actually epic that lost `Epic` label. Promote via `issue_edit({id, type: "Epic", ...})`; the matched cards' `parent_id` already makes them its `children[]` (no `children` key exists on `issue_edit`). Jump back to Step 3.0.
 
 Only if NONE match proceed to Step 3.1.
 
@@ -114,7 +114,7 @@ If NOT splitting, skip to Step 4.
 4. **Set `waiting_on` on phase 2..N for serial ordering.** For each phase whose index ≥ 1, call `mcp__danx-dashboard__issue_dependency({id: <phase-i>, action: 'add', kind: 'depends_on', target_id: <children[i-1]>, reason: "Waits for <prev-phase-id> (<prev-phase-title>) to complete."})`:
    - Phase 1 takes no dependency — it dispatches first.
    - Picker skips dispatch while any blocker non-terminal; dispatches phase N+1 once phase N derives `Done` / `Cancelled`. The `waiting_on` record stays as a durable dep-history note.
-   - **Use `waiting_on` for sequential phase chains — NOT `blocked`.** `blocked` is self-block (human required); `waiting_on` is dep-chain gate (other in-flight work).
+   - **Use `waiting_on` for sequential phase chains — NOT `blocked`.** `blocked` is a hold on THIS card's own blocker that someone must resolve and `unblock`; `waiting_on` is dep-chain gate (other in-flight work) that auto-clears.
    - **Skip the dependency ONLY when phases are genuinely independent** (different domains, no shared state, any order). Default is sequential — explain in a comment on the epic if skipped.
 5. Restart workflow at Step 1 using the first phase card.
 
@@ -215,10 +215,10 @@ If dispatch prompt's first paragraph is `You are <name>.` followed by `Your work
      e. **Run test suite.** As rebaser you own every test the merge could break — not just tests for *your* card. From worktree: `npx vitest run > /tmp/vitest.log 2>&1 ; echo EXIT=$?` and `npx tsc --noEmit`. Any failure caused by your resolution OR by interaction between two cards' code is YOURS to fix. Failure already on `origin/main` before your work is pre-existing (rare — `origin/main` should be green) — confirm with `git stash && npx vitest run <failing-file>` only if you have strong evidence unrelated; else assume rebase caused it, fix it.
      f. Tests + typecheck green, re-invoke `agent-finalize.sh` same args. Script rebases (now no-op), squashes, pushes.
 
-     Escalate to Blocked only when conflict is genuinely outside scope of either card — e.g. conflicting file deleted on `origin/main` by third party with no clear "what does this card want" answer. Document path, both diffs verbatim, specific decision you cannot make in `## Operator action required` comment, follow Step 10. "Conflict was hard" / "I don't know which side wins" / "tests broke" are NOT valid escalations — read diffs, decide, fix tests.
+     Escalate to Blocked only when conflict is genuinely outside scope of either card — e.g. conflicting file deleted on `origin/main` by third party with no clear "what does this card want" answer. Document path, both diffs verbatim, specific decision you cannot make in `## Operator action required` comment, follow Step 10 (Escalate — the decision you cannot make is the problem statement). "Conflict was hard" / "I don't know which side wins" / "tests broke" are NOT valid escalations — read diffs, decide, fix tests.
    - **Exit 2:** push race exhausted (`PUSH_RACE_EXHAUSTED` stderr). Five consecutive non-fast-forward rejections — remote has another writer faster than rebase. Append comment explaining (script output verbatim), call `danxbot_complete({status: "failed", summary: "Push race exhausted; operator must finalize."})`, exit. Do NOT loop.
    - **Exit 64:** usage error. Args malformed (missing `<title>` / `<bullets>`), `<CARD-ID>` doesn't match `<PREFIX>-N`, `<title>` has newline. Stderr names cause. Fix invocation (single-line title, valid card id), re-run. Do NOT `git rebase --continue`.
-   - **Exit 65:** wrong branch. Worktree HEAD not on `<YOUR-NAME>`. Investigate (`git status`, `git branch --show-current`) — worktree may be wedged. If can switch back cleanly (`git checkout <YOUR-NAME>`), re-run. If can't, document wedge in `## Operator action required` comment, follow Step 10.
+   - **Exit 65:** wrong branch. Worktree HEAD not on `<YOUR-NAME>`. Investigate (`git status`, `git branch --show-current`) — worktree may be wedged. If can switch back cleanly (`git checkout <YOUR-NAME>`), re-run. If can't, document wedge in `## Operator action required` comment, follow Step 10 (Escalate).
 
 5. **No-op safety net.** If stdout is `NO_OP` (stderr contains `no commits ahead of origin/main`) you ran finalize without making changes — dispatch was docs-only, or forgot to edit code. Decide: docs-only → still Done, leave `retro.commits[]` empty; missing edits → fix them, re-run finalize. Do NOT push literal token `NO_OP` to `retro.commits[]`.
 
@@ -272,11 +272,16 @@ On the `danxbot_complete` call in Step 11, the worker stamps `completed_at`, ren
 
 Skip to Step 11.
 
-## Step 10 — Move to Blocked
+## Step 10 — Blocker You Cannot Resolve: Hold (Blocked) or Escalate (Needs You)
 
-**MANDATORY:** Before calling `issue_transition({action: 'block', reason})` (which derives status to `Blocked` via rule 3), adding a `## Blocked` comment, OR calling `danxbot_complete({status: "failed", ...})` with operator-must-X framing — INVOKE `issue-blocker` skill via Skill tool. The 8-item gating checklist there is authoritative. If any item fails you are NOT authorized to mark Blocked; return to in-session work. Failing to invoke before Blocked move is rule violation. Direct `status: "Blocked"` write FORBIDDEN — stamp trigger only, read path derives.
+**MANDATORY:** Before calling `issue_transition({action: 'block', reason})` (which derives status to `Blocked` via rule 3), escalating via `issue_problem`, adding a `## Blocked` comment, OR calling `danxbot_complete({status: "failed", ...})` with operator-must-X framing — INVOKE `issue-blocker` skill via Skill tool. The 8-item gating checklist there is authoritative. If any item fails you are NOT authorized to block or escalate; return to in-session work. Failing to invoke first is rule violation. Direct `status: "Blocked"` write FORBIDDEN — stamp trigger only, read path derives.
 
-Blocked is **LAST RESORT** AND **EXCLUSIVELY for cards needing human acting**. If card is waiting on other in-flight work — that's **Waiting On** (Step 10b), not Blocked.
+Both outcomes are **LAST RESORT** — the agent doing the work can often resolve the blocker itself, so resolve it rather than escalate:
+
+- **Blocked = a hold.** It stops auto-dispatch until the blocker is resolved. It does NOT mean a human is needed, never puts the card in the operator's Needs You tab, and whoever resolves the blocker (often the next agent) calls `unblock`.
+- **Escalate = opening a problem via `issue_problem`.** This is the ONLY way a human sees the card — a card needs a human exactly when `open_problem_count > 0`, computed automatically from that call. There is no separate flag to set and nothing further to do. Use it when a human must decide or act. Blocking alone parks such a card where nobody looks.
+
+If card is waiting on other in-flight work — that's **Waiting On** (Step 10b), neither of these.
 
 **Cross-repo work → DELEGATE, do not block (DX-1368).** Before treating "the work belongs to another repo I can't write" as a blocker, FIRST resolve whether that repo is a danxbot board: attempt `issue_list`/`issue_create` with `board=<repo>:<slug>` (unknown board → 404).
 
@@ -299,18 +304,18 @@ non-dispatchable until <TARGET-CARD-ID> is terminal.
   here if it now fits, or re-block / re-delegate).
 ```
 
-Use Step 10 ONLY when blocker is genuinely one of:
+Use Step 10 ONLY when blocker is genuinely one of (route in parentheses):
 
-- **Credentials / secrets** human must rotate / push to SSM.
+- **Credentials / secrets** human must rotate / push to SSM (→ Escalate).
   - **NOT Blocker:** "needs deploy" / "needs prod smoke" / "needs Layer 3 system test". Layer 3 (`make test-system`) runs locally — you can run. Prod deploy ships code already accepted Done; NEVER completion gate. Card with only remaining ACs "deploy + smoke prod" is **already Done** — rewrite ACs to local-verify, run them, mark Done.
   - **NOT Blocker:** pre-existing flaky/failing test in unrelated file. File Action Item via `issue_create`, push id to `retro.action_item_ids[]`, check AC off (your card's tests pass), proceed.
   - **NOT Blocker:** AC says "manual UI smoke" / "operator clicks X." Agent has dashboard token + playwright MCP + dashboard component-test runner. Verify programmatically (component test → playwright → rewrite AC), check off, proceed.
   - **NOT Blocker:** AC verifies behavior firing AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, tracker mirror, self-derived state). Rewrite AC to unit test for derivation function, run it, check off.
-- **External repo / file worker has no write access** AND no other agent fixes it — but ONLY after the cross-repo DELEGATE pre-check above fails (i.e. the target repo has NO danxbot board). If it has a board, delegate, don't block.
-- **Genuine human design decision** (ambiguous spec, missing requirement, conflicting direction). Specifically: answer changes goal / implementation plan in way ONLY human decides.
-- **Architectural ambiguity** — multiple valid implementations, different tradeoffs, human call.
-- **Card cannot be completed as described** without important change to goal / implementation plan.
-- **Card-specific tool / environment failure** (use `critical_failure` for environment-wide — `danx-halt-flag.md`).
+- **External repo / file worker has no write access** AND no other agent fixes it — but ONLY after the cross-repo DELEGATE pre-check above fails (i.e. the target repo has NO danxbot board). If it has a board, delegate, don't block (→ Escalate).
+- **Genuine human design decision** (ambiguous spec, missing requirement, conflicting direction). Specifically: answer changes goal / implementation plan in way ONLY human decides (→ Escalate).
+- **Architectural ambiguity** — multiple valid implementations, different tradeoffs, human call (→ Escalate; each implementation is a solution, one recommended).
+- **Card cannot be completed as described** without important change to goal / implementation plan (→ Escalate).
+- **Card-specific tool / environment failure** that a later dispatch can re-check (→ Blocked hold; use `critical_failure` for environment-wide — `danx-halt-flag.md`).
 
 **`agents.<name>.broken` is strikes-only (DX-758).** Worker no longer stamps `broken` from git env detection. ONLY path to `broken` is N consecutive `danxbot_complete({status: "failed"})` strikes from `src/agent/strikes.ts`. One legit block doesn't "burn" agent; only pattern of false blocks does. Dashboard's "Clear broken" still clears.
 
@@ -322,7 +327,9 @@ Use Step 10 ONLY when blocker is genuinely one of:
 - Missing file you can write → fix in-session.
 - Anything where next agent would open same files + make same edits you could make now → fix in-session.
 
-One more time: **"Does a human *action* unblock this, or am I just waiting on other work?"** If waiting, use Step 10b. If 10–30 minutes to fix, cancel Blocked, do it.
+One more time: **"Does a human *action or decision* resolve this, or am I just waiting on other work?"** Human → Escalate. If waiting, use Step 10b. If 10–30 minutes to fix, cancel the move, do it.
+
+### Hold — Blocked (an agent resolves it later)
 
 **Mutate the card via MCP:**
 
@@ -331,11 +338,28 @@ One more time: **"Does a human *action* unblock this, or am I just waiting on ot
    - `## Blocked — <one-line summary>`
    - `**What's done:** <bullet list of what landed, with commit shas>`
    - `**What's still needed:** <numbered list — file paths, repo names, exact edits, verification commands>`
-   - `**Why this needs human/host help:** <one paragraph>`
+   - `**What resolves the blocker:** <one paragraph — who (the next agent), what they check, how they confirm, then \`unblock\`>`
    - `**Incomplete ACs:** <bullet list of every unchecked AC item, verbatim>`
    - `**Final AC check:** Before Done, every AC must be checked: true.`
 3. **Bug cards** with partial progress: also add a `## Bug Diagnosis` block (comment or description).
 4. Fill the retro via `issue_retro({id, good, bad, action_item_ids[], commits[], tests[]})` (`tests[]` REQUIRED — empty array allowed, omitting the key fails) honestly — the AC gap is the primary "what went wrong." The server auto-renders the `## Retro` comment when the next pickup moves the card to Done / Cancelled (Blocked is non-terminal). Filling `retro` now helps: the next agent inherits it from the DB. **Re-apply Step 1.5 filter to every action item candidate.** Fix the next agent will need → describe in the Blocked comment, not an action item card. Only large unrelated separately-scopeable follow-ups belong. Create the action item first via `issue_create({type, title, description, ac, ...})`, push the returned `<PREFIX>-N`. Empty `action_item_ids[]` is the right answer most times.
+
+Terminate with `danxbot_complete({status: "failed", summary})` (Step 11). Skip to Step 11.
+
+### Escalate — Needs You (a human must decide or act)
+
+**Mutate the card via MCP:**
+
+1. Call `issue_problem({id, action: 'add', statement, solutions})`:
+   - `statement` — the question or flaw in one plain sentence.
+   - `solutions[]` — one per viable option, each with `title`, `body`, `pro` and `con`, and exactly one `recommended: true`.
+   - A single-solution approval question is valid. Zero solutions is valid for a free-form answer, such as "rotate the key".
+   - Several independent questions → several problems. The card stays in Needs You until every open problem is answered. **This one call is the entire escalation** — there is no separate flag or second call. A card needs a human exactly when `open_problem_count > 0`, computed automatically the instant the problem is added.
+2. Add a comment via `issue_comment({id, action: 'add', text})` with the same sections as the Hold comment, headed `## Needs You — <one-line summary>`, and `**Why only a human can resolve this:**` in place of the resolver paragraph.
+3. **Bug cards** with partial progress: also add a `## Bug Diagnosis` block. Fill the retro exactly as in Hold step 4.
+4. Do NOT also block unless the card must stay held after the answer. Answering a problem never clears `blocked` — a blocked card still needs an explicit `unblock` from whoever acts on the decision.
+
+Terminate with `danxbot_complete({status: "complete", summary: "Opened a problem — see problems"})`. When the operator answers the last open problem (or it is removed), `open_problem_count` drops back to 0 automatically and the poller re-dispatches — there is nothing to clear directly. The next dispatch reads each problem's `decisions[]` via `issue_get({id, fields: ["problems"]})` before resuming.
 
 Skip to Step 11.
 
@@ -348,7 +372,7 @@ Use Step 10b when card cannot proceed because waiting on **other work that's in 
 - Action Items card describes prerequisite work this card depends on.
 - Sibling phase under same epic must finish before this phase makes sense.
 
-If only thing blocking is human action → use Step 10 (Blocked).
+If only thing blocking is human action or decision → use Step 10 (Escalate).
 
 ### Procedure
 
@@ -358,7 +382,7 @@ If only thing blocking is human action → use Step 10 (Blocked).
    3. **In Progress queue.** Cards being worked on may be blocker.
 2. **No existing card describes unblock work?** You MUST create one. Prepare the card data describing exactly what needs to happen. Call `mcp__danx-dashboard__issue_create({type, title, description, ac, ...})`. Pick status:
    - Autonomous agent work → call `mcp__danx-dashboard__issue_transition({action: 'ready'})` so the poller dispatches.
-   - Human work → call `mcp__danx-dashboard__issue_transition({action: 'block', reason: "<one sentence>"})` (derived `Blocked` via rule 3). Include all evidence human needs in description.
+   - Human work → call `mcp__danx-dashboard__issue_problem({id: <new>, action: 'add', statement, solutions})` naming what the human must do — this one call alone puts the new card in Needs You (`open_problem_count > 0`). Do NOT `block` it — a blocked card never reaches the operator. Include all evidence human needs in description.
    Capture new card's returned `id`.
 3. **Set this card's dependency:**
    - Call `mcp__danx-dashboard__issue_dependency({id: <this-card>, action: 'add', kind: 'depends_on', target_id: "<PREFIX>-N"})` once per IMMEDIATE blocker.
@@ -386,7 +410,7 @@ Skip to Step 11.
 | 3 | Commit landed on `origin/main` | Step 7a: `agent-finalize.sh` exit 0 + `PUSHED <sha>` stdout. Step 7b: `git log origin/main --grep=<CARD-ID>` returns commit. |
 | 4 | `retro.commits[]` populated with verified sha(s) | Step 9 |
 | 5 | `retro.good` + `retro.bad` non-empty | Step 9 |
-| 6 | Terminal trigger set (`completed_at` / `cancelled_at` / `blocked.at`) — worker stamps `completed_at`/`cancelled_at` on `danxbot_complete`; agent stamps `blocked.at` for self-blocks | Step 9 (worker stamps) / Step 10 (agent stamps) |
+| 6 | Terminal trigger set (`completed_at` / `cancelled_at` / `blocked.at`), or an open problem recorded (`open_problem_count` > 0) — worker stamps `completed_at`/`cancelled_at` on `danxbot_complete`; agent stamps `blocked.at` for holds and opens a problem via `issue_problem` for escalations | Step 9 (worker stamps) / Step 10 (agent stamps) |
 
 Any prereq missing → loop back to that step. Do not call `danxbot_complete` until all six hold.
 
@@ -401,7 +425,7 @@ If either fails, three options:
 
 - **Finish residue in-session** (apply Step 1.5 filter — default).
 - **Split into fresh sibling card** for genuinely separate scope; narrow THIS card's AC set; document in `comments[]`.
-- **Route to Blocked / Waiting On** (Step 10 / 10b) when real human action / external dep gates remainder.
+- **Route per Step 10 / 10b** when a real human decision/action (Escalate), an agent-resolvable blocker (Blocked hold) or an external dep (Waiting On) gates remainder.
 
 **`danxbot_complete({status: "complete"})` on a container (`type: Epic` OR `type: Feature`) is FORBIDDEN.** A container's terminal state derives from child rollup, never direct write — neither is ever dispatched or completed directly. Planning dispatch whose candidate IS a container (split-into-children pattern) calls `danxbot_complete({status: "complete"})` ONLY when every child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses the `completed_at` / `cancelled_at` stamp on a container card, surfaces a `stamp-terminal-epic-refused` system error. Dispatch row finalizes; the card stamp is suppressed. Guard is defense-in-depth — rule above is what you uphold. If you reach guard, you tripped the rule.
 
@@ -414,7 +438,7 @@ If either fails, three options:
 | `danxbot_complete({status, …})` | DB side-effect | Derived status | When to use |
 |---|---|---|---|
 | `complete` | worker stamps `completed_at` + clears `dispatch` | `Done` | Work shipped on `origin/main`; every AC checked; retro filled. |
-| `failed` | worker stamps `blocked: {at, reason: summary}` (summary ≥ 30 chars; shorter → silent cancel + strike) | gated `Blocked` dispatch | Card cannot proceed without human acting (ambiguous spec, missing credentials, external blocker). Load `issue-blocker` skill first — its gate is authority. |
+| `failed` | worker stamps `blocked: {at, reason: summary}` (summary ≥ 30 chars; shorter → silent cancel + strike) | gated `Blocked` dispatch | Card is held on a blocker nobody can resolve in this dispatch (Step 10 Hold). Blocked never reaches the operator: when a human must decide or act (ambiguous spec only the operator can settle, missing credentials, external blocker), escalate first (Step 10 Escalate) and end `complete` instead. Load `issue-blocker` skill first — its gate is authority. |
 | `cancelled` | worker stamps `cancelled_at` + clears `dispatch` | `Cancelled` | Card abandoned — work won't ship. Use sparingly; prefer `failed` when card might still be picked by human. |
 | `critical_failure` | writes per-repo `CRITICAL_FAILURE` flag (halts poller) | unchanged | Environment broken (MCP not loading, Bash unavailable, Claude auth missing). See `danx-halt-flag.md`. |
 
@@ -425,7 +449,7 @@ DX-770 hard-cut pre-existing `completed` / `agent_blocked` aliases. MCP tool rej
 ### Allowed final states
 
 - `status: "complete"` — finished; worker stamps `completed_at`, renders `## Retro`, card derives `Done`. `summary` MUST contain commit sha (or `"docs-only — no commit"` if explicitly docs-only).
-- `status: "failed"` — cannot proceed without human; worker stamps `blocked: {at, reason: summary}`. `summary` MUST be ≥ 30 chars (shorter → silent downgrade to cancel + strike).
+- `status: "failed"` — card held on a blocker unresolvable in this dispatch; worker stamps `blocked: {at, reason: summary}` (a hold — it does not reach the operator; a human-needed card escalates via `issue_problem` and ends `complete`). `summary` MUST be ≥ 30 chars (shorter → silent downgrade to cancel + strike).
 - `status: "cancelled"` — abandoned; worker stamps `cancelled_at`. `summary` describes abandonment reason.
 - `status: "critical_failure"` — environment-level blocker (see `danx-halt-flag.md`). `summary` describes env issue for operator. No card stamp; poller halts via per-repo `CRITICAL_FAILURE` flag.
 

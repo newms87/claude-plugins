@@ -5,11 +5,11 @@ Triage agent triages ONE card per dispatch. Path is decided by `waiting_on` + `b
 | Card state | Path |
 |---|---|
 | `waiting_on != null` (any status) | **Waiting On** — re-check `waiting_on.by[]` |
-| `waiting_on == null` AND `blocked != null` AND `blocked.reason` starts with `"Triage: "` | **Out of scope** — a confidence-gate checkpoint stamped by the Review-path routing below; a human clears it via the dashboard |
+| `waiting_on == null` AND an open problem exists whose statement starts with `"Triage: "` | **Out of scope** — a confidence-gate checkpoint escalated by the Review-path routing below (DX-2782: an `issue_problem add` call, not a `blocked` stamp); a human answers it via the dashboard |
 | `waiting_on == null` AND `blocked != null` (any other reason) | **Blocked** — Hard Gate audit |
 | `waiting_on == null` AND `blocked == null` AND `status_derived === "Review"` | **Review** — Confidence-score |
 
-Out-of-scope: `waiting_on == null` AND `blocked == null` AND `status_derived ∈ {ToDo, In Progress, Done, Cancelled}` (dispatchable/active/terminal cards don't need triage). On any out-of-scope match (including the `"Triage: "`-prefixed Blocked case above): make no `issue_triage`/`issue_transition` call, `danxbot_complete({status: "complete", summary: "out of scope: <reason>"})`, stop.
+Out-of-scope: `waiting_on == null` AND `blocked == null` AND `status_derived ∈ {ToDo, In Progress, Done, Cancelled}` (dispatchable/active/terminal cards don't need triage). On any out-of-scope match (including the `"Triage: "`-prefixed escalated case above): make no `issue_triage`/`issue_transition` call, `danxbot_complete({status: "complete", summary: "out of scope: <reason>"})`, stop.
 
 ## Status = Review
 
@@ -24,11 +24,9 @@ Real investigation, not a description re-read. Every one of these four checks ru
 
 A card that passes all four (not implemented, still relevant, no superseding sibling, conforms to or is unaddressed by the Master Plan) earns the default score of 5. A card that fails any one of them, with cited evidence, is scored below 5 — the lower the score, the more conclusive and evidenced the doubt (see Confidence Rubric in SKILL.md).
 
-**Ordering check (MANDATORY, separate from the four above — run before scoring):** If this card should not be worked before a sibling/prerequisite card completes, do NOT encode that via a mid-range confidence score hoping the card "sits and gets revisited" — confidence bands below Approve now BLOCK the card (`blocked_at` stamped) for a HUMAN to clear via the dashboard, they are not a scheduling mechanism, and they carry zero ordering guarantee against a sibling. Instead check `issue_get`'s edges for an existing `depends_on` on the prerequisite; if missing, add it now via `issue_dependency({id, action:'add', kind:'depends_on', target_id: <prerequisite>})` BEFORE scoring. Once the edge exists, the card is safe to score high (or low, on its own merits) — `waiting_on` holds the picker off regardless of triage confidence or status.
+**Ordering check (MANDATORY, separate from the four above — run before scoring):** If this card should not be worked before a sibling/prerequisite card completes, do NOT encode that via a mid-range confidence score hoping the card "sits and gets revisited" — confidence bands below Approve now escalate to a HUMAN decision (an open problem via `issue_problem add`, DX-2782 — no `blocked_at` stamp, and no TTL to wait out), they are not a scheduling mechanism, and they carry zero ordering guarantee against a sibling. Instead check `issue_get`'s edges for an existing `depends_on` on the prerequisite; if missing, add it now via `issue_dependency({id, action:'add', kind:'depends_on', target_id: <prerequisite>})` BEFORE scoring. Once the edge exists, the card is safe to score high (or low, on its own merits) — `waiting_on` holds the picker off regardless of triage confidence or status.
 
 **Validate `effort_level`:** read `.claude/rules/danx-effort-policy.md`; compute level matching description scope; if unset or mismatched (scope grew/shrunk), overwrite. Do this regardless of what score you land on — it is bookkeeping on the card, not part of the confidence decision.
-
-**If you expect an Approve-band score:** call `mcp__danx-dashboard__issue_requires_human({set: true, reason, steps[]})` BEFORE `issue_triage`, same as before — every Approve still needs a human sign-off before the card is picked up for autonomous work, independent of how the score was computed. If the server's actual routing lands somewhere else (e.g. your 5 nonetheless resolves to Keep under a board's stricter thresholds), the `requires_human` flag on a non-`ToDo` card is inert — harmless, not wrong.
 
 ## Status = Blocked
 
@@ -41,8 +39,8 @@ There is no confidence question here — a Hard Gate audit is a mechanical class
 | Outcome | Action | Terminal call |
 |---|---|---|
 | **Every step locally executable** — wrongly punted | **Demote**: `issue_transition({action: "unblock"})` — clears `blocked_at`/`blocked_reason`, card reverts to whatever status it held before the block (its own `ready_at`/etc. are untouched by `unblock`) | `danxbot_complete({status: "complete"})` |
-| **At least one step genuinely human-only** | **Confirm**: leave the block exactly as-is (no MCP mutation) | `danxbot_complete({status: "complete"})` — triage recorded in the comment only; card remains Blocked |
-| **Mixed** (some local, some human-only) | Confirm (as above), but note in the comment that the next worker dispatch should execute the local steps before re-confirming | `danxbot_complete({status: "complete"})` |
+| **At least one step genuinely human-only** | **Confirm**: leave the block as-is. `blocked` never reaches the operator's Needs You tab — if the card has no open problem yet, escalate: `issue_problem({id, action: 'add', statement: <the human-only step or decision>, solutions: <options named in the escalation comment, one recommended; empty if none>})`. This one call is the whole escalation — already has an open problem → no MCP mutation needed. | `danxbot_complete({status: "complete"})` — card remains Blocked (answering the problem never clears `blocked`) |
+| **Mixed** (some local, some human-only) | Confirm (as above, including the escalation), but note in the comment that the next worker dispatch should execute the local steps before re-confirming | `danxbot_complete({status: "complete"})` |
 
 **Rationalisation detector — refuse to Confirm if the escalation comment contains any of:**
 - "operator-driven verification"
@@ -74,7 +72,7 @@ As with Blocked, this is a mechanical re-check of dependency state, not a value 
 |---|---|---|---|
 | Review | (any) | `issue_triage({id, confidence, reason})` — read `body.issue.triage_last_status` for the outcome the server picked | `{status: "complete"}` always |
 | Blocked | Demote | `issue_transition({action: "unblock"})` | `{status: "complete"}` |
-| Blocked | Confirm-Block | none | `{status: "complete"}` |
+| Blocked | Confirm-Block | none, or `issue_problem` add when a human-only step has no open problem yet | `{status: "complete"}` |
 | Waiting On | Unblock | `issue_transition({action: "unblock"})` | `{status: "complete"}` |
 | Waiting On | Confirm-Block | none | `{status: "complete"}` |
 | Out of scope | — | none | `{status: "complete", summary: "out of scope: <reason>"}` |
