@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -40,6 +40,50 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 Forbidden substitutes: a plan file, `~/.claude/plans/*.md`, a repo `.md` spec or handoff doc,
 an HTML page, a `.junk/` notes file, in-session `TaskCreate`/`TaskList` as the record (it is
 working memory only), and a chat summary.
+
+## The mantra — zero-context continuity and the ideal solution
+
+The danxbot plugin injects this on every session start (`danxbot/scripts/zero-context-mandate.sh`).
+This section is the procedure for applying it to a plan.
+
+**Nothing lives only in the session.** Plan every piece of work as if this session will be wiped
+and a brand-new agent with zero context takes over. That agent must find everything that still
+has to happen:
+- each follow-up, cleanup, verification, deploy and publish step;
+- each open decision and deferred finding;
+- each stopped or in-flight sub-agent, and what it was doing;
+- all uncommitted or unpushed local state: clone paths, worktrees, branches, local SHAs.
+
+| Kind of item | Where it goes |
+|---|---|
+| A step that finishes an existing card | An AC item on that card (`issue_checklist` `add_item`) |
+| Work outside any existing card's scope (a cleanup, a follow-up fix, a deferred gap) | Its own card attached to the plan it serves, with `depends_on` edges where ordering matters |
+| A lasting goal, rule, caveat or design fact | A plan record or architecture section |
+| Status, evidence, local state of in-flight work (clone path, local SHA, what a paused agent was about to do) | A comment on the card |
+
+Never a vessel for any of these: chat, `TaskCreate`/`TaskList`, the session scratchpad (wiped
+between sessions), a sub-agent's context, or "I'll do it once X finishes".
+
+**Mechanical check.** Run it before every chat reply, before dispatching or stopping a sub-agent,
+and before compaction or ending the session: *"If this session were wiped right now, would a
+zero-context agent miss a single item of work or cleanup?"* Any yes → write that item to its card
+or plan first, then continue.
+
+- **Incident, 2026-09-14.** A handoff said a card's worktree was stale scratch, when stopped agents
+  had left 25 uncommitted files in it.
+- **Same session.** Three parallel builders' clone paths, local commit SHAs and phase-2 merge order
+  existed only in the orchestrating session's context.
+
+**Always the ideal, correct solution.** Time and money are irrelevant: go slow to go fast, and leave
+no rakes behind. Every plan's architecture opens with this standard, and every card is scoped to
+leave none of the following when it finishes:
+- tech debt;
+- backwards compatibility;
+- legacy, deprecated or obsolete code;
+- duplicated code (DRY and SOLID always).
+
+A replaced path is deleted in the same change. Anything that cannot land in that card becomes its
+own card **before** the work starts, never a note to self.
 
 ## Scope — a plan serves its goals and nothing else
 

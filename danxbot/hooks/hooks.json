@@ -1,9 +1,23 @@
 {
-  "description": "Plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment.",
+  "description": "Danxbot mantra (zero-context continuity: all work lives on cards or the plan; always the ideal, correct, zero-tech-debt solution) on SessionStart with no matcher, so it re-injects after compaction, plus a one-line pointer on UserPromptSubmit. Then the plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment (SessionStart).",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/zero-context-mandate.sh UserPromptSubmit"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/zero-context-mandate.sh SessionStart"
+          },
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/danxbot-skill-mandate.sh SessionStart"
