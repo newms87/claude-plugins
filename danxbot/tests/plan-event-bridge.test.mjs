@@ -556,6 +556,61 @@ describe("delivery failures", () => {
   });
 });
 
+// --------------------------------------------------------- 9b. queue overflow
+
+describe("relay queue overflow", () => {
+  test("the queue never grows past its cap; overflow fires onOverflow once, logs loudly, and nothing is recorded", async () => {
+    const recorded = [];
+    const logs = [];
+    let overflowed = false;
+    let overflowCalls = 0;
+    let overflowReason = null;
+    const queue = bridge.createRelayQueue({
+      post: async () => {
+        throw Object.assign(new Error("no inbox"), { code: "ECONNREFUSED" });
+      },
+      record: (id) => recorded.push(id),
+      log: (m) => logs.push(m),
+      // Ends the in-flight drain loop once overflow fires, instead of retrying forever with
+      // real backoff delays — mirrors how `run()` wires `isStopped` to the same flag `shutdown`
+      // sets, since a real overflow terminates the whole process.
+      isStopped: () => overflowed,
+      sleep: async () => {},
+      cap: 3,
+      onOverflow: (reason) => {
+        overflowed = true;
+        overflowCalls += 1;
+        overflowReason = reason;
+      },
+    });
+
+    // All four pushes run synchronously before the queue's own async drain loop (already
+    // stuck retrying event 1, which never succeeds) gets a turn — so the cap check below is
+    // exercised deterministically, with no reliance on timing.
+    for (let id = 1; id <= 4; id += 1) queue.push({ id, text: `event ${id}` });
+
+    assert.equal(queue.pending(), 3, "the 4th event is refused — the queue never grows past the cap");
+    assert.equal(overflowCalls, 1, "onOverflow fires exactly once, not once per refused push");
+    assert.match(overflowReason, /\b3\b/, "the reason names the cap that was hit");
+    assert.ok(
+      logs.some((m) => m.startsWith("FATAL:") && /\b3\b/.test(m)),
+      "the overflow is logged loudly, not silently",
+    );
+
+    await queue.idle();
+    assert.deepEqual(recorded, [], "the inbox never accepted a post, so nothing was ever recorded to the cursor");
+
+    // A 5th push after the process would already be exiting must not resurrect delivery.
+    queue.push({ id: 5, text: "event 5" });
+    assert.equal(queue.pending(), 3);
+    assert.equal(overflowCalls, 1);
+  });
+
+  test("cap defaults to RELAY_QUEUE_CAP, which matches the cursor's own CURSOR_ID_MEMORY", () => {
+    assert.equal(bridge.RELAY_QUEUE_CAP, bridge.CURSOR_ID_MEMORY);
+  });
+});
+
 // ---------------------------------------------------------- 10. start gate
 
 describe("start gate", () => {

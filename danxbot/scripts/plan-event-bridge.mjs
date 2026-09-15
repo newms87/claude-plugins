@@ -66,6 +66,14 @@ const LOG_MAX_BYTES = 1_000_000;
 export const STDERR_TAIL_CHARS = 2_000;
 export const CURSOR_ID_MEMORY = 100;
 export const STALE_STATE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * createRelayQueue's in-memory bound (DX-2784). Matches CURSOR_ID_MEMORY deliberately: the
+ * cursor already treats "100 events" as this bridge's unit of memory, and a backlog this
+ * large means the inbox has been failing long enough that it is not a transient blip — it's
+ * time to stop holding events in an unbounded array (an OOM risk) and let a restart resume
+ * the stream from the dashboard instead.
+ */
+export const RELAY_QUEUE_CAP = CURSOR_ID_MEMORY;
 
 /** Every relayed message is prefixed with this, so the session never mistakes it for a peer session's request. */
 export const RELAY_PREFIX =
@@ -374,10 +382,22 @@ export function createLineSplitter(onLine) {
  * of the queue — later events wait behind it, so the cursor never runs ahead of a lost
  * event — and is retried with backoff. If the bridge exits first, the event was never
  * recorded, so the next bridge's resume replays it.
+ *
+ * The queue is bounded at `cap` (default RELAY_QUEUE_CAP): while the head keeps failing,
+ * every event behind it piles up in memory with nothing draining it, so an unbounded array
+ * here is a real OOM risk on a long enough outage. Overflow is NOT a silent drop — dropping
+ * the oldest or newest queued event would lose it for good, with no record anywhere that it
+ * ever existed. Instead `onOverflow(reason)` fires once (never enqueuing the event that
+ * would have exceeded the cap) so the caller can end the process on a clearly logged reason.
+ * Because none of the queued events — including the one that triggered the overflow — were
+ * ever `record`ed, the cursor never advanced past them, so the next bridge run's resume
+ * naturally re-streams them from the dashboard: deferred to the next process lifetime, never
+ * lost.
  */
-export function createRelayQueue({ post, record, log, sleep, isStopped = () => false }) {
+export function createRelayQueue({ post, record, log, sleep, isStopped = () => false, cap = RELAY_QUEUE_CAP, onOverflow = () => {} }) {
   const queue = [];
   let running = null;
+  let overflowed = false;
 
   const drain = async () => {
     let backoff = REDELIVERY_INITIAL_BACKOFF_MS;
@@ -421,6 +441,17 @@ export function createRelayQueue({ post, record, log, sleep, isStopped = () => f
 
   return {
     push(event) {
+      if (overflowed) return;
+      if (queue.length >= cap) {
+        overflowed = true;
+        const reason =
+          `relay queue overflow: ${cap} events are undelivered and the inbox has been failing since event ` +
+          `${queue[0]?.id ?? "(no id)"}; exiting without recording any of them so the next bridge run's resume ` +
+          "replays them from the dashboard";
+        log(`FATAL: ${reason}`);
+        onOverflow(reason);
+        return;
+      }
       queue.push(event);
       kick();
     },
@@ -545,6 +576,7 @@ async function run(sessionId, env = process.env) {
     log,
     sleep,
     isStopped: () => stopping,
+    onOverflow: (reason) => shutdown(reason),
   });
 
   log(`bridge started for session ${sessionId} (pid ${process.pid})`);
