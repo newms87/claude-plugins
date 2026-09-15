@@ -44,11 +44,18 @@ If zero candidates match, the epic genuinely has no phase children —
 leave `children[]` empty and exit (call the appropriate `issue_transition` if the epic needs a status bump, or just return). There is no in-card phase
 checklist (ISS-81 retired that field). **An Epic is a container and is
 NEVER dispatched to a worker as if it were a single card** (see
-`issue-card-workflow`'s container-atomic rule) — a childless Epic simply
-cannot be readied, picked up, or completed; its lifecycle 409s on every
-transition. If the epic genuinely has no work to decompose into phases, it
-was mis-typed and should be re-typed to a Story/Bug/Chore by whoever
-created it, not "worked as-is" by the orchestrator.
+`issue-card-workflow`'s container-atomic rule) — a childless Epic cannot
+be readied or picked up (`ready`/`pickup`/`rollback_pickup` are refused on
+every container, `CONTAINER_REFUSED_ACTIONS`,
+`src/issues/write/transition.ts`). It CAN still be completed or cancelled
+directly: with zero children (or every child already terminal) there is
+nothing to roll up, so the container's own stamp is the only available
+source of truth (`CONTAINER_ALLOWED_ON_CHILDLESS = ["complete", "cancel"]`,
+DX-2173, same file). If the epic genuinely has no work to decompose into
+phases, it was mis-typed and should be re-typed to a Story/Bug/Chore by
+whoever created it, not "worked as-is" by the orchestrator — cancelling it
+directly is the mechanically-available escape hatch if a re-type is not
+practical.
 
 If one or more candidates match, proceed to Step 2.
 

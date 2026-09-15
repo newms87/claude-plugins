@@ -452,7 +452,10 @@ DX-2830 "requires_human is retired" (`6060c8bc`) and DX-2782 auto-triage-via-pro
   recorded answers; a card needs a human exactly when it has a live, undecided row in
   `issue_problems` — `open_problem_count`, computed, not a stored flag); `issue_activity_events`
   (durable comment/`solution_answered`/`problem_added`/blocked/unblocked events, 7-day retention
-  — there is no `requires_human_set`/`requires_human_cleared` kind any more, retired by DX-2830)
+  — no code writes a `requires_human_set`/`requires_human_cleared` event any more, retired by
+  DX-2830 (the column's CHECK constraint still admits those two kind values so pre-existing rows
+  stay valid; that is a schema-compatibility detail, not a live event type — you will never see
+  one relayed))
   and `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
 - **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`,
   `src/issues/routes.ts`): `/api/plans` (list/create/rename, paged with `limit`/`offset`/`sort`/
