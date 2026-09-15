@@ -1,57 +1,39 @@
 #!/usr/bin/env node
 /**
- * danxbot plan event bridge (DX-2784) — delivery of dashboard plan events into a
- * Claude Code session that is connected to a danxbot Plan.
+ * danxbot plan event bridge (DX-2784) — delivers a danxbot Plan's dashboard events
+ * into the Claude Code session connected to it.
  *
  * WHY. Operators answer questions and comment on the cards of a danxbot Plan in the
- * dashboard. The session working that plan must hear each event at once. The
- * dashboard already streams them (`GET /api/plan-sessions/stream`, ticket-authed,
- * filtered server-side to cards of the plan the session is connected to, excluding the
- * session's own writes), and `@thehammer/danx-dashboard-mcp listen` already turns that
- * stream into one JSON record per event with reconnect + dedupe. What was missing is a
- * process that lives as long as the session: Monitor stops after 30 minutes, plugin
- * `monitors/` are skipped without a TTY (Desktop), and MCP channels need a launch flag.
- * This bridge is that process. It relays each event's text into the session's own inbox
- * socket (`CLAUDE_CODE_MESSAGING_SOCKET`), which starts a turn in an idle session.
+ * dashboard, and the session working that plan must hear each event at once. Monitor
+ * stops after 30 minutes, plugin `monitors/` are skipped without a TTY (Desktop), and
+ * MCP channels need a launch flag — so a process that lives as long as the session
+ * relays each event into the session's own inbox socket (`CLAUDE_CODE_MESSAGING_SOCKET`),
+ * which starts a turn in an idle session.
  *
- * ONLY FOR A CONNECTED SESSION, AND EVENT-DRIVEN. Two hooks run `start`:
- *   - PostToolUse on `plan_connect` (the session just connected);
- *   - SessionStart (startup / resume / clear / compact), which starts it only when ONE
- *     read of `GET /api/plans/mine` says the session is already connected.
- * An unconnected session — including every dispatched worker that never connects —
- * never gets a bridge. A running bridge exits when the dashboard says the session is
- * not connected (the ticket mint answers 409 `session_not_connected`), when its stream
- * is superseded / replaced / revoked, when its credential is refused, when Claude Code
- * exits, or on SessionEnd.
+ * WHAT THIS SCRIPT OWNS, AND WHAT IT DOES NOT. It owns process lifecycle (one bridge per
+ * session, start / stop / yield), the delivered-id cursor, and the inbox post. It knows
+ * NOTHING about the dashboard's HTTP contract: `danx-dashboard-mcp bridge` (the MCP
+ * package, pinned below) mints the ticket, streams, re-mints, and ends with one
+ * machine-readable stop record naming why. That contract is written and tested once,
+ * in the danxbot repo, beside the MCP server that already speaks it.
+ *
+ * WHEN IT RUNS. PostToolUse on `plan_connect` and SessionStart run `start`. A session
+ * that is not connected to a plan gets a bridge that exits at once: the subcommand's
+ * first mint answers `not_connected`, which is terminal. A session without the inbox
+ * socket or the dashboard credential gets no process at all.
  *
  * MODES
- *   start — the hooks (async). A live bridge with a fresh heartbeat → no-op. Otherwise
- *           checks the connection, then claims the session's pid file and spawns `run`.
- *   run   — the bridge itself (spawned detached by `start`).
- *   stop  — SessionEnd hook. Terminates this session's bridge and its listen child.
+ *   start — the hooks. Under an exclusive-create lock: a live holder with a fresh
+ *           heartbeat → no-op; otherwise spawn `run` and record its pid.
+ *   run   — the bridge itself: supervises the subcommand, relays its events.
+ *   stop  — SessionEnd. Signals a live holder, whose SIGTERM handler ends its child.
  *
- * CREDENTIAL. The same source the `danx_dashboard` MCP server uses: the process
- * environment's `DANXBOT_DASHBOARD_URL` + `DANXBOT_DISPATCH_TOKEN`. No repo `.env` is
- * read. The token is only ever sent as a bearer to the dashboard; the listen child gets
- * the TICKET, in its environment (`DANX_DASHBOARD_LISTEN_TICKET`), never on its command
- * line, and never the token. Neither is ever logged or relayed.
- *
- * ONE TICKET PER SESSION. The dashboard keeps one listener per session: minting a ticket
- * ends the stream holding the previous one (`superseded`). The bridge is the only minter
- * (`plan_connect` no longer mints), so a superseded bridge has been replaced by another
- * holder and exits instead of fighting it.
- *
- * RESUME. Every event record carries its id. After relaying it, the bridge stores the
- * newest `CURSOR_ID_MEMORY` delivered ids in `<session>.cursor.json`, and passes them to
- * each new `listen` as `--resume-ids`: the highest becomes the first `Last-Event-ID` and
- * the rest keep the dashboard's commit-order overlap from relaying a duplicate. The
- * dashboard floors that replay at the session's first ticket, so a restarted bridge — a
- * new process, a re-minted ticket, a resumed session — loses nothing.
- *
- * STATE lives under `${CLAUDE_PLUGIN_DATA}/plan-event-bridge/`: `<session>.json`
- * (`{pid, sessionId, heartbeatAt}`), `<session>.cursor.json` (`{deliveredIds}`, kept
- * across SessionEnd so a resume continues; pruned after CURSOR_RETENTION_MS, the
- * dashboard's own replay retention) and `<session>.log` (no secrets).
+ * STATE lives under `${CLAUDE_PLUGIN_DATA}/plan-event-bridge/`, one set per session:
+ * `<session>.pid.json` (`{pid, sessionId, heartbeatAt}`), `<session>.lock` (held only
+ * during `start`), `<session>.cursor.json` (`{deliveredIds}`, kept across SessionEnd so
+ * a resumed session continues) and `<session>.log` (no secrets). Every write is
+ * write-then-rename. Files untouched for STALE_STATE_MS are pruned — the dashboard
+ * keeps only a week of events, so an older cursor cannot resume anything.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -61,54 +43,126 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Pinned: the bridge parses this version's output contract (`listen.ts`: ticket in
- * `DANX_DASHBOARD_LISTEN_TICKET`, `--resume-ids`, JSON Lines). DX-2784 — this must be the
- * version published WITH that contract; set it to the version the release actually
- * publishes.
+ * The ONE place the MCP package version this plugin runs is named. DX-2784: it must be
+ * the version published with the `bridge` subcommand; move it to the version that
+ * release actually publishes.
  */
-export const LISTEN_PACKAGE = "@thehammer/danx-dashboard-mcp@0.1.64";
-const LISTEN_TICKET_ENV = "DANX_DASHBOARD_LISTEN_TICKET";
+export const DASHBOARD_MCP_PACKAGE = "@thehammer/danx-dashboard-mcp@0.1.64";
+export const BRIDGE_SUBCOMMAND = "bridge";
 
-const HEARTBEAT_MS = 30_000;
-const HEARTBEAT_STALE_MS = 90_000;
+export const HEARTBEAT_MS = 30_000;
+export const HEARTBEAT_STALE_MS = 90_000;
 const PARENT_CHECK_MS = 5_000;
-const INITIAL_BACKOFF_MS = 1_000;
-const MAX_BACKOFF_MS = 60_000;
-/** A listen child that ran this long proved the path healthy; backoff resets. */
-const HEALTHY_RUN_MS = 60_000;
-const SOCKET_POST_ATTEMPTS = 3;
+/** A start that crashed mid-claim leaves its lock; one older than this is taken over. */
+export const LOCK_STALE_MS = 30_000;
+export const SOCKET_POST_ATTEMPTS = 3;
+const REDELIVERY_INITIAL_BACKOFF_MS = 1_000;
+const REDELIVERY_MAX_BACKOFF_MS = 60_000;
+/** A subcommand that ran this long before dying without a stop record is restarted; a quicker death is terminal. */
+export const HEALTHY_RUN_MS = 60_000;
+const RESTART_DELAY_MS = 1_000;
+const DRAIN_ON_EXIT_MS = 10_000;
 const LOG_MAX_BYTES = 1_000_000;
-const CHECK_TIMEOUT_MS = 10_000;
-/** Delivered ids kept for resume — far more than the dashboard's 30 s replay overlap can re-send. */
-const CURSOR_ID_MEMORY = 100;
-/** The dashboard keeps a week of events; a cursor older than that cannot resume anything. */
-const CURSOR_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const STDERR_TAIL_CHARS = 2_000;
+export const CURSOR_ID_MEMORY = 100;
+export const STALE_STATE_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** What every relayed line is prefixed with, so the session never mistakes it for a peer session's request. */
+/** Every relayed message is prefixed with this, so the session never mistakes it for a peer session's request. */
 export const RELAY_PREFIX =
   "[danxbot dashboard event, relayed by the danxbot plugin's plan event bridge; this is not a message " +
   "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
   "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
 
-const SAFE_ARG = /^[A-Za-z0-9._~:/?=&%+@,-]+$/;
+/** What the process needs before a bridge can do anything useful. */
+export const REQUIRED_ENV = [
+  "CLAUDE_PLUGIN_DATA",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "DANXBOT_DASHBOARD_URL",
+  "DANXBOT_DISPATCH_TOKEN",
+];
 
-/** Listen stop reasons after which another holder owns the session's stream, or the operator silenced it. */
-const FINAL_STOP_REASONS = new Set(["superseded", "replaced", "revoked"]);
+const STATE_SUFFIXES = [".pid.json", ".lock", ".cursor.json", ".log", ".tmp"];
 
-function stateDir() {
-  const data = process.env.CLAUDE_PLUGIN_DATA;
-  if (!data) throw new Error("CLAUDE_PLUGIN_DATA is not set — the bridge only runs from the danxbot plugin's hooks");
-  const dir = path.join(data, "plan-event-bridge");
+// ------------------------------------------------------------------ state files
+
+export function stateDir(env = process.env) {
+  if (!env.CLAUDE_PLUGIN_DATA) throw new Error("CLAUDE_PLUGIN_DATA is not set — the bridge only runs from the danxbot plugin's hooks");
+  const dir = path.join(env.CLAUDE_PLUGIN_DATA, "plan-event-bridge");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function safeSessionFile(sessionId, ext) {
-  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) throw new Error("session id has unexpected characters");
-  return path.join(stateDir(), `${sessionId}.${ext}`);
+/** The session's state files. A missing or odd session id is refused, never turned into a path. */
+export function sessionPaths(dir, sessionId) {
+  if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    throw new Error("session id is missing or has unexpected characters");
+  }
+  const base = path.join(dir, sessionId);
+  return { pid: `${base}.pid.json`, lock: `${base}.lock`, cursor: `${base}.cursor.json`, log: `${base}.log` };
 }
 
-function isAlive(pid) {
+export function readJsonFile(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Write-then-rename: a reader sees the old file or the new one, never a torn write. */
+export function writeFileAtomic(file, text) {
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, file);
+}
+
+export function pidRecord(pid, sessionId, now = Date.now()) {
+  return { pid, sessionId, heartbeatAt: new Date(now).toISOString() };
+}
+
+/** A pid file whose process is alive AND has heartbeated recently. */
+export function isFreshHolder(record, { isAlive: alive = isAlive, now = Date.now() } = {}) {
+  return Boolean(record) && alive(record.pid) && now - Date.parse(record.heartbeatAt ?? "") < HEARTBEAT_STALE_MS;
+}
+
+/** Exclusive-create lock. `false` means another start holds it (and it is not stale). */
+export function acquireLock(lockFile, now = Date.now()) {
+  for (let tries = 0; tries < 2; tries += 1) {
+    try {
+      fs.closeSync(fs.openSync(lockFile, "wx"));
+      return true;
+    } catch (err) {
+      if (err.code !== "EEXIST") throw err;
+      let ageMs;
+      try {
+        ageMs = now - fs.statSync(lockFile).mtimeMs;
+      } catch {
+        continue; // released between the create and the stat
+      }
+      if (ageMs <= LOCK_STALE_MS) return false;
+      fs.rmSync(lockFile, { force: true });
+    }
+  }
+  return false;
+}
+
+/** Remove every session state file nothing has touched for STALE_STATE_MS. */
+export function pruneStale(dir, now = Date.now()) {
+  for (const name of fs.readdirSync(dir)) {
+    if (!STATE_SUFFIXES.some((suffix) => name.endsWith(suffix))) continue;
+    const file = path.join(dir, name);
+    try {
+      if (now - fs.statSync(file).mtimeMs > STALE_STATE_MS) fs.rmSync(file, { force: true });
+    } catch {
+      /* removed by another start */
+    }
+  }
+}
+
+// ------------------------------------------------------------------- processes
+
+export function isAlive(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
@@ -118,187 +172,103 @@ function isAlive(pid) {
   }
 }
 
-function readJsonFile(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-/** Kill a process and its descendants (the listen child runs under npx/cmd). */
-function killTree(pid) {
+/**
+ * End a process and its descendants. On Windows `taskkill /T` walks the tree. On POSIX
+ * the signal goes to the process GROUP — the run process and the subcommand are each
+ * spawned detached, so each leads its own group.
+ */
+export function killTree(pid) {
   if (!isAlive(pid)) return;
   if (process.platform === "win32") {
     spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
-  } else {
+    return;
+  }
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
     try {
-      process.kill(-pid, "SIGTERM");
+      process.kill(pid, "SIGTERM");
     } catch {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        /* already gone */
-      }
+      /* already gone */
     }
   }
-}
-
-/** The hook's stdin JSON carries `session_id`; a hand run has none. */
-async function readHookSessionId() {
-  if (process.stdin.isTTY) return null;
-  const chunks = [];
-  const done = new Promise((resolve) => {
-    process.stdin.on("data", (c) => chunks.push(c));
-    process.stdin.on("end", resolve);
-    process.stdin.on("error", resolve);
-    setTimeout(resolve, 500);
-  });
-  await done;
-  process.stdin.pause();
-  try {
-    const id = JSON.parse(Buffer.concat(chunks).toString("utf8")).session_id;
-    return typeof id === "string" && id !== "" ? id : null;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveSessionId() {
-  return (await readHookSessionId()) ?? process.env.CLAUDE_CODE_SESSION_ID ?? null;
-}
-
-function dashboardBase() {
-  return process.env.DANXBOT_DASHBOARD_URL.replace(/\/+$/, "");
-}
-
-/** The headers every dashboard call carries: the credential and this session's identity. */
-function dashboardHeaders(sessionId) {
-  return {
-    Authorization: `Bearer ${process.env.DANXBOT_DISPATCH_TOKEN}`,
-    Accept: "application/json",
-    "x-danx-session-id": sessionId,
-  };
-}
-
-/** A dashboard error body's `error` code, or null. The v2 envelope may be wrapped in `body`. */
-async function errorCode(res) {
-  try {
-    const body = await res.json();
-    return body?.error ?? body?.body?.error ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * ONE read: is this session connected to a plan? `GET /api/plans/mine` (bare — cheap
- * scalars) answers 200 when it is and 409 `session_not_connected` when it is not.
- * Returns `"connected"`, `"not_connected"`, or a string describing why it could not tell.
- */
-export async function checkConnected(sessionId) {
-  let res;
-  try {
-    res = await fetch(`${dashboardBase()}/api/plans/mine`, {
-      headers: dashboardHeaders(sessionId),
-      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
-    });
-  } catch (err) {
-    return `connection check failed: ${err.message}`;
-  }
-  if (res.ok) {
-    await res.body?.cancel();
-    return "connected";
-  }
-  const code = await errorCode(res);
-  return res.status === 409 && code === "session_not_connected"
-    ? "not_connected"
-    : `connection check HTTP ${res.status}${code ? ` ${code}` : ""}`;
 }
 
 // ---------------------------------------------------------------- start / stop
 
-/** Delete cursors the dashboard can no longer resume from. */
-function pruneStaleCursors() {
-  const dir = stateDir();
-  const cutoff = Date.now() - CURSOR_RETENTION_MS;
-  for (const name of fs.readdirSync(dir)) {
-    if (!name.endsWith(".cursor.json")) continue;
-    const file = path.join(dir, name);
-    try {
-      if (fs.statSync(file).mtimeMs < cutoff) fs.rmSync(file, { force: true });
-    } catch {
-      /* raced another start */
-    }
-  }
-}
-
-async function start() {
-  const sessionId = await resolveSessionId();
-  const missing = [
-    ["session id", sessionId],
-    ["CLAUDE_CODE_MESSAGING_SOCKET", process.env.CLAUDE_CODE_MESSAGING_SOCKET],
-    ["CLAUDE_CODE_MESSAGING_TOKEN", process.env.CLAUDE_CODE_MESSAGING_TOKEN],
-    ["DANXBOT_DASHBOARD_URL", process.env.DANXBOT_DASHBOARD_URL],
-    ["DANXBOT_DISPATCH_TOKEN", process.env.DANXBOT_DISPATCH_TOKEN],
-  ]
-    .filter(([, v]) => !v)
-    .map(([k]) => k);
+/**
+ * Ensure one bridge for the session. Returns `{started, reason?, pid?}`.
+ *
+ * A holder that is alive but has not heartbeated is REPLACED, not killed: its pid may
+ * already belong to an unrelated process, and killing that would be worse than any
+ * duplicate. A real stale bridge yields on its next heartbeat (the pid file names
+ * another pid) and ends its own child; the new bridge's mint ends its stream anyway.
+ */
+export function start({
+  env = process.env,
+  sessionId,
+  spawnRun = spawnRunProcess,
+  isAlive: alive = isAlive,
+  now = Date.now,
+  stderr = (message) => process.stderr.write(message),
+} = {}) {
+  const missing = [["session id", sessionId], ...REQUIRED_ENV.map((name) => [name, env[name]])]
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
   if (missing.length > 0) {
-    process.stderr.write(`danxbot plan event bridge not started: missing ${missing.join(", ")}\n`);
-    return 0;
+    stderr(`danxbot plan event bridge not started: missing ${missing.join(", ")}\n`);
+    return { started: false, reason: `missing ${missing.join(", ")}` };
   }
-  pruneStaleCursors();
-  const file = safeSessionFile(sessionId, "json");
-  const held = readJsonFile(file);
-  if (held && isAlive(held.pid) && Date.now() - Date.parse(held.heartbeatAt ?? 0) < HEARTBEAT_STALE_MS) {
-    return 0; // already bridged — no-op, no network
-  }
-  const connection = await checkConnected(sessionId);
-  if (connection === "not_connected") return 0;
-  if (connection !== "connected") {
-    process.stderr.write(`danxbot plan event bridge not started: ${connection}\n`);
-    return 0;
-  }
-  for (let tries = 0; tries < 2; tries += 1) {
-    let fd;
-    try {
-      fd = fs.openSync(file, "wx");
-    } catch (err) {
-      if (err.code !== "EEXIST") throw err;
-      const current = readJsonFile(file);
-      const fresh = current && Date.now() - Date.parse(current.heartbeatAt ?? 0) < HEARTBEAT_STALE_MS;
-      if (current && isAlive(current.pid) && fresh) return 0; // another start won the race
-      if (current && isAlive(current.pid)) killTree(current.pid); // alive but silent: replace it
-      fs.rmSync(file, { force: true });
-      continue;
+  const dir = stateDir(env);
+  const paths = sessionPaths(dir, sessionId);
+  pruneStale(dir, now());
+  if (!acquireLock(paths.lock, now())) return { started: false, reason: "another start holds the lock" };
+  try {
+    if (isFreshHolder(readJsonFile(paths.pid), { isAlive: alive, now: now() })) {
+      return { started: false, reason: "already bridged" };
     }
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "run", sessionId], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-      env: process.env,
-    });
-    fs.writeSync(fd, JSON.stringify({ pid: child.pid, sessionId, heartbeatAt: new Date().toISOString() }));
-    fs.closeSync(fd);
-    child.unref();
-    return 0;
+    const child = spawnRun(sessionId, env);
+    writeFileAtomic(paths.pid, JSON.stringify(pidRecord(child.pid, sessionId, now())));
+    return { started: true, pid: child.pid };
+  } finally {
+    fs.rmSync(paths.lock, { force: true });
   }
-  process.stderr.write("danxbot plan event bridge: could not claim the session pid file\n");
-  return 1;
 }
 
-async function stop() {
-  const sessionId = await resolveSessionId();
-  if (!sessionId) return 0;
-  const file = safeSessionFile(sessionId, "json");
-  const held = readJsonFile(file);
-  if (held && held.sessionId === sessionId) killTree(held.pid);
-  fs.rmSync(file, { force: true });
-  return 0;
+function spawnRunProcess(sessionId, env) {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "run", sessionId], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    env,
+  });
+  child.unref();
+  return child;
+}
+
+/** SessionEnd: end a live, heartbeating holder (never a stale pid that may be reused) and drop its pid file. */
+export function stop({ env = process.env, sessionId, isAlive: alive = isAlive, killTree: kill = killTree, now = Date.now } = {}) {
+  if (!env.CLAUDE_PLUGIN_DATA || typeof sessionId !== "string" || sessionId === "") return { stopped: false };
+  const paths = sessionPaths(stateDir(env), sessionId);
+  const held = readJsonFile(paths.pid);
+  const live = isFreshHolder(held, { isAlive: alive, now: now() });
+  if (live) kill(held.pid);
+  fs.rmSync(paths.pid, { force: true });
+  return { stopped: live };
 }
 
 // ------------------------------------------------------------------------- run
+
+/** One heartbeat. Yields (calls `shutdown`) when the pid file names another bridge. */
+export function heartbeatTick({ paths, selfPid, sessionId, now = Date.now(), shutdown }) {
+  const held = readJsonFile(paths.pid);
+  if (held && held.pid !== selfPid) {
+    shutdown("another bridge owns this session");
+    return false;
+  }
+  writeFileAtomic(paths.pid, JSON.stringify(pidRecord(selfPid, sessionId, now)));
+  return true;
+}
 
 /** Post one user message into this session's inbox. The server replies with nothing. */
 export function postToInbox(content, env = process.env) {
@@ -325,62 +295,242 @@ export function relayContent(text) {
   return `${RELAY_PREFIX}\n${text}`;
 }
 
-/** The ids a previous listener for this session delivered, oldest first. */
+/** The ids already delivered for the session, oldest first: positive integers only, newest CURSOR_ID_MEMORY. */
 export function readCursor(file) {
   const ids = readJsonFile(file)?.deliveredIds;
   return Array.isArray(ids) ? ids.filter((id) => Number.isSafeInteger(id) && id > 0).slice(-CURSOR_ID_MEMORY) : [];
 }
 
-/** Record one delivered id, atomically (a crash mid-write never leaves a torn cursor). */
+/** Record one delivered id — deduped, capped, atomic. */
 export function recordDelivered(file, id) {
   const ids = readCursor(file).filter((known) => known !== id);
   ids.push(id);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify({ deliveredIds: ids.slice(-CURSOR_ID_MEMORY) }));
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify({ deliveredIds: ids.slice(-CURSOR_ID_MEMORY) }));
 }
 
-/** The environment the listen child runs with: the ticket in, every credential it does not need out. */
-export function listenEnv(ticket, env = process.env) {
-  const childEnv = { ...env, [LISTEN_TICKET_ENV]: ticket };
-  delete childEnv.DANXBOT_DISPATCH_TOKEN;
-  delete childEnv.CLAUDE_CODE_MESSAGING_TOKEN;
-  return childEnv;
+export function resumeArgs(resumeIds) {
+  return resumeIds.length > 0 ? ["--resume-ids", resumeIds.join(",")] : [];
 }
 
-async function run(sessionId) {
-  const pidFile = safeSessionFile(sessionId, "json");
-  const logFile = safeSessionFile(sessionId, "log");
-  const cursorFile = safeSessionFile(sessionId, "cursor.json");
+/**
+ * The subcommand's environment: the dashboard credential and session id it needs to
+ * mint, and NOT the inbox token or socket, which only this process uses.
+ */
+export function childEnv(env, sessionId) {
+  const out = { ...env, CLAUDE_CODE_SESSION_ID: sessionId };
+  delete out.CLAUDE_CODE_MESSAGING_TOKEN;
+  delete out.CLAUDE_CODE_MESSAGING_SOCKET;
+  return out;
+}
+
+/**
+ * The command that runs the subcommand — never through a shell. On Windows `npx` is a
+ * `.cmd` shim Node can only start via `cmd.exe`, so run npm's own JS entry with this
+ * node instead; elsewhere `npx` is an executable and is spawned directly.
+ */
+export function bridgeCommand({ resumeIds, platform = process.platform, execPath = process.execPath, exists = fs.existsSync }) {
+  const args = ["-y", DASHBOARD_MCP_PACKAGE, BRIDGE_SUBCOMMAND, ...resumeArgs(resumeIds)];
+  if (platform !== "win32") return { command: "npx", args };
+  const npxCli = path.join(path.dirname(execPath), "node_modules", "npm", "bin", "npx-cli.js");
+  if (!exists(npxCli)) throw new Error(`npx not found: expected ${npxCli} next to ${execPath}`);
+  return { command: execPath, args: [npxCli, ...args] };
+}
+
+/** One stdout line of the subcommand, classified. */
+export function parseRecord(line) {
+  let record;
   try {
-    if (fs.statSync(logFile).size > LOG_MAX_BYTES) fs.truncateSync(logFile, 0);
+    record = JSON.parse(line);
+  } catch {
+    return { kind: "junk" };
+  }
+  if (record?.type === "event" && typeof record.text === "string") {
+    return { kind: "event", id: Number.isSafeInteger(record.id) && record.id > 0 ? record.id : null, text: record.text };
+  }
+  if (record?.type === "stopped" && typeof record.reason === "string") {
+    return { kind: "stopped", reason: record.reason, detail: String(record.detail ?? "") };
+  }
+  return { kind: "junk" };
+}
+
+/** Feeds complete lines to `onLine`, however the stream happens to split its chunks. */
+export function createLineSplitter(onLine) {
+  let buffer = "";
+  return (chunk) => {
+    buffer += chunk;
+    let nl = buffer.indexOf("\n");
+    while (nl !== -1) {
+      const line = buffer.slice(0, nl).replace(/\r$/, "");
+      buffer = buffer.slice(nl + 1);
+      if (line !== "") onLine(line);
+      nl = buffer.indexOf("\n");
+    }
+  };
+}
+
+/**
+ * Ordered delivery into the inbox. An event is recorded in the cursor only AFTER its
+ * post succeeds. A post that fails every attempt is logged loudly and stays at the head
+ * of the queue — later events wait behind it, so the cursor never runs ahead of a lost
+ * event — and is retried with backoff. If the bridge exits first, the event was never
+ * recorded, so the next bridge's resume replays it.
+ */
+export function createRelayQueue({ post, record, log, sleep, isStopped = () => false }) {
+  const queue = [];
+  let running = null;
+
+  const drain = async () => {
+    let backoff = REDELIVERY_INITIAL_BACKOFF_MS;
+    while (queue.length > 0 && !isStopped()) {
+      const event = queue[0];
+      let lastError = null;
+      let posted = false;
+      for (let attempt = 1; attempt <= SOCKET_POST_ATTEMPTS && !posted; attempt += 1) {
+        try {
+          await post(relayContent(event.text));
+          posted = true;
+        } catch (err) {
+          lastError = err;
+          if (attempt < SOCKET_POST_ATTEMPTS) await sleep(1_000 * attempt);
+        }
+      }
+      if (posted) {
+        queue.shift();
+        if (event.id !== null) record(event.id);
+        log(`relayed event ${event.id ?? "(no id)"} (${event.text.length} chars)`);
+        backoff = REDELIVERY_INITIAL_BACKOFF_MS;
+        continue;
+      }
+      log(
+        `INBOX POST FAILED for event ${event.id ?? "(no id)"} after ${SOCKET_POST_ATTEMPTS} attempts ` +
+          `(${lastError?.code ?? lastError?.message}); NOT recorded — holding it and ${queue.length - 1} later ` +
+          `event(s) for redelivery in ${backoff} ms`,
+      );
+      await sleep(backoff);
+      backoff = Math.min(REDELIVERY_MAX_BACKOFF_MS, backoff * 2);
+    }
+  };
+
+  const kick = () => {
+    if (running) return;
+    running = drain().finally(() => {
+      running = null;
+      if (queue.length > 0 && !isStopped()) kick();
+    });
+  };
+
+  return {
+    push(event) {
+      queue.push(event);
+      kick();
+    },
+    /** Resolves when the queue is empty (or delivery stopped). */
+    async idle() {
+      while (running) await running;
+    },
+    pending: () => queue.length,
+  };
+}
+
+/** What to do when the subcommand exits: `exit` the bridge with a reason, or `restart` it. */
+export function classifyChildExit({ stopped, code, ranMs }) {
+  if (stopped) return { action: "exit", reason: `${stopped.reason}: ${stopped.detail}` };
+  if (ranMs >= HEALTHY_RUN_MS) {
+    return {
+      action: "restart",
+      reason: `the bridge subcommand exited (code ${code}) without a stop record after running ${Math.round(ranMs / 1000)} s`,
+    };
+  }
+  return { action: "exit", reason: `bridge_failed: the bridge subcommand exited (code ${code}) without a stop record` };
+}
+
+/** Runs the subcommand once. Resolves with its stop record (or null) and exit code. */
+function runChildOnce({ spawnChild, relay, log, redact }) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnChild();
+    } catch (err) {
+      resolve({ stopped: { reason: "bridge_failed", detail: err.message }, code: null });
+      return;
+    }
+    let stopped = null;
+    let stderrTail = "";
+    let settled = false;
+    const finish = (code, spawnError) => {
+      if (settled) return;
+      settled = true;
+      if (stderrTail.trim() !== "") log(`bridge subcommand stderr (tail): ${redact(stderrTail.trim())}`);
+      resolve({ stopped: stopped ?? (spawnError ? { reason: "bridge_failed", detail: spawnError } : null), code });
+    };
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on(
+      "data",
+      createLineSplitter((line) => {
+        const record = parseRecord(line);
+        if (record.kind === "event") relay.push({ id: record.id, text: record.text });
+        else if (record.kind === "stopped") stopped = { reason: record.reason, detail: record.detail };
+        else log(`ignored non-record output from the bridge subcommand (${line.length} chars)`);
+      }),
+    );
+    child.stderr.on("data", (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CHARS);
+    });
+    child.on("error", (err) => finish(null, redact(err.message)));
+    child.on("close", (code) => finish(code, null));
+  });
+}
+
+/** Run the subcommand until it reports a terminal outcome or dies too early to restart. Returns the exit reason. */
+export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, redact = (text) => text }) {
+  for (;;) {
+    const startedAt = now();
+    const outcome = await runChildOnce({ spawnChild, relay, log, redact });
+    const decision = classifyChildExit({ ...outcome, ranMs: now() - startedAt });
+    if (decision.action === "exit") return decision.reason;
+    log(`restarting the bridge subcommand: ${decision.reason}`);
+    await sleep(RESTART_DELAY_MS);
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function run(sessionId, env = process.env) {
+  const paths = sessionPaths(stateDir(env), sessionId);
+  try {
+    if (fs.statSync(paths.log).size > LOG_MAX_BYTES) fs.truncateSync(paths.log, 0);
   } catch {
     /* no log yet */
   }
-  const log = (msg) => fs.appendFileSync(logFile, `${new Date().toISOString()} ${msg}\n`);
-  const baseUrl = dashboardBase();
-  const parentPid = Number(process.env.CLAUDE_PID);
+  const token = env.DANXBOT_DISPATCH_TOKEN;
+  const redact = (text) => (token ? text.split(token).join("[redacted]") : text);
+  const log = (message) => fs.appendFileSync(paths.log, `${new Date().toISOString()} ${redact(message)}\n`);
+  const parentPid = Number(env.CLAUDE_PID);
   let child = null;
   let stopping = false;
 
-  const ownsPidFile = () => readJsonFile(pidFile)?.pid === process.pid;
   const shutdown = (why) => {
     if (stopping) return;
     stopping = true;
     log(`exiting: ${why}`);
     if (child) killTree(child.pid);
-    if (ownsPidFile()) fs.rmSync(pidFile, { force: true });
+    if (readJsonFile(paths.pid)?.pid === process.pid) fs.rmSync(paths.pid, { force: true });
     process.exit(0);
   };
+  for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => shutdown(`received ${signal}`));
 
-  // Heartbeat, and yield if another bridge claimed the session.
-  setInterval(() => {
-    const held = readJsonFile(pidFile);
-    if (held && held.pid !== process.pid) return shutdown("another bridge owns this session");
-    fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, sessionId, heartbeatAt: new Date().toISOString() }));
-  }, HEARTBEAT_MS);
-  fs.writeFileSync(pidFile, JSON.stringify({ pid: process.pid, sessionId, heartbeatAt: new Date().toISOString() }));
-
+  const beat = () => {
+    try {
+      heartbeatTick({ paths, selfPid: process.pid, sessionId, shutdown });
+    } catch (err) {
+      log(`heartbeat write failed: ${err.message}`);
+    }
+  };
+  beat();
+  setInterval(beat, HEARTBEAT_MS);
   if (Number.isSafeInteger(parentPid) && parentPid > 0) {
     setInterval(() => {
       if (!isAlive(parentPid)) shutdown(`Claude Code process ${parentPid} is gone`);
@@ -389,143 +539,83 @@ async function run(sessionId) {
     log("warning: CLAUDE_PID not set; relying on SessionEnd to stop");
   }
 
-  let outbox = Promise.resolve();
-  const relay = (text, id) => {
-    outbox = outbox.then(async () => {
-      let posted = false;
-      for (let attempt = 1; attempt <= SOCKET_POST_ATTEMPTS && !posted; attempt += 1) {
-        try {
-          await postToInbox(relayContent(text));
-          posted = true;
-          log(`relayed event ${id ?? "(no id)"} (${text.length} chars)`);
-        } catch (err) {
-          log(`inbox post attempt ${attempt} failed: ${err.code ?? err.message}`);
-          if (Number.isSafeInteger(parentPid) && parentPid > 0 && !isAlive(parentPid)) shutdown("session gone");
-          await sleep(1_000 * attempt);
-        }
-      }
-      if (!posted) log(`dropped event ${id ?? "(no id)"} after repeated inbox failures`);
-      // Recorded either way: a resume must not replay into an inbox that already refused it three times.
-      if (id !== null) recordDelivered(cursorFile, id);
-    });
-  };
-
-  /** A ticket, or `{final: reason}` when the dashboard says this bridge must not keep trying. */
-  const mintTicket = async () => {
-    const res = await fetch(`${baseUrl}/api/plan-sessions/me/stream-ticket`, {
-      method: "POST",
-      headers: { ...dashboardHeaders(sessionId), "Content-Type": "application/json" },
-      body: "{}",
-    });
-    if (!res.ok) {
-      const code = await errorCode(res);
-      if (res.status === 409 && code === "session_not_connected") return { final: "the session is not connected to a plan" };
-      if (res.status === 401 || res.status === 403) return { final: `the dashboard refused the credential (HTTP ${res.status})` };
-      throw new Error(`stream-ticket mint HTTP ${res.status}${code ? ` ${code}` : ""}`);
-    }
-    const body = await res.json();
-    const view = typeof body?.ticket === "string" ? body : body?.body;
-    if (typeof view?.ticket !== "string" || typeof view?.streamPath !== "string" || !Number.isSafeInteger(view?.leaseMs)) {
-      throw new Error("stream-ticket mint returned an unexpected shape");
-    }
-    return { ticket: view.ticket, streamUrl: `${baseUrl}${view.streamPath}`, leaseMs: view.leaseMs };
-  };
-
-  /** Runs one listen child to its end. Resolves with the stop reason it reported, or null. */
-  const runListenOnce = ({ ticket, streamUrl, leaseMs }) =>
-    new Promise((resolve) => {
-      const resumeIds = readCursor(cursorFile);
-      const args = ["-y", LISTEN_PACKAGE, "listen", "--stream", streamUrl, "--lease-ms", String(leaseMs)];
-      if (resumeIds.length > 0) args.push("--resume-ids", resumeIds.join(","));
-      if (!args.every((arg) => SAFE_ARG.test(arg))) {
-        resolve({ reason: null, detail: "the stream url has characters unsafe to pass to the listen command" });
-        return;
-      }
-      const env = listenEnv(ticket);
-      // npx is a .cmd shim on Windows, which Node only spawns through a shell. Every arg
-      // was checked against SAFE_ARG above, so the joined command line cannot be split.
-      child =
-        process.platform === "win32"
-          ? spawn(["npx", ...args].join(" "), { shell: true, windowsHide: true, env, stdio: ["ignore", "pipe", "pipe"] })
-          : spawn("npx", args, { detached: true, env, stdio: ["ignore", "pipe", "pipe"] });
-      log(`listen started${resumeIds.length > 0 ? `, resuming after event ${Math.max(...resumeIds)}` : ""}`);
-      let stopped = { reason: null, detail: "listen exited without a stop record" };
-      let buffer = "";
-      child.stdout.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
-        buffer += chunk;
-        let nl = buffer.indexOf("\n");
-        while (nl !== -1) {
-          const line = buffer.slice(0, nl).replace(/\r$/, "");
-          buffer = buffer.slice(nl + 1);
-          nl = buffer.indexOf("\n");
-          if (line === "") continue;
-          let record;
-          try {
-            record = JSON.parse(line);
-          } catch {
-            log(`unexpected non-JSON listen output (${line.length} chars) — not relayed`);
-            continue;
-          }
-          if (record?.type === "event" && typeof record.text === "string") {
-            relay(record.text, Number.isSafeInteger(record.id) ? record.id : null);
-          } else if (record?.type === "stopped" && typeof record.reason === "string") {
-            stopped = { reason: record.reason, detail: String(record.detail ?? "") };
-          } else {
-            log("unexpected listen record — not relayed");
-          }
-        }
-      });
-      child.stderr.on("data", () => {
-        /* npx progress / usage noise; the stop record and exit code carry the outcome */
-      });
-      child.on("error", (err) => resolve({ reason: null, detail: err.message }));
-      child.on("close", (code) => resolve({ ...stopped, detail: `${stopped.detail} (exit ${code})` }));
-    });
+  const relay = createRelayQueue({
+    post: (content) => postToInbox(content, env),
+    record: (id) => recordDelivered(paths.cursor, id),
+    log,
+    sleep,
+    isStopped: () => stopping,
+  });
 
   log(`bridge started for session ${sessionId} (pid ${process.pid})`);
-  let backoff = INITIAL_BACKOFF_MS;
-  for (;;) {
-    const startedAt = Date.now();
-    try {
-      const minted = await mintTicket();
-      if (minted.final) return shutdown(minted.final);
-      log("listener ticket minted");
-      const outcome = await runListenOnce(minted);
-      child = null;
-      log(`listen stopped: ${outcome.reason ?? "no reason"} — ${outcome.detail}`);
-      await outbox;
-      if (FINAL_STOP_REASONS.has(outcome.reason)) return shutdown(`the dashboard ended this session's stream (${outcome.reason})`);
-    } catch (err) {
-      log(`ticket/listen failure: ${err.message}`);
-    }
-    if (stopping) return;
-    backoff = Date.now() - startedAt >= HEALTHY_RUN_MS ? INITIAL_BACKOFF_MS : Math.min(MAX_BACKOFF_MS, backoff * 2);
-    await sleep(backoff);
-  }
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  const reason = await superviseBridge({
+    spawnChild: () => {
+      const resumeIds = readCursor(paths.cursor);
+      const { command, args } = bridgeCommand({ resumeIds });
+      child = spawn(command, args, {
+        env: childEnv(env, sessionId),
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+        detached: process.platform !== "win32",
+      });
+      log(`bridge subcommand started${resumeIds.length > 0 ? `, resuming after event ${Math.max(...resumeIds)}` : ""}`);
+      return child;
+    },
+    relay,
+    log,
+    sleep,
+    redact,
+  });
+  child = null;
+  await Promise.race([relay.idle(), sleep(DRAIN_ON_EXIT_MS)]);
+  shutdown(reason);
 }
 
 // ------------------------------------------------------------------------ main
 
+/** The hook's stdin JSON carries `session_id`; a hand run has none. */
+async function readHookSessionId() {
+  if (process.stdin.isTTY) return null;
+  const chunks = [];
+  await new Promise((resolve) => {
+    process.stdin.on("data", (c) => chunks.push(c));
+    process.stdin.on("end", resolve);
+    process.stdin.on("error", resolve);
+    setTimeout(resolve, 500);
+  });
+  process.stdin.pause();
+  try {
+    const id = JSON.parse(Buffer.concat(chunks).toString("utf8")).session_id;
+    return typeof id === "string" && id !== "" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
   const [mode, arg] = process.argv.slice(2);
-  const main = { start, stop, run: () => run(arg) }[mode];
+  const resolveSessionId = async () => (await readHookSessionId()) ?? process.env.CLAUDE_CODE_SESSION_ID ?? null;
+  const modes = {
+    start: async () => {
+      start({ sessionId: await resolveSessionId() });
+      process.exit(0);
+    },
+    stop: async () => {
+      stop({ sessionId: await resolveSessionId() });
+      process.exit(0);
+    },
+    run: () => run(arg),
+  };
+  const main = modes[mode];
   if (!main) {
     process.stderr.write("usage: plan-event-bridge.mjs start|stop|run <session-id>\n");
     process.exit(2);
   }
-  Promise.resolve(main()).then(
-    (code) => {
-      if (mode !== "run") process.exit(code ?? 0);
-    },
-    (err) => {
+  Promise.resolve()
+    .then(main)
+    .catch((err) => {
       process.stderr.write(`danxbot plan event bridge ${mode} failed: ${err.message}\n`);
       process.exit(1);
-    },
-  );
+    });
 }
