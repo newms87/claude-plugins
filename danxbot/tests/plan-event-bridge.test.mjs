@@ -640,8 +640,45 @@ describe("shutdown exit codes", () => {
     assert.equal(bridge.exitCodeForShutdown(crashed.fatal), 1);
 
     // The relay queue's own overflow reason is what run() passes to shutdown() with
-    // { fatal: true } — verified end-to-end via createRelayQueue's onOverflow callback above.
+    // { fatal: true } — see "terminal shutdown mapping" below, which tests the actual
+    // function run()'s two shutdown() call sites are built from, not a stand-in for it.
     assert.equal(bridge.exitCodeForShutdown(true), 1);
+  });
+});
+
+// ---------------------------------------------------- 9d. terminal shutdown mapping
+
+describe("terminal shutdown mapping", () => {
+  test("an overflow reason is always fatal", () => {
+    assert.deepEqual(bridge.terminalShutdown({ overflow: "relay queue overflow: 100 events undelivered" }), {
+      why: "relay queue overflow: 100 events undelivered",
+      fatal: true,
+    });
+  });
+
+  test("a supervised bridge_failed exit is fatal", () => {
+    const decision = bridge.classifyChildExit({ stopped: { reason: "bridge_failed", detail: "spawn ENOENT" }, code: null, ranMs: 10 });
+    assert.deepEqual(bridge.terminalShutdown({ supervised: decision }), { why: "bridge_failed: spawn ENOENT", fatal: true });
+  });
+
+  test("a supervised not_connected stop is not fatal", () => {
+    const decision = bridge.classifyChildExit({
+      stopped: { reason: "not_connected", detail: "the session is not connected to a plan" },
+      code: 1,
+      ranMs: 10,
+    });
+    assert.deepEqual(bridge.terminalShutdown({ supervised: decision }), {
+      why: "not_connected: the session is not connected to a plan",
+      fatal: false,
+    });
+  });
+
+  test("terminalShutdown's fatal flag feeds exitCodeForShutdown directly, for both terminal events", () => {
+    assert.equal(bridge.exitCodeForShutdown(bridge.terminalShutdown({ overflow: "cap hit" }).fatal), 1);
+    const clean = bridge.classifyChildExit({ stopped: { reason: "revoked", detail: "d" }, code: 1, ranMs: 10 });
+    assert.equal(bridge.exitCodeForShutdown(bridge.terminalShutdown({ supervised: clean }).fatal), 0);
+    const crashed = bridge.classifyChildExit({ stopped: null, code: 1, ranMs: 10 });
+    assert.equal(bridge.exitCodeForShutdown(bridge.terminalShutdown({ supervised: crashed }).fatal), 1);
   });
 });
 

@@ -551,6 +551,20 @@ export function exitCodeForShutdown(fatal) {
   return fatal ? 1 : 0;
 }
 
+/**
+ * `run()`'s two terminal events, mapped to the `{why, fatal}` it hands `shutdown()`. There are
+ * exactly two: the relay queue's overflow (`createRelayQueue` only ever calls `onOverflow` on
+ * cap breach, and that is always fatal — the events behind it are undelivered, not lost, only
+ * because the process is about to die and let the next run's resume replay them) and
+ * `superviseBridge`'s own resolution (fatal exactly when `classifyChildExit` decided so).
+ * `run()`'s two `shutdown(...)` call sites are built from this one function instead of each
+ * inlining the fatal decision, so the wiring is exercised by a test with nothing to spawn.
+ */
+export function terminalShutdown(event) {
+  if ("overflow" in event) return { why: event.overflow, fatal: true };
+  return { why: event.supervised.reason, fatal: event.supervised.fatal };
+}
+
 async function run(sessionId, env = process.env) {
   const paths = sessionPaths(stateDir(env), sessionId);
   try {
@@ -598,7 +612,10 @@ async function run(sessionId, env = process.env) {
     log,
     sleep,
     isStopped: () => stopping,
-    onOverflow: (reason) => shutdown(reason, { fatal: true }),
+    onOverflow: (reason) => {
+      const { why, fatal } = terminalShutdown({ overflow: reason });
+      shutdown(why, { fatal });
+    },
   });
 
   log(`bridge started for session ${sessionId} (pid ${process.pid})`);
@@ -622,7 +639,8 @@ async function run(sessionId, env = process.env) {
   });
   child = null;
   await Promise.race([relay.idle(), sleep(DRAIN_ON_EXIT_MS)]);
-  shutdown(reason, { fatal });
+  const terminal = terminalShutdown({ supervised: { reason, fatal } });
+  shutdown(terminal.why, { fatal: terminal.fatal });
 }
 
 // ------------------------------------------------------------------------ main
