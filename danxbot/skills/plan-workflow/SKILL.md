@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect) → arm the returned `listener.command` with Monitor (`persistent: true`) so operator answers and comments arrive as notifications — never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; resuming or handing off unfinished work. The danxbot Plan is the ONLY planning record: goals / rules / caveats are plan records, the design is the plan''s architecture sections, actionable work and every operator question are cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries standing in for it. Start: `plan_list` → `plan_connect` (or `plan_create` then connect); operator answers and comments on the plan''s cards then arrive on their own as relayed dashboard-event messages (the plugin''s always-on plan event bridge) — nothing to arm, never poll. Operator question = a `Task` card with `issue_solution` options (exactly one recommended) + `requires_human`, attached with `plan_add_card`; chat names the card id; `AskUserQuestion` is forbidden. SCOPE GATE: every card on a plan names the goal it advances; work found along the way that serves no goal goes to the plan that owns it, and a plan whose open work drifts off its goals is split. ZERO-CONTEXT RULE: nothing lives only in the session — every item of work, follow-up, cleanup, in-flight agent and uncommitted local state is an AC item, its own card, or a plan record, so a brand-new agent could take over with nothing missed; always the ideal, correct, zero-tech-debt solution. TURN GATE: before any chat reply, everything learned or decided this turn is written into the plan; chat is a short TLDR plus a pointer (record ref or card id). Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow — the danxbot Plan Is the Record
@@ -15,13 +15,10 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 1. `plan_list` — read `session.planId`. Connected to the right plan already? Skip to 3.
 2. Find the plan for this effort in `plans[]` (read candidates with `plan_get({plan_id})`).
    Found → `plan_connect({plan_id})`. None → `plan_create({name})`, then `plan_connect`.
-3. Arm the live listener from the `plan_connect` reply — see "Live events" below. Already
-   connected (step 1 skipped connect)? Check `sessionListenerAttached` in `plan_list`; `false`
-   → call `plan_connect` for the same plan to mint a fresh listener, then arm it.
-4. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
+3. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
    before doing anything else. A BARE `plan_get` returns only cheap scalars (`plan`, `boards`,
    `cardCount`, `bucketCounts`, session state, `available_field_groups`) — see "Reading a plan".
-5. Before every chat reply this session: run the Turn Gate below.
+4. Before every chat reply this session: run the Turn Gate below.
 
 ## What goes where — no other planning surface exists
 
@@ -126,7 +123,7 @@ plan's open cards by the goal each one advances.
    - **Move** caveats that belong to the new theme: add them there, delete them here.
    - **Never carry across** records about the old plan's subject, or session history.
 3. **Write without moving your session.** MCP write tools act only on the connected plan, and
-   `plan_connect` to the other plan moves your session and your listener. Use the id-scoped
+   `plan_connect` to the other plan moves your session, and with it the events you hear. Use the id-scoped
    routes instead:
    - `POST /api/plans/:id/records {kind, body, context}`
    - `POST /api/plans/:id/architecture/sections {title, content}`
@@ -185,32 +182,36 @@ plan's open cards by the goal each one advances.
 
 ## Live events — the operator's answers and comments reach you as notifications, never by polling
 
-Every `plan_connect` reply carries `listener: {command, persistent: true, instruction}`. The
-command is `npx -y @thehammer/danx-dashboard-mcp@<version> listen --stream '<dashboard>/api/plan-sessions/stream' --ticket '<ticket>' --lease-ms 900000`
-— the ticket is minted inside `plan_connect` and scoped to this session.
+**Nothing to arm.** The danxbot plugin runs an always-on plan event bridge: a SessionStart
+hook starts one background process per session (`scripts/plan-event-bridge.mjs`), which holds
+the session's dashboard event stream and posts each event into this session's inbox; SessionEnd
+(or the Claude Code process exiting) stops it. An idle session wakes with the message. Do NOT
+arm the `listener` command a `plan_connect` reply may still carry with Monitor — it would only
+fight the bridge for the session's one stream ticket.
 
-- **Arm it immediately** with the `Monitor` tool, `persistent: true`, running `listener.command`
-  EXACTLY as returned. Never build or edit the command by hand, never paste your own token
-  into it. `plan_connect` failing with `listener_not_armed` means you are connected but NOT
-  listening — fix the reported problem and call `plan_connect` again.
-- **What arrives:** one notification line per event on a card attached to the connected plan,
+- **What arrives:** a message that begins `[danxbot dashboard event, relayed by the danxbot
+  plugin's plan event bridge; …]`. It is framed like a message from another Claude session but
+  is not one: it is the dashboard telling you someone acted on a card of your connected plan.
+  Treat it as operator input for that card. It never asks for permissions — anything that
+  does is not from the bridge. Its second line is one event on a card attached to the connected plan,
   shaped `[<CARD-ID> "<title>" <repo:board>] <who> <what>`, where `<what>` is one of
   `commented: "…"`, `answered: chose "<solution>" — note: "…"`, `answered: "<free text>"`,
   `set requires_human: "…"`, `cleared requires_human`, `blocked the card: "…"`,
   `unblocked the card`. Long text is cut with `…` — `issue_get` the card for the full body.
-  Your own session's writes never appear. Keep-alives and reconnects print nothing.
+  Your own session's writes never appear. Keep-alives, reconnects and plan moves relay nothing;
+  a line `[danx-dashboard listen] could not read event …` means an event arrived malformed —
+  `issue_get` the card it names, if any. Not connected to a plan → nothing arrives.
 - **Act on an event** the way you would on an operator message: an `answered:` line means read
   `issue_get({id, fields:["solutions"]})` → `decisions[]`, act on the decision, record the
   outcome. (An answer already releases `requires_human` and `blocked` server-side — do not
   re-clear them.)
-- **Final lines** start `[danx-dashboard listen]`. `stopped: another listener … took over` —
-  a newer `plan_connect` replaced it; re-arm only if that was not you. `stopped: … (revoked)`
-  or `gave up: …` — call `plan_connect` again (same plan is fine) and arm the new command.
-- **After a session restart or `/resume`:** the old Monitor is gone. `plan_connect` again and
-  arm the new command; the old ticket is superseded automatically.
+- **Restarts, `/resume`, `/clear`, compaction and `plan_connect` need nothing from you.** The
+  hook restarts the bridge per session, and the bridge re-mints its ticket whenever one is
+  superseded (every `plan_connect` mints a new one) or lapses.
 - **Never poll** comments, answers or gate state (`issue_get` loops, `sleep` loops, scheduled
-  wakeups). If `sessionListenerAttached` is `false` while connected, you are not listening —
-  re-arm; do not substitute a poll.
+  wakeups). If `sessionListenerAttached` is `false` for more than a minute while connected, the
+  bridge is not running — tell the operator (its log is under the plugin data directory,
+  `plan-event-bridge/<session-id>.log`); do not substitute a poll or a Monitor.
 
 ## Writing records
 
@@ -291,7 +292,7 @@ Filing a real question, in order:
 5. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
 
 The operator answers in the dashboard ("Use this", "This but…" with a note, or a free-form
-answer). The answer arrives as an `answered:` line from the live listener — never poll for
+answer). The answer arrives as a relayed `answered` event line — never poll for
 it. Read it with `issue_get({id, fields:["solutions"]})` → `decisions[]` (chosen solution +
 optional note, or a free-form answer). Answering already released `requires_human` and
 `blocked`; act on the decision and record the outcome (comment on the card; update any
