@@ -12,15 +12,29 @@
  *
  * WHAT THIS SCRIPT OWNS, AND WHAT IT DOES NOT. It owns process lifecycle (one bridge per
  * session, start / stop / yield), the delivered-id cursor, and the inbox post. It knows
- * NOTHING about the dashboard's HTTP contract: `danx-dashboard-mcp bridge` (the MCP
- * package, pinned below) mints the ticket, streams, re-mints, and ends with one
- * machine-readable stop record naming why. That contract is written and tested once,
- * in the danxbot repo, beside the MCP server that already speaks it.
+ * NOTHING about the dashboard's HTTP contract — and, since DX-2862, nothing about its
+ * CREDENTIAL either: `danx-dashboard-mcp bridge` (the MCP package, pinned below) reads
+ * the connection this session's own danx-dashboard MCP server recorded when it connected
+ * the plan, resolves that same credential, mints the ticket, proves it can read every
+ * board of the plan, streams, re-mints, and ends with one machine-readable stop record
+ * naming why and how to fix it. That contract is written and tested once, in the danxbot
+ * repo, beside the MCP server that already speaks it.
+ *
+ * WHY THE CREDENTIAL MOVED THERE. This process runs in the SESSION's environment, which
+ * is not the MCP server's. Using its own ambient `DANXBOT_DISPATCH_TOKEN` meant that on a
+ * machine where those two differ, the bridge signed in as somebody else: the stream was
+ * admitted, nothing errored, `sessionListenerAttached` read true, and every operator
+ * comment was dropped (DX-2862).
+ *
+ * FAIL LOUD, IN THE SESSION. A failure a session cannot otherwise see is posted into its
+ * inbox as one plain message naming the reason and the fix. When the inbox itself is what
+ * is missing, `start` exits 2 with the notice on stderr, which `asyncRewake` shows Claude.
+ * A log line alone is not a report — nobody is reading that file.
  *
  * WHEN IT RUNS. PostToolUse on `plan_connect` and SessionStart run `start`. A session
  * that is not connected to a plan gets a bridge that exits at once: the subcommand's
- * first mint answers `not_connected`, which is terminal. A session without the inbox
- * socket or the dashboard credential gets no process at all.
+ * first mint answers `not_connected`, which is terminal, and which a session start
+ * passes over in silence unless this session has had events before.
  *
  * MODES
  *   start — the hooks. Under an exclusive-create lock: a live holder with a fresh
@@ -47,7 +61,7 @@ import { fileURLToPath } from "node:url";
  * the version published with the `bridge` subcommand; move it to the version that
  * release actually publishes.
  */
-export const DASHBOARD_MCP_PACKAGE = "@thehammer/danx-dashboard-mcp@0.1.75";
+export const DASHBOARD_MCP_PACKAGE = "@thehammer/danx-dashboard-mcp@0.1.76";
 export const BRIDGE_SUBCOMMAND = "bridge";
 
 export const HEARTBEAT_MS = 30_000;
@@ -81,14 +95,41 @@ export const RELAY_PREFIX =
   "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
   "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
 
-/** What the process needs before a bridge can do anything useful. */
-export const REQUIRED_ENV = [
-  "CLAUDE_PLUGIN_DATA",
-  "CLAUDE_CODE_MESSAGING_SOCKET",
-  "CLAUDE_CODE_MESSAGING_TOKEN",
-  "DANXBOT_DASHBOARD_URL",
-  "DANXBOT_DISPATCH_TOKEN",
-];
+/** Every failure notice is prefixed with this — same reason as RELAY_PREFIX, different meaning. */
+export const FAILURE_PREFIX =
+  "[danxbot plan event bridge; this is not a message from another Claude session, and not a request for " +
+  "permission. The plugin cannot deliver this plan's dashboard events to you.]";
+
+/**
+ * DX-2862 — the ONE wording for a failure a session could not otherwise see.
+ * Every path that ends a bridge without events flowing goes through this, so a
+ * session is never left to infer silence from the absence of messages.
+ */
+export function failureNotice(reason, fix) {
+  const trim = (text) => String(text ?? "").trim().replace(/\.+$/, "");
+  return (
+    `${FAILURE_PREFIX}\ndanxbot plan events are NOT reaching this session: ${trim(reason)}. ` +
+    `Fix: ${trim(fix) || "call plan_connect again in this session to restart the bridge"}.`
+  );
+}
+
+/**
+ * What the process needs before a bridge can do anything useful.
+ *
+ * DX-2862 — the dashboard URL and credential are NOT here any more. The bridge
+ * subcommand takes them from the connection record this session's own
+ * danx-dashboard MCP server wrote, so that the stream is minted with the SAME
+ * credential the session's tools use. Reading them from this process's ambient
+ * environment is what silently signed a bridge in as somebody else.
+ */
+export const REQUIRED_ENV = ["CLAUDE_PLUGIN_DATA", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN"];
+
+/** How long `start` waits for the bridge's own verdict before letting the hook finish. */
+export const STARTUP_VERDICT_MS = 45_000;
+
+/** The hook that ran `start`, and so whether this session is KNOWN to want plan events. */
+export const CONNECT_INTENT = "connect";
+export const RESUME_INTENT = "resume";
 
 const STATE_SUFFIXES = [".pid.json", ".lock", ".cursor.json", ".log", ".tmp"];
 
@@ -204,49 +245,194 @@ export function killTree(pid) {
 
 // ---------------------------------------------------------------- start / stop
 
+/** The remedy for each thing a start can be missing. One map, one wording. */
+export const MISSING_ENV_FIXES = {
+  "session id": "the hook gave no session_id — run the bridge from the danxbot plugin's hooks, never by hand",
+  CLAUDE_PLUGIN_DATA:
+    "Claude Code sets CLAUDE_PLUGIN_DATA for a plugin's own hooks — reinstall the danxbot plugin if this session has no plugin data directory",
+  CLAUDE_CODE_MESSAGING_SOCKET:
+    "this Claude Code surface exposes no session inbox, so no background process can deliver anything into this session — work a plan from a surface that has one",
+  CLAUDE_CODE_MESSAGING_TOKEN:
+    "this Claude Code surface exposes no session inbox token, so no background process can deliver anything into this session",
+};
+
+export function fixForMissing(missing) {
+  const fixes = missing.map((name) => MISSING_ENV_FIXES[name]).filter(Boolean);
+  return fixes.length > 0 ? [...new Set(fixes)].join("; ") : "restart this session from the danxbot plugin's hooks";
+}
+
 /**
- * Ensure one bridge for the session. Returns `{started, reason?, pid?}`.
+ * Is this session KNOWN to want plan events?
+ *
+ * A `plan_connect` says yes outright. A session start says nothing either way —
+ * the plugin loads in every session, most of which never touch a plan — so a
+ * failure there is announced only when this session has been delivered events
+ * before (it has a cursor). Announcing in every session would train everyone to
+ * ignore the notice, which is the same silence by another route.
+ */
+export function isSessionKnownToWantEvents({ intent, env, sessionId }) {
+  if (intent === CONNECT_INTENT) return true;
+  if (!env.CLAUDE_PLUGIN_DATA || !sessionId) return false;
+  try {
+    return readCursor(sessionPaths(stateDir(env), sessionId).cursor).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tell the session, in the session — the whole point of DX-2862. The inbox is
+ * the only channel it can read; `stderr` is the fallback for when the inbox
+ * itself is what is missing, which a hook surfaces through `asyncRewake` on
+ * exit code 2 (`hooks/hooks.json`). Log-only is not an option here.
+ */
+export async function announce({ reason, fix, env, post = postToInbox, stderr = () => {}, relevant = true }) {
+  const notice = failureNotice(reason, fix);
+  if (!relevant) return { announced: false, posted: false, notice, exitCode: 0 };
+  if (env.CLAUDE_CODE_MESSAGING_SOCKET && env.CLAUDE_CODE_MESSAGING_TOKEN) {
+    for (let attempt = 1; attempt <= SOCKET_POST_ATTEMPTS; attempt += 1) {
+      try {
+        await post(notice, env);
+        return { announced: true, posted: true, notice, exitCode: 0 };
+      } catch {
+        /* try again; the stderr path below is the last resort */
+      }
+    }
+  }
+  stderr(`${notice}\n`);
+  return { announced: true, posted: false, notice, exitCode: 2 };
+}
+
+/**
+ * Wait for the bridge's own verdict — `ready` once it is streaming with a
+ * verified credential, or `failed` with what it already told the session.
+ * Resolves `null` if neither arrives in time: the bridge is still trying, and a
+ * hook that waited forever would be worse than one that lets it.
+ */
+export function waitForVerdict(child, timeoutMs) {
+  if (typeof child?.on !== "function") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener?.("message", onMessage);
+      child.removeListener?.("exit", onExit);
+      try {
+        child.disconnect?.();
+      } catch {
+        /* the channel is already gone */
+      }
+      child.unref?.();
+      resolve(value);
+    };
+    const onMessage = (message) => {
+      if (message && typeof message === "object" && typeof message.verdict === "string") finish(message);
+    };
+    const onExit = (code) => finish({ verdict: "exited", code });
+    // Deliberately NOT unref'd: this timer is the only thing holding the hook
+    // process open while it waits, and a hook that exited early would report
+    // success over a bridge that had not started yet.
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    child.on("message", onMessage);
+    child.on("exit", onExit);
+  });
+}
+
+/**
+ * Ensure one bridge for the session, and report how it went.
+ * Returns `{started, reason?, pid?, exitCode}` — `exitCode` is 2 exactly when a
+ * failure could NOT be put in front of the session and the hook must wake Claude
+ * with it instead (`asyncRewake`).
  *
  * A holder that is alive but has not heartbeated is REPLACED, not killed: its pid may
  * already belong to an unrelated process, and killing that would be worse than any
  * duplicate. A real stale bridge yields on its next heartbeat (the pid file names
  * another pid) and ends its own child; the new bridge's mint ends its stream anyway.
+ *
+ * A `plan_connect` (`intent: "connect"`) REPLACES a live bridge on purpose: the
+ * session may have just moved to another plan, whose boards this credential has
+ * never been checked against, and that check happens at startup.
  */
-export function start({
+export async function start({
   env = process.env,
   sessionId,
+  intent = RESUME_INTENT,
   spawnRun = spawnRunProcess,
   isAlive: alive = isAlive,
+  killTree: kill = killTree,
   now = Date.now,
   stderr = (message) => process.stderr.write(message),
+  post = postToInbox,
+  waitVerdict = waitForVerdict,
+  verdictTimeoutMs = STARTUP_VERDICT_MS,
 } = {}) {
   const missing = [["session id", sessionId], ...REQUIRED_ENV.map((name) => [name, env[name]])]
     .filter(([, value]) => !value)
     .map(([name]) => name);
   if (missing.length > 0) {
-    stderr(`danxbot plan event bridge not started: missing ${missing.join(", ")}\n`);
-    return { started: false, reason: `missing ${missing.join(", ")}` };
+    const announced = await announce({
+      reason: `the bridge could not start (missing ${missing.join(", ")})`,
+      fix: fixForMissing(missing),
+      env,
+      post,
+      stderr,
+      relevant: isSessionKnownToWantEvents({ intent, env, sessionId }),
+    });
+    return { started: false, reason: `missing ${missing.join(", ")}`, exitCode: announced.exitCode };
   }
   const dir = stateDir(env);
   const paths = sessionPaths(dir, sessionId);
   pruneStale(dir, now());
-  if (!acquireLock(paths.lock, now())) return { started: false, reason: "another start holds the lock" };
+  if (!acquireLock(paths.lock, now())) return { started: false, reason: "another start holds the lock", exitCode: 0 };
+  let child;
   try {
-    if (isFreshHolder(readJsonFile(paths.pid), { isAlive: alive, now: now() })) {
-      return { started: false, reason: "already bridged" };
+    const held = readJsonFile(paths.pid);
+    if (isFreshHolder(held, { isAlive: alive, now: now() })) {
+      if (intent !== CONNECT_INTENT) return { started: false, reason: "already bridged", exitCode: 0 };
+      kill(held.pid);
+      fs.rmSync(paths.pid, { force: true });
     }
-    const child = spawnRun(sessionId, env);
+    child = spawnRun(sessionId, env, intent);
     writeFileAtomic(paths.pid, JSON.stringify(pidRecord(child.pid, sessionId, now())));
-    return { started: true, pid: child.pid };
   } finally {
     fs.rmSync(paths.lock, { force: true });
   }
+  const verdict = await waitVerdict(child, verdictTimeoutMs);
+  return { started: true, pid: child.pid, ...startExit(verdict, stderr) };
 }
 
-function spawnRunProcess(sessionId, env) {
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "run", sessionId], {
+/**
+ * What the hook does with the bridge's verdict. Separated so the mapping is
+ * exercised without spawning anything: a failure the bridge already put in the
+ * session's inbox needs nothing further, one it could not needs the hook's own
+ * exit code 2, and no verdict at all means it is still working.
+ */
+export function startExit(verdict, stderr = () => {}) {
+  if (verdict === null || verdict === undefined) return { verdict: "pending", exitCode: 0 };
+  if (verdict.verdict === "ready") return { verdict: "ready", exitCode: 0 };
+  if (verdict.verdict === "exited") {
+    const notice = failureNotice(
+      `the bridge process exited (code ${verdict.code}) before it could start streaming`,
+      "check the bridge log under the danxbot plugin's data directory, then call plan_connect again",
+    );
+    stderr(`${notice}\n`);
+    return { verdict: "exited", exitCode: 2 };
+  }
+  if (verdict.announced && !verdict.posted) {
+    stderr(`${verdict.notice}\n`);
+    return { verdict: "failed", exitCode: 2 };
+  }
+  return { verdict: "failed", exitCode: 0 };
+}
+
+function spawnRunProcess(sessionId, env, intent) {
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "run", sessionId, intent], {
     detached: true,
-    stdio: "ignore",
+    // The IPC channel carries ONE verdict back to the hook (see `start`); the
+    // bridge's own output is its log, never a stream the hook holds open.
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
     windowsHide: true,
     env,
   });
@@ -356,7 +542,19 @@ export function parseRecord(line) {
     return { kind: "event", id: Number.isSafeInteger(record.id) && record.id > 0 ? record.id : null, text: record.text };
   }
   if (record?.type === "stopped" && typeof record.reason === "string") {
-    return { kind: "stopped", reason: record.reason, detail: String(record.detail ?? "") };
+    return {
+      kind: "stopped",
+      reason: record.reason,
+      detail: String(record.detail ?? ""),
+      fix: typeof record.fix === "string" ? record.fix : "",
+    };
+  }
+  // DX-2862 — the subcommand says once, before any event, that it minted a
+  // ticket AND proved its credential can read every board of the connected
+  // plan. That is what `start` waits for, so a hook can report a failed start
+  // rather than exiting 0 over a bridge that never worked.
+  if (record?.type === "ready") {
+    return { kind: "ready", boards: Array.isArray(record.boards) ? record.boards.map(String) : [] };
   }
   return { kind: "junk" };
 }
@@ -472,18 +670,43 @@ export function createRelayQueue({ post, record, log, sleep, isStopped = () => f
  * see `exitCodeForShutdown` — so nothing here duplicates that decision.
  */
 export function classifyChildExit({ stopped, code, ranMs }) {
-  if (stopped) return { action: "exit", reason: `${stopped.reason}: ${stopped.detail}`, fatal: stopped.reason === "bridge_failed" };
+  if (stopped) {
+    return {
+      action: "exit",
+      reason: `${stopped.reason}: ${stopped.detail}`,
+      fatal: stopped.reason === "bridge_failed",
+      stopReason: stopped.reason,
+      fix: stopped.fix ?? "",
+    };
+  }
   if (ranMs >= HEALTHY_RUN_MS) {
     return {
       action: "restart",
       reason: `the bridge subcommand exited (code ${code}) without a stop record after running ${Math.round(ranMs / 1000)} s`,
     };
   }
-  return { action: "exit", reason: `bridge_failed: the bridge subcommand exited (code ${code}) without a stop record`, fatal: true };
+  return {
+    action: "exit",
+    reason: `bridge_failed: the bridge subcommand exited (code ${code}) without a stop record`,
+    fatal: true,
+    stopReason: "bridge_failed",
+    fix: "check the bridge log in this directory for the subcommand's own stderr, then call plan_connect again",
+  };
+}
+
+/**
+ * Stops the session does NOT need to hear about: another listener took this
+ * session's stream, which is what a restart or a reconnect looks like from
+ * here, and is never a loss of events.
+ */
+export const SILENT_STOP_REASONS = new Set(["superseded", "replaced"]);
+
+export function shouldAnnounceStop(stopReason, { relevant }) {
+  return relevant && !SILENT_STOP_REASONS.has(stopReason);
 }
 
 /** Runs the subcommand once. Resolves with its stop record (or null) and exit code. */
-function runChildOnce({ spawnChild, relay, log, redact }) {
+function runChildOnce({ spawnChild, relay, log, onReady }) {
   return new Promise((resolve) => {
     let child;
     try {
@@ -498,7 +721,7 @@ function runChildOnce({ spawnChild, relay, log, redact }) {
     const finish = (code, spawnError) => {
       if (settled) return;
       settled = true;
-      if (stderrTail.trim() !== "") log(`bridge subcommand stderr (tail): ${redact(stderrTail.trim())}`);
+      if (stderrTail.trim() !== "") log(`bridge subcommand stderr (tail): ${stderrTail.trim()}`);
       resolve({ stopped: stopped ?? (spawnError ? { reason: "bridge_failed", detail: spawnError } : null), code });
     };
     child.stdout.setEncoding("utf8");
@@ -508,14 +731,15 @@ function runChildOnce({ spawnChild, relay, log, redact }) {
       createLineSplitter((line) => {
         const record = parseRecord(line);
         if (record.kind === "event") relay.push({ id: record.id, text: record.text });
-        else if (record.kind === "stopped") stopped = { reason: record.reason, detail: record.detail };
+        else if (record.kind === "stopped") stopped = { reason: record.reason, detail: record.detail, fix: record.fix };
+        else if (record.kind === "ready") onReady(record);
         else log(`ignored non-record output from the bridge subcommand (${line.length} chars)`);
       }),
     );
     child.stderr.on("data", (chunk) => {
       stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CHARS);
     });
-    child.on("error", (err) => finish(null, redact(err.message)));
+    child.on("error", (err) => finish(null, err.message));
     child.on("close", (code) => finish(code, null));
   });
 }
@@ -524,12 +748,14 @@ function runChildOnce({ spawnChild, relay, log, redact }) {
  * Run the subcommand until it reports a terminal outcome or dies too early to restart.
  * Returns `{ reason, fatal }` — see `classifyChildExit` for what makes an exit fatal.
  */
-export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, redact = (text) => text }) {
+export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, onReady = () => {} }) {
   for (;;) {
     const startedAt = now();
-    const outcome = await runChildOnce({ spawnChild, relay, log, redact });
+    const outcome = await runChildOnce({ spawnChild, relay, log, onReady });
     const decision = classifyChildExit({ ...outcome, ranMs: now() - startedAt });
-    if (decision.action === "exit") return { reason: decision.reason, fatal: decision.fatal };
+    if (decision.action === "exit") {
+      return { reason: decision.reason, fatal: decision.fatal, stopReason: decision.stopReason, fix: decision.fix };
+    }
     log(`restarting the bridge subcommand: ${decision.reason}`);
     await sleep(RESTART_DELAY_MS);
   }
@@ -565,19 +791,48 @@ export function terminalShutdown(event) {
   return { why: event.supervised.reason, fatal: event.supervised.fatal };
 }
 
-async function run(sessionId, env = process.env) {
+async function run(sessionId, intent = RESUME_INTENT, env = process.env) {
   const paths = sessionPaths(stateDir(env), sessionId);
   try {
     if (fs.statSync(paths.log).size > LOG_MAX_BYTES) fs.truncateSync(paths.log, 0);
   } catch {
     /* no log yet */
   }
-  const token = env.DANXBOT_DISPATCH_TOKEN;
-  const redact = (text) => (token ? text.split(token).join("[redacted]") : text);
-  const log = (message) => fs.appendFileSync(paths.log, `${new Date().toISOString()} ${redact(message)}\n`);
+  const log = (message) => fs.appendFileSync(paths.log, `${new Date().toISOString()} ${message}\n`);
+  // DX-2862 — whether this session is KNOWN to want plan events decides whether a
+  // failure is put in front of it or only logged. A `plan_connect` says yes
+  // outright; a session start says yes only if this session has been delivered
+  // events before.
+  const relevant = intent === CONNECT_INTENT || readCursor(paths.cursor).length > 0;
   const parentPid = Number(env.CLAUDE_PID);
   let child = null;
   let stopping = false;
+  let verdictSent = false;
+
+  /** The hook that started this bridge waits for exactly one of these. */
+  const sendVerdict = (verdict) => {
+    if (verdictSent) return;
+    verdictSent = true;
+    try {
+      process.send?.(verdict);
+    } catch {
+      /* the hook has already finished — its own timeout covered this */
+    }
+  };
+
+  /** Put a failure in front of the session, and tell the hook whether that worked. */
+  const tellSession = async (reason, fix) => {
+    const result = await announce({
+      reason,
+      fix,
+      env,
+      post: (content) => postToInbox(content, env),
+      stderr: (message) => log(`could NOT reach this session's inbox: ${message.trim()}`),
+      relevant,
+    });
+    log(result.posted ? `told the session: ${reason}` : `NOT told the session (relevant=${relevant}): ${reason}`);
+    sendVerdict({ verdict: "failed", announced: result.announced, posted: result.posted, notice: result.notice });
+  };
 
   const shutdown = (why, { fatal = false } = {}) => {
     if (stopping) return;
@@ -614,12 +869,14 @@ async function run(sessionId, env = process.env) {
     isStopped: () => stopping,
     onOverflow: (reason) => {
       const { why, fatal } = terminalShutdown({ overflow: reason });
-      shutdown(why, { fatal });
+      void tellSession(why, "call plan_connect again in this session once its inbox is accepting messages").then(() =>
+        shutdown(why, { fatal }),
+      );
     },
   });
 
-  log(`bridge started for session ${sessionId} (pid ${process.pid})`);
-  const { reason, fatal } = await superviseBridge({
+  log(`bridge started for session ${sessionId} (pid ${process.pid}, ${intent})`);
+  const supervised = await superviseBridge({
     spawnChild: () => {
       const resumeIds = readCursor(paths.cursor);
       const { command, args } = bridgeCommand({ resumeIds });
@@ -635,19 +892,40 @@ async function run(sessionId, env = process.env) {
     relay,
     log,
     sleep,
-    redact,
+    onReady: (record) => {
+      log(
+        `streaming; this session's own credential verified against board(s) ` +
+          `${record.boards.join(", ") || "(none — the connected plan has no cards)"}`,
+      );
+      sendVerdict({ verdict: "ready" });
+    },
   });
   child = null;
   await Promise.race([relay.idle(), sleep(DRAIN_ON_EXIT_MS)]);
-  const terminal = terminalShutdown({ supervised: { reason, fatal } });
+  const terminal = terminalShutdown({ supervised });
+  if (shouldAnnounceStop(supervised.stopReason, { relevant })) await tellSession(terminal.why, supervised.fix);
+  // A stop nobody needed to hear about still ends the hook's wait, so it exits
+  // on the bridge's own timing rather than on its timeout.
+  sendVerdict({ verdict: "failed", announced: false, posted: false, notice: "" });
   shutdown(terminal.why, { fatal: terminal.fatal });
 }
 
 // ------------------------------------------------------------------------ main
 
-/** The hook's stdin JSON carries `session_id`; a hand run has none. */
-async function readHookSessionId() {
-  if (process.stdin.isTTY) return null;
+/**
+ * Which hook ran this. `hooks.json` fires PostToolUse only on `plan_connect`, so
+ * that event IS "this session just connected a plan": the one moment the bridge
+ * must be (re)started and every failure told to the session, whatever state the
+ * session was in before.
+ */
+export function intentFromHookEvent(hookEventName) {
+  return hookEventName === "PostToolUse" ? CONNECT_INTENT : RESUME_INTENT;
+}
+
+/** The hook's stdin JSON carries `session_id` and `hook_event_name`; a hand run has neither. */
+async function readHookInput() {
+  const fallback = { sessionId: process.env.CLAUDE_CODE_SESSION_ID ?? null, intent: RESUME_INTENT };
+  if (process.stdin.isTTY) return fallback;
   const chunks = [];
   await new Promise((resolve) => {
     process.stdin.on("data", (c) => chunks.push(c));
@@ -657,27 +935,29 @@ async function readHookSessionId() {
   });
   process.stdin.pause();
   try {
-    const id = JSON.parse(Buffer.concat(chunks).toString("utf8")).session_id;
-    return typeof id === "string" && id !== "" ? id : null;
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const id = typeof parsed.session_id === "string" && parsed.session_id !== "" ? parsed.session_id : fallback.sessionId;
+    return { sessionId: id, intent: intentFromHookEvent(parsed.hook_event_name) };
   } catch {
-    return null;
+    return fallback;
   }
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const [mode, arg] = process.argv.slice(2);
-  const resolveSessionId = async () => (await readHookSessionId()) ?? process.env.CLAUDE_CODE_SESSION_ID ?? null;
+  const [mode, arg, intentArg] = process.argv.slice(2);
   const modes = {
     start: async () => {
-      start({ sessionId: await resolveSessionId() });
-      process.exit(0);
+      const hook = await readHookInput();
+      const result = await start({ sessionId: hook.sessionId, intent: hook.intent });
+      process.exit(result.exitCode ?? 0);
     },
     stop: async () => {
-      stop({ sessionId: await resolveSessionId() });
+      const hook = await readHookInput();
+      stop({ sessionId: hook.sessionId });
       process.exit(0);
     },
-    run: () => run(arg),
+    run: () => run(arg, intentArg),
   };
   const main = modes[mode];
   if (!main) {

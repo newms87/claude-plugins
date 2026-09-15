@@ -4,11 +4,14 @@ import fs from "node:fs";
 import { start } from "../../scripts/plan-event-bridge.mjs";
 
 const fakePid = Number(process.env.RACE_FAKE_PID);
-const result = start({
+const result = await start({
   env: process.env,
   sessionId: process.env.RACE_SESSION,
   isAlive: (pid) => pid === fakePid,
   stderr: () => {},
+  // What is raced here is the claim, not the bridge's own verdict — and waiting
+  // for one from a spawn that never runs would only be the timeout.
+  waitVerdict: async () => null,
   spawnRun: () => {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Number(process.env.RACE_HOLD_MS));
     fs.appendFileSync(process.env.RACE_SPAWN_LOG, `${process.pid}\n`);

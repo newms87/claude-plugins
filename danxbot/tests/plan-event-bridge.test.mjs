@@ -25,11 +25,12 @@ function env(dataDir, overrides = {}) {
     CLAUDE_PLUGIN_DATA: dataDir,
     CLAUDE_CODE_MESSAGING_SOCKET: "socket-path",
     CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret",
-    DANXBOT_DASHBOARD_URL: "https://dash.example",
-    DANXBOT_DISPATCH_TOKEN: "dispatch-secret",
     ...overrides,
   };
 }
+
+/** `start` never waits for a real bridge in these tests unless a test says so. */
+const noVerdict = async () => null;
 
 function pathsFor(dataDir) {
   return bridge.sessionPaths(bridge.stateDir({ CLAUDE_PLUGIN_DATA: dataDir }), SESSION);
@@ -52,12 +53,18 @@ describe("single-instance lock", () => {
     assert.equal(bridge.acquireLock(lock), true);
   });
 
-  test("a start sees the lock held and does nothing", () => {
+  test("a start sees the lock held and does nothing", async () => {
     const dataDir = tmpDir();
     fs.writeFileSync(pathsFor(dataDir).lock, "");
     let spawned = 0;
-    const result = bridge.start({ env: env(dataDir), sessionId: SESSION, spawnRun: () => ({ pid: ++spawned }), stderr: () => {} });
-    assert.deepEqual(result, { started: false, reason: "another start holds the lock" });
+    const result = await bridge.start({
+      env: env(dataDir),
+      sessionId: SESSION,
+      spawnRun: () => ({ pid: ++spawned }),
+      stderr: () => {},
+      waitVerdict: noVerdict,
+    });
+    assert.deepEqual(result, { started: false, reason: "another start holds the lock", exitCode: 0 });
     assert.equal(spawned, 0);
   });
 
@@ -104,43 +111,58 @@ describe("single-instance lock", () => {
 // ------------------------------------------------------------- 2. stale takeover
 
 describe("stale holder takeover", () => {
-  const startWith = (dataDir, alivePids) => {
+  const startWith = async (dataDir, alivePids, overrides = {}) => {
     const spawned = [];
-    const result = bridge.start({
+    const killed = [];
+    const result = await bridge.start({
       env: env(dataDir),
       sessionId: SESSION,
       isAlive: (pid) => alivePids.includes(pid),
+      killTree: (pid) => killed.push(pid),
       spawnRun: () => {
         spawned.push(7777);
         return { pid: 7777 };
       },
       stderr: () => {},
+      waitVerdict: noVerdict,
+      ...overrides,
     });
-    return { result, spawned };
+    return { result, spawned, killed };
   };
 
-  test("a live holder with a fresh heartbeat is left alone", () => {
+  test("a live holder with a fresh heartbeat is left alone", async () => {
     const dataDir = tmpDir();
     writePid(dataDir, bridge.pidRecord(4242, SESSION));
-    const { result, spawned } = startWith(dataDir, [4242]);
-    assert.deepEqual(result, { started: false, reason: "already bridged" });
+    const { result, spawned } = await startWith(dataDir, [4242]);
+    assert.deepEqual(result, { started: false, reason: "already bridged", exitCode: 0 });
     assert.deepEqual(spawned, []);
   });
 
-  test("a dead holder is taken over, even with a fresh heartbeat", () => {
+  test("a plan_connect REPLACES a live holder, so the new plan's boards are checked", async () => {
     const dataDir = tmpDir();
     writePid(dataDir, bridge.pidRecord(4242, SESSION));
-    const { result, spawned } = startWith(dataDir, []);
-    assert.deepEqual(result, { started: true, pid: 7777 });
+    const { result, spawned, killed } = await startWith(dataDir, [4242], { intent: bridge.CONNECT_INTENT });
+    assert.equal(result.started, true);
     assert.deepEqual(spawned, [7777]);
+    assert.deepEqual(killed, [4242], "the replaced bridge is ended, not left racing the new one");
     assert.equal(bridge.readJsonFile(pathsFor(dataDir).pid).pid, 7777);
   });
 
-  test("a live holder whose heartbeat is stale is taken over", () => {
+  test("a dead holder is taken over, even with a fresh heartbeat", async () => {
+    const dataDir = tmpDir();
+    writePid(dataDir, bridge.pidRecord(4242, SESSION));
+    const { result, spawned, killed } = await startWith(dataDir, []);
+    assert.deepEqual(result, { started: true, pid: 7777, verdict: "pending", exitCode: 0 });
+    assert.deepEqual(spawned, [7777]);
+    assert.deepEqual(killed, [], "a pid that may already belong to something else is never signalled");
+    assert.equal(bridge.readJsonFile(pathsFor(dataDir).pid).pid, 7777);
+  });
+
+  test("a live holder whose heartbeat is stale is taken over", async () => {
     const dataDir = tmpDir();
     writePid(dataDir, bridge.pidRecord(4242, SESSION, Date.now() - bridge.HEARTBEAT_STALE_MS - 1_000));
-    const { result, spawned } = startWith(dataDir, [4242]);
-    assert.deepEqual(result, { started: true, pid: 7777 });
+    const { result, spawned } = await startWith(dataDir, [4242]);
+    assert.deepEqual(result, { started: true, pid: 7777, verdict: "pending", exitCode: 0 });
     assert.deepEqual(spawned, [7777]);
     assert.equal(bridge.readJsonFile(pathsFor(dataDir).pid).pid, 7777);
   });
@@ -230,13 +252,33 @@ describe("subcommand exit handling", () => {
         action: "exit",
         reason: `${reason}: d`,
         fatal: false,
+        stopReason: reason,
+        fix: "",
       });
     }
     assert.deepEqual(bridge.classifyChildExit({ stopped: { reason: "bridge_failed", detail: "spawn ENOENT" }, code: null, ranMs: 10 }), {
       action: "exit",
       reason: "bridge_failed: spawn ENOENT",
       fatal: true,
+      stopReason: "bridge_failed",
+      fix: "",
     });
+  });
+
+  test("a death with no stop record at all still carries a remedy, since the subcommand supplied none", () => {
+    const decision = bridge.classifyChildExit({ stopped: null, code: 1, ranMs: 10 });
+    assert.equal(decision.stopReason, "bridge_failed");
+    assert.match(decision.fix, /log/);
+  });
+
+  test("the subcommand's own remedy travels with its stop, so the session is told what to do", () => {
+    const decision = bridge.classifyChildExit({
+      stopped: { reason: "board_unreadable", detail: "cannot read board x:y", fix: "scope the credential to read x:y" },
+      code: 1,
+      ranMs: 10,
+    });
+    assert.equal(decision.stopReason, "board_unreadable");
+    assert.equal(decision.fix, "scope the credential to read x:y");
   });
 
   test("a quick death without a stop record is terminal and fatal; one after a healthy run is restarted", () => {
@@ -271,27 +313,50 @@ describe("subcommand exit handling", () => {
     assert.ok(logs.some((m) => m.startsWith("restarting the bridge subcommand")));
   });
 
-  test("an npx E404 is a terminal reason with its stderr tail logged, never a retry loop, and the token is redacted", async () => {
+  test("an npx E404 is a terminal reason with its stderr tail logged, never a retry loop", async () => {
     const logs = [];
     let spawns = 0;
     const { relay } = spyRelay();
-    const { reason, fatal } = await bridge.superviseBridge({
+    const { reason, fatal, stopReason } = await bridge.superviseBridge({
       spawnChild: () => {
         spawns += 1;
-        return fakeChild({ stderr: `npm error code E404\nnpm error 404 Not Found - dispatch-secret\n`, code: 1 });
+        return fakeChild({ stderr: `npm error code E404\nnpm error 404 Not Found\n`, code: 1 });
       },
       relay,
       log: (m) => logs.push(m),
       now: () => 0,
       sleep: noSleep,
-      redact: (text) => text.split("dispatch-secret").join("[redacted]"),
     });
     assert.match(reason, /^bridge_failed: .*code 1/);
     assert.equal(fatal, true);
+    assert.equal(stopReason, "bridge_failed");
     assert.equal(spawns, 1);
-    const tail = logs.find((m) => m.startsWith("bridge subcommand stderr (tail): "));
-    assert.match(tail, /E404/);
-    assert.doesNotMatch(tail, /dispatch-secret/);
+    assert.match(
+      logs.find((m) => m.startsWith("bridge subcommand stderr (tail): ")),
+      /E404/,
+    );
+  });
+
+  test("a ready record is handed to the caller, once, before any event", async () => {
+    const ready = [];
+    const { pushed, relay } = spyRelay();
+    await bridge.superviseBridge({
+      spawnChild: () =>
+        fakeChild({
+          stdout: [
+            recordLine({ type: "ready", boards: ["danxbot:danxbot-main", "gpt-manager:main"] }),
+            recordLine({ type: "event", id: 1, text: "one" }),
+            recordLine({ type: "stopped", reason: "superseded", detail: "d" }),
+          ],
+        }),
+      relay,
+      log: () => {},
+      now: () => 0,
+      sleep: noSleep,
+      onReady: (record) => ready.push(record),
+    });
+    assert.deepEqual(ready, [{ kind: "ready", boards: ["danxbot:danxbot-main", "gpt-manager:main"] }]);
+    assert.deepEqual(pushed, [{ id: 1, text: "one" }]);
   });
 
   test("a stderr tail is capped", async () => {
@@ -396,14 +461,28 @@ describe("cursor", () => {
 // ---------------------------------------------------------- 6. env and command
 
 describe("subcommand environment and command", () => {
-  test("the child env carries the dashboard credential and session, not the inbox token or socket", () => {
+  test("the child env carries the session id, not the inbox token or socket", () => {
     const child = bridge.childEnv(env("/data", { PATH: "/bin" }), SESSION);
-    assert.equal(child.DANXBOT_DISPATCH_TOKEN, "dispatch-secret");
-    assert.equal(child.DANXBOT_DASHBOARD_URL, "https://dash.example");
     assert.equal(child.CLAUDE_CODE_SESSION_ID, SESSION);
     assert.equal(child.PATH, "/bin");
     assert.equal("CLAUDE_CODE_MESSAGING_TOKEN" in child, false);
     assert.equal("CLAUDE_CODE_MESSAGING_SOCKET" in child, false);
+  });
+
+  test("this script requires no dashboard credential of its own — DX-2862", () => {
+    // The whole defect: the bridge used to sign in with whatever
+    // DANXBOT_DISPATCH_TOKEN this process happened to inherit. The subcommand
+    // now reads the session's own MCP server's connection record instead, so
+    // neither of these names may be a precondition here again.
+    assert.deepEqual(bridge.REQUIRED_ENV, [
+      "CLAUDE_PLUGIN_DATA",
+      "CLAUDE_CODE_MESSAGING_SOCKET",
+      "CLAUDE_CODE_MESSAGING_TOKEN",
+    ]);
+    const source = fs.readFileSync(new URL("../scripts/plan-event-bridge.mjs", import.meta.url), "utf8");
+    for (const banned of ["env.DANXBOT_DISPATCH_TOKEN", "env.DANXBOT_DASHBOARD_URL"]) {
+      assert.equal(source.includes(banned), false, `${banned} must not be read by this script`);
+    }
   });
 
   test("no secret ever appears in the command's arguments", () => {
@@ -469,7 +548,15 @@ describe("output parsing", () => {
     assert.deepEqual(bridge.parseRecord('{"type":"event","id":3,"text":"t"}'), { kind: "event", id: 3, text: "t" });
     assert.deepEqual(bridge.parseRecord('{"type":"event","id":null,"text":"t"}'), { kind: "event", id: null, text: "t" });
     assert.deepEqual(bridge.parseRecord('{"type":"event","id":0,"text":"t"}'), { kind: "event", id: null, text: "t" });
-    assert.deepEqual(bridge.parseRecord('{"type":"stopped","reason":"revoked","detail":"d"}'), { kind: "stopped", reason: "revoked", detail: "d" });
+    assert.deepEqual(bridge.parseRecord('{"type":"stopped","reason":"revoked","detail":"d"}'), { kind: "stopped", reason: "revoked", detail: "d", fix: "" });
+    assert.deepEqual(bridge.parseRecord('{"type":"stopped","reason":"revoked","detail":"d","fix":"do x"}'), {
+      kind: "stopped",
+      reason: "revoked",
+      detail: "d",
+      fix: "do x",
+    });
+    assert.deepEqual(bridge.parseRecord('{"type":"ready","boards":["a:b"]}'), { kind: "ready", boards: ["a:b"] });
+    assert.deepEqual(bridge.parseRecord('{"type":"ready"}'), { kind: "ready", boards: [] });
     assert.deepEqual(bridge.parseRecord("npm warn exec something"), { kind: "junk" });
     assert.deepEqual(bridge.parseRecord('{"type":"event","id":3}'), { kind: "junk" });
   });
@@ -685,24 +772,25 @@ describe("terminal shutdown mapping", () => {
 // ---------------------------------------------------------- 10. start gate
 
 describe("start gate", () => {
-  test("missing environment or session id starts nothing", () => {
+  test("missing environment or session id starts nothing", async () => {
     for (const [label, overrides, sessionId] of [
       ["no inbox socket", { CLAUDE_CODE_MESSAGING_SOCKET: "" }, SESSION],
-      ["no dispatch token", { DANXBOT_DISPATCH_TOKEN: undefined }, SESSION],
-      ["no dashboard url", { DANXBOT_DASHBOARD_URL: "" }, SESSION],
+      ["no inbox token", { CLAUDE_CODE_MESSAGING_TOKEN: "" }, SESSION],
+      ["no plugin data", { CLAUDE_PLUGIN_DATA: "" }, SESSION],
       ["no session id", {}, undefined],
     ]) {
       let spawned = 0;
-      const errors = [];
-      const result = bridge.start({
+      const result = await bridge.start({
         env: env(tmpDir(), overrides),
         sessionId,
+        intent: bridge.CONNECT_INTENT,
         spawnRun: () => ({ pid: ++spawned }),
-        stderr: (m) => errors.push(m),
+        stderr: () => {},
+        post: async () => {},
+        waitVerdict: noVerdict,
       });
       assert.equal(result.started, false, label);
       assert.equal(spawned, 0, label);
-      assert.match(errors.join(""), /not started: missing/, label);
     }
   });
 
@@ -726,6 +814,240 @@ describe("start gate", () => {
     assert.equal(reason, "not_connected: the session is not connected to a plan");
     assert.equal(fatal, false);
     assert.equal(spawns, 1);
+  });
+});
+
+// ------------------------------------------- 11. fail loud, in the session (DX-2862)
+
+describe("failure notices", () => {
+  test("a notice names the reason and the fix, and cannot be mistaken for a peer session's message", () => {
+    const notice = bridge.failureNotice("the bridge could not start (missing X).", "do Y.");
+    assert.ok(notice.startsWith(bridge.FAILURE_PREFIX));
+    assert.match(notice, /plan events are NOT reaching this session: the bridge could not start \(missing X\)\. Fix: do Y\./);
+  });
+
+  test("a notice always carries a fix, even when the caller had none", () => {
+    assert.match(bridge.failureNotice("something broke", ""), /Fix: \S.*\./);
+  });
+
+  test("every missing precondition has a remedy naming what to do about it", () => {
+    for (const name of ["session id", ...bridge.REQUIRED_ENV]) {
+      assert.ok(bridge.fixForMissing([name]).length > 10, name);
+    }
+  });
+
+  test("announce puts the notice in the session's inbox", async () => {
+    const posted = [];
+    const errors = [];
+    const result = await bridge.announce({
+      reason: "r",
+      fix: "f",
+      env: env("/data"),
+      post: async (content) => posted.push(content),
+      stderr: (m) => errors.push(m),
+    });
+    assert.equal(result.posted, true);
+    assert.equal(result.exitCode, 0);
+    assert.equal(posted.length, 1);
+    assert.match(posted[0], /NOT reaching this session/);
+    assert.deepEqual(errors, [], "a delivered notice is not also shouted at stderr");
+  });
+
+  test("a failing inbox is retried, then falls back to stderr with exit code 2", async () => {
+    const errors = [];
+    let attempts = 0;
+    const result = await bridge.announce({
+      reason: "r",
+      fix: "f",
+      env: env("/data"),
+      post: async () => {
+        attempts += 1;
+        throw Object.assign(new Error("pipe closed"), { code: "EPIPE" });
+      },
+      stderr: (m) => errors.push(m),
+    });
+    assert.equal(attempts, bridge.SOCKET_POST_ATTEMPTS);
+    assert.equal(result.posted, false);
+    assert.equal(result.exitCode, 2);
+    assert.match(errors.join(""), /NOT reaching this session/);
+  });
+
+  test("with no inbox at all the notice still goes somewhere — stderr, and exit code 2", async () => {
+    const errors = [];
+    let posts = 0;
+    const result = await bridge.announce({
+      reason: "the bridge could not start (missing CLAUDE_CODE_MESSAGING_SOCKET)",
+      fix: "f",
+      env: {},
+      post: async () => {
+        posts += 1;
+      },
+      stderr: (m) => errors.push(m),
+    });
+    assert.equal(posts, 0, "there is nothing to post to");
+    assert.equal(result.exitCode, 2);
+    assert.match(errors.join(""), /Fix: f\./);
+  });
+
+  test("a session that is not known to want plan events is not interrupted at all", async () => {
+    const posted = [];
+    const errors = [];
+    const result = await bridge.announce({
+      reason: "r",
+      fix: "f",
+      env: env("/data"),
+      post: async (c) => posted.push(c),
+      stderr: (m) => errors.push(m),
+      relevant: false,
+    });
+    assert.deepEqual([posted, errors, result.exitCode, result.announced], [[], [], 0, false]);
+  });
+});
+
+describe("which sessions hear about a failure", () => {
+  test("a plan_connect always does — it just asked for these events", () => {
+    assert.equal(bridge.isSessionKnownToWantEvents({ intent: bridge.CONNECT_INTENT, env: {}, sessionId: undefined }), true);
+  });
+
+  test("a session start does only once this session has been delivered events", () => {
+    const dataDir = tmpDir();
+    const sessionEnv = env(dataDir);
+    assert.equal(bridge.isSessionKnownToWantEvents({ intent: bridge.RESUME_INTENT, env: sessionEnv, sessionId: SESSION }), false);
+    bridge.recordDelivered(pathsFor(dataDir).cursor, 7);
+    assert.equal(bridge.isSessionKnownToWantEvents({ intent: bridge.RESUME_INTENT, env: sessionEnv, sessionId: SESSION }), true);
+  });
+
+  test("a takeover by another listener is never announced; every other stop is", () => {
+    for (const reason of ["superseded", "replaced"]) {
+      assert.equal(bridge.shouldAnnounceStop(reason, { relevant: true }), false, reason);
+    }
+    for (const reason of [
+      "not_connected",
+      "unauthorized",
+      "no_connection_record",
+      "credential_unavailable",
+      "credential_mismatch",
+      "board_unreadable",
+      "scope_check_failed",
+      "mint_refused",
+      "revoked",
+      "refused",
+      "bridge_failed",
+    ]) {
+      assert.equal(bridge.shouldAnnounceStop(reason, { relevant: true }), true, reason);
+    }
+    assert.equal(bridge.shouldAnnounceStop("credential_mismatch", { relevant: false }), false);
+  });
+
+  test("the PostToolUse hook means a connect; every other hook event means a resume", () => {
+    assert.equal(bridge.intentFromHookEvent("PostToolUse"), bridge.CONNECT_INTENT);
+    for (const name of ["SessionStart", "SessionEnd", undefined, ""]) {
+      assert.equal(bridge.intentFromHookEvent(name), bridge.RESUME_INTENT, String(name));
+    }
+  });
+});
+
+describe("the hook's exit code carries what the inbox could not", () => {
+  const collectStderr = () => {
+    const errors = [];
+    return { errors, stderr: (m) => errors.push(m) };
+  };
+
+  test("a bridge that is streaming exits 0, silently", () => {
+    const { errors, stderr } = collectStderr();
+    assert.deepEqual(bridge.startExit({ verdict: "ready" }, stderr), { verdict: "ready", exitCode: 0 });
+    assert.deepEqual(errors, []);
+  });
+
+  test("a failure the bridge already delivered needs nothing further", () => {
+    const { errors, stderr } = collectStderr();
+    assert.deepEqual(
+      bridge.startExit({ verdict: "failed", announced: true, posted: true, notice: "n" }, stderr),
+      { verdict: "failed", exitCode: 0 },
+    );
+    assert.deepEqual(errors, [], "the session already has it — saying it twice trains people to ignore it");
+  });
+
+  test("a failure it could NOT deliver wakes Claude with exit 2 and the notice", () => {
+    const { errors, stderr } = collectStderr();
+    const notice = bridge.failureNotice("credential_mismatch: the bridge would authenticate as somebody else", "restart the session");
+    assert.deepEqual(
+      bridge.startExit({ verdict: "failed", announced: true, posted: false, notice }, stderr),
+      { verdict: "failed", exitCode: 2 },
+    );
+    assert.match(errors.join(""), /credential_mismatch/);
+  });
+
+  test("a bridge that died before it started streaming is reported, not shrugged off", () => {
+    const { errors, stderr } = collectStderr();
+    assert.deepEqual(bridge.startExit({ verdict: "exited", code: 1 }, stderr), { verdict: "exited", exitCode: 2 });
+    assert.match(errors.join(""), /exited \(code 1\)/);
+  });
+
+  test("no verdict in time leaves the bridge running and the hook quiet", () => {
+    const { errors, stderr } = collectStderr();
+    assert.deepEqual(bridge.startExit(null, stderr), { verdict: "pending", exitCode: 0 });
+    assert.deepEqual(errors, []);
+  });
+});
+
+describe("start waits for the bridge's own verdict", () => {
+  const verdictChild = () => {
+    const child = new EventEmitter();
+    child.pid = 5150;
+    child.unref = () => {};
+    child.disconnect = () => {};
+    return child;
+  };
+
+  test("the first verdict message ends the wait", async () => {
+    const child = verdictChild();
+    const waiting = bridge.waitForVerdict(child, 1_000);
+    child.emit("message", { verdict: "ready" });
+    assert.deepEqual(await waiting, { verdict: "ready" });
+  });
+
+  test("a bridge that exits first ends the wait too", async () => {
+    const child = verdictChild();
+    const waiting = bridge.waitForVerdict(child, 1_000);
+    child.emit("exit", 1);
+    assert.deepEqual(await waiting, { verdict: "exited", code: 1 });
+  });
+
+  test("the wait gives up rather than holding the hook open forever", async () => {
+    assert.equal(await bridge.waitForVerdict(verdictChild(), 5), null);
+  });
+
+  test("a start whose bridge could not reach the session exits 2 with the notice", async () => {
+    const dataDir = tmpDir();
+    const errors = [];
+    const notice = bridge.failureNotice("board_unreadable: cannot read board x:y", "scope the credential");
+    const result = await bridge.start({
+      env: env(dataDir),
+      sessionId: SESSION,
+      intent: bridge.CONNECT_INTENT,
+      spawnRun: () => ({ pid: 5150 }),
+      stderr: (m) => errors.push(m),
+      waitVerdict: async () => ({ verdict: "failed", announced: true, posted: false, notice }),
+    });
+    assert.equal(result.started, true);
+    assert.equal(result.exitCode, 2);
+    assert.match(errors.join(""), /board_unreadable/);
+  });
+
+  test("a start whose bridge told the session itself exits 0", async () => {
+    const dataDir = tmpDir();
+    const errors = [];
+    const result = await bridge.start({
+      env: env(dataDir),
+      sessionId: SESSION,
+      intent: bridge.CONNECT_INTENT,
+      spawnRun: () => ({ pid: 5150 }),
+      stderr: (m) => errors.push(m),
+      waitVerdict: async () => ({ verdict: "failed", announced: true, posted: true, notice: "n" }),
+    });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(errors, []);
   });
 });
 

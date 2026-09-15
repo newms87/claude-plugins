@@ -30,7 +30,8 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-event-bridge.mjs\" start",
-            "async": true
+            "async": true,
+            "asyncRewake": true
           }
         ]
       }
@@ -42,7 +43,8 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-event-bridge.mjs\" start",
-            "async": true
+            "async": true,
+            "asyncRewake": true
           }
         ]
       }

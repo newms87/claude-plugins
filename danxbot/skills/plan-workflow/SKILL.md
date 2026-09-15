@@ -215,6 +215,15 @@ the bridge holds the session's one stream ticket.
   restarted bridge resumes from the last event it delivered, so events that land while it is
   down arrive when it comes back, once each. Moving to another plan keeps the same bridge; the
   dashboard filters by the plan you are connected to at each event.
+- **A bridge that cannot deliver TELLS YOU, here, in this session.** It signs in as this
+  session's OWN `danx-dashboard` MCP server — the credential that server uses, resolved from the
+  connection your `plan_connect` recorded, never an ambient token (DX-2862) — and at startup it
+  checks that credential can read every board the connected plan's cards live on. Anything that
+  would otherwise be silence arrives as a message beginning `[danxbot plan event bridge` and
+  naming the reason and the fix: no connection record, a credential that no longer matches the
+  server's, a board it cannot read, a refused ticket, a fatal stop. Do what the fix says
+  (usually: call `plan_connect` again); never answer it by polling. No such message and events
+  flowing means the bridge is doing its job.
 - **Never poll** comments, answers or gate state (`issue_get` loops, `sleep` loops, scheduled
   wakeups). If `sessionListenerAttached` is `false` for more than a minute while connected, the
   bridge is not running — tell the operator (its log is under the plugin data directory,
