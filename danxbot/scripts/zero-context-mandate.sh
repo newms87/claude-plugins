@@ -43,11 +43,14 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    Size every sub-agent: set the card's effort_level first, then dispatch the matching
    danxbot:worker-<model>-<effort> agent — never let a sub-agent inherit the session's own model.
    Card status is always true: In Progress only while something is actively working it; when
-   nobody is, rollback_pickup then ready, restoring assigned_agent.
+   nobody is, issue_transition rollback_pickup keep_assignment:true — one call, back to ToDo,
+   assigned_agent untouched.
    Liveness claims need live evidence: never call a dispatch "running" or "making progress" from
    a status field alone — cite two timestamped progress reads 60s+ apart, or a JSONL last-entry age.
-   Session names match: this session's name on the plan is its Claude session title, never the
-   repo folder.
+   Session names match: pass your Claude session title as plan_connect's title argument, never
+   the repo folder; re-connect with the new title after a rename.
+   The plan never waits on the worker: keep up to 3 cards in flight on your own sub-agents,
+   picking up the next unblocked card as one finishes; the worker is extra capacity only.
 EOF
 
 printf '%s\n' "$MANDATE"

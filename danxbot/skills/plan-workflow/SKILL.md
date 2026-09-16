@@ -14,10 +14,13 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 
 1. `plan_list` — read `session.planId`. Connected to the right plan already? Skip to 3.
 2. Find the plan for this effort in `plans[]` (read candidates with `plan_get({plan_id})`).
-   Found → `plan_connect({plan_id})`. None → `plan_create({name})`, then `plan_connect`.
-3. Set this plan session's title to match your Claude session title, never the repo folder —
-   `PATCH /api/plan-sessions/:sessionId {"title": "<Claude session title>"}` (read the title with
-   the Desktop session tool, `get_session` with `self`). See "Running a plan with sub-agents".
+   Read this session's own title first — `get_session({session_id:"self"}).title` on Claude
+   Desktop, otherwise the name set by `/rename` — and pass it as `title`, never the repo folder.
+   Found → `plan_connect({plan_id, title})`. None → `plan_create({name})`, then
+   `plan_connect({plan_id, title})`.
+3. Renamed since connecting? Re-run `plan_connect({plan_id, title})` with the new title — a
+   `plan_connect` that omits `title` leaves the stored one untouched. See "Running a plan with
+   sub-agents".
 4. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
    before doing anything else. A BARE `plan_get` returns only cheap scalars (`plan`, `boards`,
    `cardCount`, `bucketCounts`, session state, `available_field_groups`) — see "Reading a plan".
@@ -248,10 +251,9 @@ the bridge holds the session's one stream ticket.
   card, `pickup manual:true` with `assigned_agent` (read it back). Buildable work goes to the
   danxbot worker by `ready` (isolated worktrees, every quality gate). Shipped work is completed
   (checklist → gate verdicts → complete → retro) the moment it lands. The moment nobody is
-  working a card, `issue_transition rollback_pickup` then `ready` — `rollback_pickup` clears
-  `assigned_agent`, so restore the claim with `POST /api/issues/:id/assigned-agent {"name":
-  "<agent>"}` if the same agent should keep it. Update a card's state as the work happens, never
-  in a batch at the end.
+  working a card you hold but are not touching, `issue_transition({action: "rollback_pickup",
+  keep_assignment: true})` — one call, back to ToDo, `assigned_agent` untouched (DX-2825 AC4).
+  Update a card's state as the work happens, never in a batch at the end.
 - **Write for a stranger**: an experienced engineer who has never seen this codebase or this
   conversation. Plain text (records are not markdown). Define a domain word before using it.
 - **Carry real evidence and current status** in the body: ids (`#WR-727`, `DX-2683`), commit
@@ -373,6 +375,14 @@ agents are namespaced by plugin name — once this plugin is installed, invoke t
 `subagent_type` the ladder row maps it to. A plain `general-purpose` call or an unspecified
 `subagent_type` silently inherits the session's own model.
 
+### The plan never waits on the danxbot worker
+
+Keep up to 3 cards in flight at all times on your own local sub-agents. The instant one
+finishes, pick up the next unblocked card and dispatch it — never pause the plan waiting for a
+card to land. The danxbot worker (the dispatcher picking up `ready` cards from the board) is
+extra capacity on top of your own sub-agents, never something the plan waits on (operator,
+2026-09-15 08:36Z).
+
 ### Liveness claims need live evidence
 
 `status: running` on a dispatch row does not prove an agent is working. Before telling the
@@ -391,10 +401,11 @@ operator had to ask where that came from.
 ### Session names match
 
 A planning session's name on the plan must equal its Claude session title, never the repo
-folder — several sessions can share one repo. Until card DX-2816 automates it, set it yourself
-at connect time (TodoWrite checklist step 3): `PATCH /api/plan-sessions/:sessionId {"title":
-"<Claude session title>"}`. Read the Claude title with the Desktop session tool, `get_session`
-with `self`.
+folder — several sessions can share one repo. Before every `plan_connect` call, read your own
+session title — `get_session({session_id:"self"}).title` on Claude Desktop, otherwise the name
+set by `/rename` — and pass it as `plan_connect`'s `title` argument (DX-2816). Omitting `title`
+leaves the stored one untouched, so after a rename re-connect with the new title:
+`plan_connect({plan_id, title: "<new title>"})`.
 
 ## THE TURN GATE — before every chat reply
 
@@ -441,15 +452,29 @@ problem. Before stopping with work unfinished,
 the Turn Gate already guarantees the plan holds current state; add a caveat for anything
 half-done that the next session would otherwise trip over.
 
-## Feature facts (verified 2026-09-15 against danxbot `origin/main` at `4acb85f2` — includes
-DX-2830 "requires_human is retired" (`6060c8bc`) and DX-2782 auto-triage-via-problem
-(`d6a8ff31`); MCP package `@thehammer/danx-dashboard-mcp` at `0.1.69`)
+## Feature facts (verified against danxbot `origin/main` at `9d6fd3216` — includes
+DX-2830 "requires_human is retired" (`6060c8bc`), DX-2782 auto-triage-via-problem
+(`d6a8ff31`), and DX-2834 plan status (`3233ffd2`); MCP package
+`@thehammer/danx-dashboard-mcp` at `0.1.76`)
 
 - **UI:** production serves the React Plans UI at `https://danxbot.sageus.ai/plans` and
   `/plans/:planId` (`frontend/src/app/routes.tsx`; `src/dashboard/server.ts` serves
   `frontend/dist/` for the `plans` route prefix, assets under `/react-assets/`). The plan
   detail screen shows the plan's cards plus Goals / Architecture / Rules / Caveats tabs.
   The old per-board `/plan` screen is gone (DX-2680) — "Plan" and "Plans" are not two areas.
+- **Plan status (DX-2834)** is computed fresh on every read, never stored
+  (`planStatusCaseSql`, `src/issues/db/plans.ts:611-624`) — first match wins: `complete` (≥1
+  card and every one Done/Cancelled, checked before liveness), `awaiting-session` (not complete,
+  no live session connected), `building` (not complete, a live session IS connected, and ≥1
+  non-terminal card is ToDo/In Progress or carries an open problem or `blocked_at` — Blocked and
+  Needs Help both count as `building`, not their own state), else `planning`. A session counts as
+  live when it holds an unexpired, unrevoked listener ticket OR its `last_active_at` falls
+  within the ticket lease window (`sessionIsLiveSql`,
+  `src/issues/db/plan-session-listener-tickets.ts:198-208`) — never a raw "is a plan_id set"
+  check, since a session's row is never released when the session merely ends. `plan_list` and
+  `plan_get` both return this `status` on every plan and accept a `status` filter to one value
+  (`src/issues/plans-routes.ts:472-491`; MCP `plan_list`/`plan_get`,
+  `packages/danx-dashboard-mcp/src/index.ts:982,996`).
 - **Tables** (`src/db/migrations/`): `plans` (id, name, created_at); plan architecture
   sections (title, markdown content, sort order, per-section content hash, soft delete —
   DX-2726); `plan_cards` (plan_id, card_id, unique pair, cascade on either
