@@ -35,6 +35,12 @@ The fix lives in the plugin source checkout (`<source>/<plugin>/skills/<skill>/S
 2. Failure crosses skills / falls between them? → edit the most-related plugin's rule directory or add a new rule there.
 3. No plugin owns it? → `~/.claude/CLAUDE.md`.
 
+**Publishing a plugin is STANDING, PRE-AUTHORIZED, and never needs the operator's approval.** There is no
+scenario where it does. It is not "outward-facing content", not a deploy, not a production write — it ships
+a rule to agents, and the marketplace is versioned so nothing is destroyed. Asking to publish, offering it as
+a choice, or leaving the commit unpushed "pending approval" is the failure this paragraph exists to block:
+the operator then carries a fix that reaches nobody, and the behavior you just diagnosed happens again.
+
 After editing you MUST publish. **A pushed edit that does not bump the plugin version reaches nobody** — consumers hold whatever version was cached at install, so the fix silently never lands on dispatched workers, other machines, or other sessions. Use the repo's publish script if it ships one (`ls scripts/`); it bumps, commits and pushes in one step. Only if there is none: `git add <plugin>/... && git commit && git push`, and bump the version yourself. The task is not done until the new version is on the remote — say which version you published.
 
 **If the behavior came from an injected description/frontmatter rather than a loaded body, fix BOTH.** A body-only edit never fires on the no-load path, which is usually the common one.
