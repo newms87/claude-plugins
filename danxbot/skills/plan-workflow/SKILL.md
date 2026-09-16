@@ -381,6 +381,17 @@ agents are namespaced by plugin name — once this plugin is installed, invoke t
 `subagent_type` the ladder row maps it to. A plain `general-purpose` call or an unspecified
 `subagent_type` silently inherits the session's own model.
 
+### A dispatch brief that can create a checkout carries the cleanup requirement
+
+The canonical rule (location, ownership, no-unsaved-work proof, cleanup, report) is the
+always-injected mandate (`danxbot/scripts/zero-context-mandate.sh`, item 1) — do not restate it
+here. It reaches THIS session because it is injected on every `SessionStart`; it does NOT reach a
+dispatched sub-agent, which starts with zero context and never reads this session's injected
+text. So before dispatching any sub-agent whose task might make it create a worktree, clone,
+scratch copy or backup patch, paste that mandate paragraph into the brief verbatim. A brief that
+authorizes a checkout without it is incomplete — the agent has no way to know where the checkout
+belongs or that it owns removing it.
+
 ### The plan never waits on the danxbot worker
 
 Keep up to 3 cards in flight at all times on your own local sub-agents. The instant one

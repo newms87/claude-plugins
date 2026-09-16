@@ -26,6 +26,20 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    Never: chat, TaskCreate/TaskList, the session scratchpad (wiped between sessions), your own memory,
    or "I'll remember to do that after X finishes".
 
+   WORKTREES, CLONES, SCRATCH COPIES AND BACKUP PATCHES YOU CREATE. An agent's own git worktree,
+   clone, scratch copy or backup patch lives INSIDE its repo, under that repo's git-ignored
+   `<repo>/.claude/worktrees/<name>` — never as a sibling checkout in the projects folder, never
+   in WSL. Whoever creates it owns removing it. Before reporting done: prove `git status
+   --porcelain` is empty and `git cherry origin/main <branch>` is empty (nothing unpushed) — or,
+   if it must outlive you, record on the card why and who owns it next — then `git worktree
+   remove` and delete the branch, and name what you removed in your final report. A sub-agent
+   brief that lets an agent create a checkout MUST carry this paragraph: hooks injected here
+   reach only the session that reads this file, never a sub-agent's own zero-context window (see
+   danxbot:plan-workflow "Running a plan with sub-agents").
+   Incident, 2026-09-16: 20 stray worktrees and ~25 clones/temp folders piled up in the projects
+   folder, none removed by their creators; one improvised WSL scratch copy's `rsync --delete`
+   wiped the machine.
+
    MECHANICAL CHECK — run it before every chat reply, before dispatching or stopping any sub-agent, and before any
    compaction or session end: "If this session were wiped right now, would a zero-context agent miss a single item
    of work or cleanup?" Any YES → write that item to its card or plan now, then continue.
