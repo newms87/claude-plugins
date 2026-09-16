@@ -389,6 +389,17 @@ card to land. The danxbot worker (the dispatcher picking up `ready` cards from t
 extra capacity on top of your own sub-agents, never something the plan waits on (operator,
 2026-09-15 08:36Z).
 
+**It waits on nothing else either.** A deploy, a build, a test run, a background command, another
+sub-agent — each is time you have, not a reason to idle. Waiting is when you dispatch, not when
+you stop.
+
+**MECHANICAL CHECK, before sending ANY message while the plan has unblocked work:** count your
+running sub-agents. Under 3, with unblocked non-overlapping work on the plan → dispatch it in
+THIS message, then report. **Never ask permission to dispatch.** "Say go and I'll start", "want
+me to fan these out?", or listing what you could run instead of running it makes the operator
+your scheduler — the exact job this skill gives you. Dispatching unblocked work is the job;
+escalate the WORK's decisions, never the decision to begin it.
+
 ### Liveness claims need live evidence
 
 `status: running` on a dispatch row does not prove an agent is working. Before telling the
