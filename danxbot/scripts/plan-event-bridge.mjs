@@ -56,6 +56,14 @@
  * successful read resets the count); only exhausting that limit is a FATAL stop, worded as
  * "liveness could not be verified", never "gone".
  *
+ * REVIEW ROUND 2 (2026-09-16). The start-key cadence runs on a self-rescheduling `setTimeout`,
+ * never a plain `setInterval` — a check only reschedules once it (and any `tellSession` await
+ * on a fatal verdict) has fully settled, so two checks can never be in flight at once (finding
+ * 2), and that reschedule chain is `.catch`-guarded so a bug in the tick itself cannot vanish as
+ * an unhandled rejection (finding 3). The darwin start key is pinned to UTC/`C` the same way the
+ * win32 one already was (finding 1). Every fatal liveness notice — startup AND periodic — names
+ * the last underlying read error, not just that the limit was hit (finding 5).
+ *
  * MODES
  *   start — the hooks. Under an exclusive-create lock: a live holder with a fresh
  *           heartbeat → no-op; otherwise spawn `run` and record its pid.
@@ -279,6 +287,24 @@ export function unsupportedPlatformNotice(platform) {
 }
 
 /**
+ * A short, appendable description of a start-key read failure (DX-2894 review round 2,
+ * finding 4) — `err.message` alone renders an `execFile` timeout kill (win32 CIM / darwin
+ * `ps`) as an indistinguishable generic wrapper string ("Command failed" or similar), with
+ * no hint it was ever bounded rather than simply refused. Every caller that logs or reports
+ * a start-key `onFailure` / `onUnreadableAttempt` error goes through this, so a timeout
+ * reads as a timeout wherever it surfaces — the bridge log AND the fatal session notice —
+ * on both the win32 and darwin `execFile` paths.
+ */
+export function describeProcessError(err) {
+  if (err === null || err === undefined) return "unknown error";
+  const parts = [err.message ?? String(err)];
+  if (err.killed) parts.push("killed=true");
+  if (err.signal) parts.push(`signal=${err.signal}`);
+  if (err.code !== undefined && err.code !== null) parts.push(`code=${err.code}`);
+  return parts.join(" ");
+}
+
+/**
  * A stable identifier for "when process `pid` started" (DX-2894) — a bare `kill(pid, 0)`
  * cannot tell a live parent apart from an unrelated process that later reused its pid, so
  * the periodic parent check needs something that changes when the pid is recycled. Resolves
@@ -299,7 +325,10 @@ export function unsupportedPlatformNotice(platform) {
  * long as the OS call takes, once per check, for the life of the session (DX-2894 review round
  * 1, finding 2). Linux reads `/proc` directly — no subprocess, already non-blocking, no timeout
  * needed. The Windows key is read in UTC (`ToUniversalTime()`) — DX-2894 review round 1, finding
- * 4: a local-time key made an operator's own timezone change read as pid reuse.
+ * 4: a local-time key made an operator's own timezone change read as pid reuse. The darwin key
+ * is likewise pinned (`TZ=UTC` + `LC_ALL=C`) — DX-2894 review round 2, finding 1: `ps -o lstart=`
+ * carries no offset in its output at all, so without an explicit override it silently read the
+ * host's local timezone and locale.
  */
 export function readProcessStartKey(
   pid,
@@ -338,16 +367,26 @@ export function readProcessStartKey(
   }
   if (platform === "darwin") {
     return new Promise((resolve) => {
-      execFileFn("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: timeoutMs }, (error, stdout) => {
-        if (error) {
-          onFailure(error);
-          resolve(null);
-          return;
-        }
-        const stamp = (stdout ?? "").trim();
-        if (stamp === "") onFailure(new Error(`no ps lstart output for pid ${pid}`));
-        resolve(stamp === "" ? null : `darwin:${stamp}`);
-      });
+      execFileFn(
+        "ps",
+        ["-o", "lstart=", "-p", String(pid)],
+        // DX-2894 review round 2, finding 1: `ps -o lstart=` renders in the process's LOCAL
+        // timezone/locale with no offset anywhere in the output, so with no override an
+        // operator's own timezone change (or a differently-configured host) would silently
+        // become part of the comparison key — exactly the win32 bug finding 4 (round 1)
+        // already fixed for CIM. TZ=UTC + LC_ALL=C pin both.
+        { encoding: "utf8", timeout: timeoutMs, env: { ...process.env, TZ: "UTC", LC_ALL: "C" } },
+        (error, stdout) => {
+          if (error) {
+            onFailure(error);
+            resolve(null);
+            return;
+          }
+          const stamp = (stdout ?? "").trim();
+          if (stamp === "") onFailure(new Error(`no ps lstart output for pid ${pid}`));
+          resolve(stamp === "" ? null : `darwin:${stamp}`);
+        },
+      );
     });
   }
   if (platform === "linux") {
@@ -1042,6 +1081,7 @@ export async function run(
   let child = null;
   let stopping = false;
   let verdictSent = false;
+  let startKeyTimer = null;
 
   /** The hook that started this bridge waits for exactly one of these. */
   const sendVerdict = (verdict) => {
@@ -1072,6 +1112,10 @@ export async function run(
     if (stopping) return;
     stopping = true;
     log(`exiting: ${why}`);
+    // DX-2894 review round 2, finding 2: stop the self-rescheduling start-key timer too — the
+    // process is about to `exit()` anyway (which would take any live timer with it), but a
+    // caller that injects its own `shutdown` in a test must see the loop actually end here.
+    if (startKeyTimer) clearTimeout(startKeyTimer);
     if (child) killTree(child.pid);
     if (readJsonFile(paths.pid)?.pid === process.pid) fs.rmSync(paths.pid, { force: true });
     process.exit(exitCodeForShutdown(fatal));
@@ -1106,14 +1150,20 @@ export async function run(
   // a bare `kill(pid, 0)` cannot tell the two apart. Unreadable at startup is refused
   // loudly, never a silent skip of the guard. Async + timeout-bounded like every other
   // start-key read (see `readProcessStartKey`).
+  // DX-2894 review round 2, finding 5: track the real underlying error so the fatal session
+  // notice below can name it — the session sees only this notice, never the log file.
+  let lastStartKeyError = null;
   const parentStartKey = await readStartKey(parentPid, {
     platform,
     timeoutMs: startKeyTimeoutMs,
-    onFailure: (err) => log(`could not read the start time of Claude Code process ${parentPid} at startup: ${err?.message ?? err}`),
+    onFailure: (err) => {
+      lastStartKeyError = err;
+      log(`could not read the start time of Claude Code process ${parentPid} at startup: ${describeProcessError(err)}`);
+    },
   });
   if (parentStartKey === null) {
     await tellSession(
-      `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID)`,
+      `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID): ${describeProcessError(lastStartKeyError)}`,
       "restart the session so the plugin can observe CLAUDE_PID again",
     );
     shutdown(`could not read the start time of Claude Code process ${parentPid}`, { fatal: true });
@@ -1139,28 +1189,57 @@ export async function run(
   // The heavier pid-reuse verification (every startKeyCheckMs, default 60s) — see
   // `verifyStartKeyTick` for the full decision table. `unreadableCount` is this closure's
   // own running tally across ticks; a successful read resets it to zero.
+  //
+  // DX-2894 review round 2, finding 2: a plain `setInterval` re-fired every startKeyCheckMs
+  // regardless of whether the previous tick's async OS read (or its `await tellSession` on a
+  // fatal verdict) had settled — a slow read overlapped with the next tick's read, both
+  // mutating the same `unreadableCount` closure variable across their two in-flight calls,
+  // silently losing counted attempts or double-firing the fatal notice. A self-rescheduling
+  // `setTimeout` makes the checks strictly non-overlapping instead: the NEXT check is armed
+  // only once the current one has fully settled (`finally`, so a thrown/rejected tick still
+  // reschedules rather than silently going quiet).
   let unreadableCount = 0;
-  setInterval(() => {
-    void verifyStartKeyTick(parentPid, parentStartKey, {
+  const runStartKeyCheck = async () => {
+    const { action, unreadableCount: nextCount } = await verifyStartKeyTick(parentPid, parentStartKey, {
       isAlive: alive,
       readProcessStartKey: readStartKey,
       platform,
       timeoutMs: startKeyTimeoutMs,
       unreadableCount,
       unreadableLimit,
-      onUnreadableAttempt: (err, attempt, limit) =>
-        log(`could not verify Claude Code process ${parentPid}'s start time (attempt ${attempt}/${limit}): ${err?.message ?? err}`),
-    }).then(async ({ action, unreadableCount: nextCount }) => {
-      unreadableCount = nextCount;
-      if (action === "reused") {
-        shutdown(`pid ${parentPid} was reused by another process`);
-      } else if (action === "unverifiable") {
-        const reason = `Claude Code process ${parentPid}'s liveness could not be verified after ${unreadableLimit} consecutive attempts`;
-        await tellSession(reason, "restart the session so the plugin can observe CLAUDE_PID again");
-        shutdown(reason, { fatal: true });
-      }
+      onUnreadableAttempt: (err, attempt, limit) => {
+        lastStartKeyError = err;
+        log(`could not verify Claude Code process ${parentPid}'s start time (attempt ${attempt}/${limit}): ${describeProcessError(err)}`);
+      },
     });
-  }, startKeyCheckMs);
+    unreadableCount = nextCount;
+    if (action === "reused") {
+      shutdown(`pid ${parentPid} was reused by another process`);
+    } else if (action === "unverifiable") {
+      // DX-2894 review round 2, finding 5: name the last real error, not just that the limit
+      // was hit — the session sees only this notice.
+      const reason =
+        `Claude Code process ${parentPid}'s liveness could not be verified after ${unreadableLimit} consecutive ` +
+        `attempts: ${describeProcessError(lastStartKeyError)}`;
+      await tellSession(reason, "restart the session so the plugin can observe CLAUDE_PID again");
+      shutdown(reason, { fatal: true });
+    }
+  };
+  const scheduleStartKeyCheck = () => {
+    if (stopping) return;
+    startKeyTimer = setTimeout(() => {
+      runStartKeyCheck()
+        .catch((err) => {
+          // DX-2894 review round 2, finding 3: this used to be `void promise.then(...)` with
+          // no `.catch` at all — a bug in the tick itself (never a start-key READ failure,
+          // which `verifyStartKeyTick` already turns into "unverifiable" rather than
+          // throwing) vanished as an unhandled rejection instead of ending the bridge.
+          shutdown(`start-key verification failed unexpectedly: ${err?.message ?? err}`, { fatal: true });
+        })
+        .finally(() => scheduleStartKeyCheck());
+    }, startKeyCheckMs);
+  };
+  scheduleStartKeyCheck();
 
   const relay = createRelayQueue({
     post: (content) => postFn(content, env),

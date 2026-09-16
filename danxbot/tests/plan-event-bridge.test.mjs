@@ -1100,16 +1100,24 @@ describe("readProcessStartKey (DX-2894 review round 1 — async, timeout-bounded
     );
   });
 
-  test("darwin: parses `ps -o lstart=` output; an error resolves null and reports it", async () => {
+  test("darwin: parses `ps -o lstart=` output, pinned to UTC/C (finding 1) and the shared read timeout; an error resolves null and reports it", async () => {
+    let seenOpts;
     const key = await bridge.readProcessStartKey(4242, {
       platform: "darwin",
       execFileFn: (command, args, opts, cb) => {
         assert.equal(command, "ps");
         assert.deepEqual(args, ["-o", "lstart=", "-p", "4242"]);
+        seenOpts = opts;
         cb(null, "Mon Sep 16 20:10:00 2026\n", "");
       },
     });
     assert.equal(key, "darwin:Mon Sep 16 20:10:00 2026");
+    // DX-2894 review round 2, finding 1: `ps -o lstart=` has no offset anywhere in its own
+    // output, so without an explicit env override the read silently depends on the host's
+    // timezone/locale.
+    assert.equal(seenOpts.env.TZ, "UTC", "darwin's start-key read must be pinned to UTC");
+    assert.equal(seenOpts.env.LC_ALL, "C", "darwin's start-key read must be pinned to the C locale");
+    assert.equal(seenOpts.timeout, bridge.START_KEY_READ_TIMEOUT_MS);
 
     const failures = [];
     assert.equal(
@@ -1122,6 +1130,52 @@ describe("readProcessStartKey (DX-2894 review round 1 — async, timeout-bounded
     );
     assert.equal(failures.length, 1);
   });
+
+  // DX-2894 review round 2, finding 10: `ps` exiting 0 with EMPTY output (pid vanished
+  // between the alive check and the read, or a `ps` build that silently declines) is a
+  // DIFFERENT failure shape than a non-zero exit / spawn error, and win32 already covers its
+  // own empty-output case (the "empty output, a non-zero exit, ..." test above) — darwin's
+  // own empty-output branch had no dedicated coverage.
+  test("darwin: an exit-0 EMPTY `ps` output is also reported as a failure, not silently treated as success", async () => {
+    const failures = [];
+    const key = await bridge.readProcessStartKey(4242, {
+      platform: "darwin",
+      execFileFn: (c, a, o, cb) => cb(null, "", ""),
+      onFailure: (err) => failures.push(err),
+    });
+    assert.equal(key, null);
+    assert.equal(failures.length, 1);
+    assert.match(failures[0].message, /no ps lstart output/);
+  });
+
+  // DX-2894 review round 2, finding 10: darwin's `timeoutMs` option must actually reach
+  // `execFile` — a custom timeout that silently fell back to the default would only surface
+  // as a much harder-to-diagnose hang under load.
+  test("darwin: a custom timeoutMs is passed through to execFile, not just the default", async () => {
+    let seenTimeout;
+    await bridge.readProcessStartKey(4242, {
+      platform: "darwin",
+      timeoutMs: 12_345,
+      execFileFn: (c, a, opts, cb) => {
+        seenTimeout = opts.timeout;
+        cb(null, "Mon Sep 16 20:10:00 2026\n", "");
+      },
+    });
+    assert.equal(seenTimeout, 12_345);
+  });
+
+  // DX-2894 review round 2, finding 10: win32-only (there is no fake to fall back to — this
+  // proves the REAL CIM query against the REAL current process). Skipped everywhere else,
+  // never simulated.
+  test(
+    "win32: a real CIM read against the running process returns a UTC key ending in Z",
+    { skip: process.platform !== "win32" ? "win32-only: exercises the real CIM query" : false },
+    async () => {
+      const key = await bridge.readProcessStartKey(process.pid, { platform: "win32" });
+      assert.notEqual(key, null, "a real CIM read against this test's own live process must succeed");
+      assert.match(key, /Z$/, "ToUniversalTime().ToString('o') must render a UTC ISO stamp ending in Z");
+    },
+  );
 
   test("linux: parses field 22 (starttime) out of /proc/<pid>/stat, tolerating a comm field with spaces and parens", async () => {
     const normal = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 987654 1000 more fields follow";
@@ -1147,6 +1201,11 @@ describe("readProcessStartKey (DX-2894 review round 1 — async, timeout-bounded
 
   test("an unsupported platform (e.g. darwin was, before finding 3) resolves null and reports a reason naming the platform, without ever reading anything", async () => {
     let reads = 0;
+    // DX-2894 review round 2, finding 8: an assertion made INSIDE the `onFailure` callback
+    // never runs — and so never fails the test — if `onFailure` itself is never called at
+    // all; only recording every call and asserting the count separately proves it fired
+    // exactly once.
+    const failures = [];
     const key = await bridge.readProcessStartKey(4242, {
       platform: "freebsd",
       execFileFn: () => {
@@ -1156,12 +1215,12 @@ describe("readProcessStartKey (DX-2894 review round 1 — async, timeout-bounded
         reads += 1;
         return "";
       },
-      onFailure: (err) => {
-        assert.match(err.message, /freebsd/);
-      },
+      onFailure: (err) => failures.push(err),
     });
     assert.equal(key, null);
     assert.equal(reads, 0, "an unsupported platform must not attempt any OS call");
+    assert.equal(failures.length, 1, "onFailure must be called exactly once");
+    assert.match(failures[0].message, /freebsd/);
   });
 
   test("a non-positive-integer pid is refused without reading anything", async () => {
@@ -1174,6 +1233,39 @@ describe("readProcessStartKey (DX-2894 review round 1 — async, timeout-bounded
     assert.equal(await bridge.readProcessStartKey(-1, { platform: "linux", readFile: async () => "" }), null);
     assert.equal(await bridge.readProcessStartKey(1.5, { platform: "win32", execFileFn }), null);
     assert.equal(calls, 0);
+  });
+});
+
+describe("describeProcessError (DX-2894 review round 2, finding 4)", () => {
+  test("a plain error renders just its message", () => {
+    assert.equal(bridge.describeProcessError(new Error("no such process")), "no such process");
+  });
+
+  test("a timeout kill (execFile's own shape: killed + signal + code) reads as a timeout, not a generic failure", () => {
+    const err = Object.assign(new Error("Command failed: ps -o lstart= -p 4242"), {
+      killed: true,
+      signal: "SIGTERM",
+      code: null,
+    });
+    const described = bridge.describeProcessError(err);
+    assert.match(described, /Command failed/);
+    assert.match(described, /killed=true/);
+    assert.match(described, /signal=SIGTERM/);
+    assert.doesNotMatch(described, /code=/, "a null/absent code must not render as the literal string 'null'");
+  });
+
+  test("a non-zero exit carries its code, with no killed/signal fields to a clean failure", () => {
+    const err = Object.assign(new Error("Command failed"), { code: 1 });
+    const described = bridge.describeProcessError(err);
+    assert.match(described, /Command failed/);
+    assert.match(described, /code=1/);
+    assert.doesNotMatch(described, /killed=/);
+    assert.doesNotMatch(described, /signal=/);
+  });
+
+  test("a nullish error still renders a string, never throws", () => {
+    assert.equal(bridge.describeProcessError(null), "unknown error");
+    assert.equal(bridge.describeProcessError(undefined), "unknown error");
   });
 });
 
@@ -1341,6 +1433,11 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
    * guess at how long that takes. */
   async function waitForBridgeStarted(dataDir, opts) {
     const paths = pathsFor(dataDir);
+    // DX-2894 review round 2, finding 9: the "bridge started" log line is written only AFTER
+    // the startup start-key read resolves, and that read is itself bounded by
+    // START_KEY_READ_TIMEOUT_MS (5s) — a default wait of exactly 5s raced that same timeout
+    // and flaked whenever the real OS read ran anywhere close to its own bound. Comfortably
+    // above it, not equal to it; still overridable via `opts`.
     assert.ok(
       await waitFor(() => {
         try {
@@ -1348,7 +1445,7 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
         } catch {
           return false;
         }
-      }, opts),
+      }, { timeoutMs: bridge.START_KEY_READ_TIMEOUT_MS + 7_000, ...opts }),
       "bridge never logged 'bridge started'",
     );
     return paths;
@@ -1366,6 +1463,9 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
     startupUnreadable,
     unreadableAfterStartup,
     instrumentStartKey,
+    slowUnreadable,
+    slowUnreadableDelayMs,
+    platform,
     inboxAddress,
   }) {
     const fixtureEnv = {
@@ -1383,11 +1483,23 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
         startupUnreadable,
         unreadableAfterStartup,
         instrumentStartKey,
+        slowUnreadable,
+        slowUnreadableDelayMs,
+        platform,
       }),
     };
     if (claudePid === undefined) delete fixtureEnv.CLAUDE_PID;
     else fixtureEnv.CLAUDE_PID = String(claudePid);
     return track(spawn(process.execPath, [fixturePath], { env: fixtureEnv, stdio: ["ignore", "pipe", "pipe"] }));
+  }
+
+  /** DX-2894 review round 2, finding 6: index 1 is the one-time STARTUP read (the same
+   * `readProcessStartKey` override `run()` reuses before it ever arms the periodic timer) —
+   * only index >= 2 proves the PERIODIC cadence itself ran and succeeded. */
+  function hasPeriodicStartKeyCheckOk(output) {
+    return [...output.matchAll(/fixture-start-key-check index=(\d+) result=(ok|null)/g)].some(
+      (m) => Number(m[1]) >= 2 && m[2] === "ok",
+    );
   }
 
   test("a hard-killed CLAUDE_PID stand-in makes the bridge exit within one isAlive interval, removes its pid file, and ends its own stub child", async () => {
@@ -1475,19 +1587,26 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
       assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
       const notice = received.find((frame) => frame.type === "user");
       assert.match(notice.message.content, /start time of Claude Code process/);
+      // DX-2894 review round 2, finding 5: the notice must name the LAST underlying read
+      // error, not just that the guard tripped — the session sees only this notice, never
+      // the bridge's own log file.
+      assert.match(notice.message.content, /stub: simulated unreadable start key/);
     } finally {
       standIn.kill();
       await close();
     }
   });
 
-  test("a live CLAUDE_PID stand-in is never stopped, across several isAlive ticks AND at least one real start-key verification", async () => {
+  test("a live CLAUDE_PID stand-in is never stopped, across several isAlive ticks AND at least one real PERIODIC start-key verification", async () => {
     const dataDir = tmpDir();
     const { address, close } = await inboxServer();
     const standIn = track(spawnStandIn());
     await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
     const parentCheckMs = 60;
-    const startKeyCheckMs = 150;
+    // DX-2894 review round 2, finding 9: raised from 150ms — a real CIM/`ps` query can
+    // comfortably exceed that on a loaded CI box, which starved the periodic cadence of
+    // ever landing a second tick inside this test's own wait window.
+    const startKeyCheckMs = 500;
     const fixture = spawnFixture({
       dataDir,
       claudePid: standIn.pid,
@@ -1503,23 +1622,35 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
     fixture.once("exit", () => {
       exited = true;
     });
+    let stubChildPid = null;
 
     try {
       await waitForBridgeStarted(dataDir);
-      // "well over several" isAlive intervals, AND at least one real (not stubbed)
-      // start-key verification actually ran and succeeded — review round 1's live-parent
-      // test only waited a fixed 800ms, shorter than one real CIM query, so it likely never
-      // exercised the start-key path on Windows at all.
+      assert.ok(await waitFor(() => /fixture-child-pid=(\d+)/.test(out)), "the stub subcommand never reported its pid");
+      stubChildPid = Number(out.match(/fixture-child-pid=(\d+)/)[1]);
+      // DX-2894 review round 2, finding 6: the OLD assertion accepted ANY "result=ok" line,
+      // including index 1 — the one-time STARTUP read, which uses this exact same
+      // `readProcessStartKey` override and always logs before the periodic timer is even
+      // armed. That made the test pass even with the periodic check deleted outright (see
+      // the deletion experiment recorded on the card). Require index >= 2: a result only the
+      // PERIODIC cadence can produce.
       assert.ok(
-        await waitFor(() => /fixture-start-key-check/.test(out), { timeoutMs: 10_000 }),
-        "no start-key verification tick ran",
+        await waitFor(() => hasPeriodicStartKeyCheckOk(out), { timeoutMs: 15_000 }),
+        "no PERIODIC (index >= 2) start-key verification succeeded — index 1 is only the one-time startup read",
       );
       await new Promise((resolve) => setTimeout(resolve, parentCheckMs * 10));
       assert.equal(exited, false, "a live parent must never trigger a shutdown");
-      assert.match(out, /fixture-start-key-check result=ok/, "the start-key verification must have succeeded, not merely run");
     } finally {
       fixture.kill("SIGTERM");
       await onceWithTimeout(fixture, "exit", 8_000, "fixture exit").catch(() => {});
+      // DX-2894 review round 2, finding 7: SIGTERM to a Windows process has no handler to
+      // run at all (Windows has no real signals — Node's `child.kill()` there is an
+      // unconditional TerminateProcess), so the fixture's own `shutdown()` — which would
+      // otherwise `killTree` its stub subcommand — never executes on win32, leaking the
+      // stub. Kill it directly, the same way `killTree` already does for a live bridge; only
+      // the pid THIS test spawned (via the fixture's own stdout report), never a pid found
+      // any other way.
+      if (stubChildPid !== null) bridge.killTree(stubChildPid);
       standIn.kill();
       await close();
     }
@@ -1583,6 +1714,84 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 revie
       const notice = received.find((frame) => frame.type === "user");
       assert.match(notice.message.content, /could not be verified/);
       assert.doesNotMatch(notice.message.content, /\bgone\b/i, "an unverifiable liveness must never be worded as 'gone'");
+      // DX-2894 review round 2, finding 5: the periodic fatal notice must ALSO name the last
+      // underlying read error, exactly like the startup one above.
+      assert.match(notice.message.content, /stub: simulated unreadable start key/);
+      const paths = pathsFor(dataDir);
+      assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
+    } finally {
+      standIn.kill();
+      await close();
+    }
+  });
+
+  test("start-key checks are non-overlapping: a slow read never has a second one in flight, and the count still reaches the unverifiable limit (DX-2894 review round 2, finding 2)", async () => {
+    const dataDir = tmpDir();
+    const { received, address, close } = await inboxServer();
+    const standIn = track(spawnStandIn());
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    // Deliberately read-delay >> tick cadence: the OLD `setInterval` would have fired several
+    // more ticks before a single slow read even resolved, starting a second (and third...)
+    // read while the first was still pending. The FIXED self-rescheduling `setTimeout` must
+    // never do that, however small the cadence is relative to the read.
+    const startKeyCheckMs = 30;
+    const slowUnreadableDelayMs = 200;
+    const unreadableLimit = 3;
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      intent: "connect",
+      startKeyCheckMs,
+      unreadableLimit,
+      slowUnreadable: true,
+      slowUnreadableDelayMs,
+      inboxAddress: address,
+    });
+    let out = "";
+    fixture.stdout.on("data", (chunk) => (out += chunk));
+    fixture.stderr.resume();
+
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 10_000, "fixture exit");
+      assert.equal(code, 1, "exhausting the unreadable-attempt tolerance must still be reached and still exit fatal");
+      assert.doesNotMatch(out, /fixture-slow-read-OVERLAP/, "a second slow read must never start while the first is still pending");
+      // Every slow-read call must have started only after the previous one's `-end` line —
+      // reconstructs the same non-overlap guarantee from the raw call sequence, independent
+      // of the stub's own inFlight counter.
+      const starts = [...out.matchAll(/fixture-slow-read-start calls=(\d+)/g)].map((m) => Number(m[1]));
+      const ends = [...out.matchAll(/fixture-slow-read-end calls=(\d+)/g)].map((m) => Number(m[1]));
+      assert.ok(starts.length >= unreadableLimit, `expected at least ${unreadableLimit} slow reads, saw ${starts.length}`);
+      assert.deepEqual(ends, starts, "every start must be followed by its own end before the next call's start line appears");
+      assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
+      const notice = received.find((frame) => frame.type === "user");
+      assert.match(notice.message.content, /could not be verified/);
+    } finally {
+      standIn.kill();
+      await close();
+    }
+  });
+
+  test("an unsupported platform is a loud refusal at run() level too, never a silent skip of the liveness guard (DX-2894 review round 2, finding 8)", async () => {
+    const dataDir = tmpDir();
+    const { received, address, close } = await inboxServer();
+    const standIn = track(spawnStandIn());
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      intent: "connect",
+      platform: "freebsd",
+      inboxAddress: address,
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 1, "an unsupported platform must exit non-zero, never a silent skip of the guard");
+      assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
+      const notice = received.find((frame) => frame.type === "user");
+      assert.match(notice.message.content, /freebsd/);
       const paths = pathsFor(dataDir);
       assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
     } finally {

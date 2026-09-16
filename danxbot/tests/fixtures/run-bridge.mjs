@@ -23,9 +23,14 @@ const deps = {
 if (typeof config.parentCheckMs === "number") deps.parentCheckMs = config.parentCheckMs;
 if (typeof config.startKeyCheckMs === "number") deps.startKeyCheckMs = config.startKeyCheckMs;
 if (typeof config.unreadableLimit === "number") deps.unreadableLimit = config.unreadableLimit;
+// DX-2894 review round 2, finding 8: `run()` already takes `platform` as an injectable arg
+// (used in production to decide win32/linux/darwin/unsupported) — this just threads the
+// fixture's own config value through to that SAME existing parameter, no test-only branch
+// in production code.
+if (typeof config.platform === "string") deps.platform = config.platform;
 
-// These four `readProcessStartKey` stand-ins are mutually exclusive — each exercises one
-// DX-2894 review-round-1 scenario deterministically, without racing the real OS.
+// These `readProcessStartKey` stand-ins are mutually exclusive — each exercises one DX-2894
+// review-round scenario deterministically, without racing the real OS.
 if (config.startupUnreadable) {
   // Every read — the startup read AND every periodic one — fails. Exercises the loud
   // startup refusal (never reaches the periodic checks at all).
@@ -56,13 +61,39 @@ if (config.startupUnreadable) {
   };
 } else if (config.instrumentStartKey) {
   // Delegates to the REAL platform read (real CIM / `/proc` / `ps` against the real
-  // CLAUDE_PID stand-in), but also announces every call on stdout so a test can prove at
-  // least one periodic start-key verification actually happened, without needing its own
-  // stub.
+  // CLAUDE_PID stand-in), but also announces every call on stdout, NUMBERED, so a test can
+  // tell the one-time STARTUP read (index 1 — the same `readProcessStartKey` override `run()`
+  // uses before it ever arms the periodic timer) apart from a genuine PERIODIC check (index
+  // >= 2). DX-2894 review round 2, finding 6: an unnumbered log line let a test pass on the
+  // startup read alone even with the periodic check deleted entirely.
+  let calls = 0;
   deps.readProcessStartKey = async (pid, opts) => {
+    calls += 1;
+    const index = calls;
     const result = await bridge.readProcessStartKey(pid, opts);
-    process.stdout.write(`fixture-start-key-check result=${result === null ? "null" : "ok"}\n`);
+    process.stdout.write(`fixture-start-key-check index=${index} result=${result === null ? "null" : "ok"}\n`);
     return result;
+  };
+} else if (config.slowUnreadable) {
+  // DX-2894 review round 2, finding 2 (test support): the startup read succeeds (call 1, so
+  // the bridge actually arms the periodic checks) — every read after that is SLOW
+  // (config.slowUnreadableDelayMs, deliberately much longer than the fixture's own
+  // startKeyCheckMs) and always fails. Reports whether more than one such slow read was ever
+  // in flight at once, which the OLD overlapping `setInterval` would have produced and the
+  // fixed self-rescheduling `setTimeout` must never produce.
+  let calls = 0;
+  let inFlight = 0;
+  deps.readProcessStartKey = async (pid, opts) => {
+    calls += 1;
+    if (calls === 1) return "fixture-start-key-slow-ok";
+    inFlight += 1;
+    process.stdout.write(`fixture-slow-read-start calls=${calls} inFlight=${inFlight}\n`);
+    if (inFlight > 1) process.stdout.write("fixture-slow-read-OVERLAP\n");
+    await new Promise((resolve) => setTimeout(resolve, config.slowUnreadableDelayMs ?? 200));
+    inFlight -= 1;
+    opts?.onFailure?.(new Error("stub: simulated slow unreadable start key"));
+    process.stdout.write(`fixture-slow-read-end calls=${calls}\n`);
+    return null;
   };
 }
 
