@@ -411,6 +411,19 @@ me to fan these out?", or listing what you could run instead of running it makes
 your scheduler — the exact job this skill gives you. Dispatching unblocked work is the job;
 escalate the WORK's decisions, never the decision to begin it.
 
+**"Nothing left I can do" is a CLAIM, and it needs a per-card receipt (incident 2026-09-16).** A session
+finished three cards, then stopped with "the other open cards are waiting on your decisions or other work".
+It had not re-read one of them. Cards it had itself logged as "not dispatchable, reason not checked" were
+still open, and it had readied a buildable card for the worker instead of building it. Before any message
+that stops, idles, or implies you are blocked:
+1. Re-read EVERY open card on the plan in this turn (`plan_get` cards, then one `issue_get({ids})`).
+2. For each one, write its blocker, citing the card id it waits on, the open problem, or the operator
+   action it needs. "Unchecked", "probably blocked", or a status label alone does not count: check it.
+3. A readied card that is waiting on the worker is NOT blocked. Build it locally.
+4. Anything you need from the operator (a permission, an access grant, a login) is a Task card with an
+   open problem, never a chat request.
+Put the table in a comment on a plan card, not in chat. Stop only when every row names a real blocker.
+
 ### Liveness claims need live evidence
 
 `status: running` on a dispatch row does not prove an agent is working. Before telling the
