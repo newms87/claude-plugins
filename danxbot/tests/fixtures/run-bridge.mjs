@@ -74,13 +74,28 @@ if (config.startupUnreadable) {
     process.stdout.write(`fixture-start-key-check index=${index} result=${result === null ? "null" : "ok"}\n`);
     return result;
   };
+} else if (config.parentDiesDuringStartupRead) {
+  // Simulates the parent exiting in the window between `run()`'s pre-read `alive(parentPid)`
+  // check and the startup start-key read resolving: the FIRST `isAlive` call (that pre-read
+  // check) reports alive, every call after reports gone, while the read itself always fails
+  // exactly as a genuinely-dead parent's would — deterministic, without needing to kill a
+  // real stand-in inside that exact window.
+  let aliveCalls = 0;
+  deps.isAlive = () => {
+    aliveCalls += 1;
+    return aliveCalls === 1;
+  };
+  deps.readProcessStartKey = (pid, opts) => {
+    opts?.onFailure?.(new Error("stub: simulated unreadable start key (parent gone)"));
+    return Promise.resolve(null);
+  };
 } else if (config.slowUnreadable) {
-  // DX-2894 (test support): the startup read succeeds (call 1, so
-  // the bridge actually arms the periodic checks) — every read after that is SLOW
-  // (config.slowUnreadableDelayMs, deliberately much longer than the fixture's own
-  // startKeyCheckMs) and always fails. Reports whether more than one such slow read was ever
-  // in flight at once, which the OLD overlapping `setInterval` would have produced and the
-  // fixed self-rescheduling `setTimeout` must never produce.
+  // DX-2894 (test support): the startup read succeeds (call 1, so the bridge actually arms
+  // the periodic checks) — every read after that is SLOW (config.slowUnreadableDelayMs,
+  // deliberately much longer than the fixture's own startKeyCheckMs) and always fails.
+  // Reports whether more than one such slow read was ever in flight at once: the periodic
+  // check must self-reschedule only after its own read settles, never fire again on a fixed
+  // cadence while a prior read is still pending.
   let calls = 0;
   let inFlight = 0;
   deps.readProcessStartKey = async (pid, opts) => {

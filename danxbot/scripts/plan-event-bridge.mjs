@@ -1168,6 +1168,15 @@ export async function run(
     },
   });
   if (parentStartKey === null) {
+    // DX-2894: the parent can die in the window between the `alive(parentPid)` check above and
+    // this read returning — a dead parent makes every OS start-time query fail the same way an
+    // unreadable-but-live one does, so an unqualified null here would misreport an ordinary
+    // "the session ended while we were starting up" as the fatal "could not verify" refusal.
+    // Re-check liveness before deciding which of the two this is.
+    if (!alive(parentPid)) {
+      shutdown(`Claude Code process ${parentPid} exited`);
+      return;
+    }
     await tellSession(
       `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID): ${describeProcessError(lastStartKeyError)}`,
       "restart the session so the plugin can observe CLAUDE_PID again",
@@ -1242,7 +1251,16 @@ export async function run(
           // session itself fails, so that failure is swallowed here rather than left to skip
           // the shutdown below.
           const reason = `start-key verification failed unexpectedly: ${describeProcessError(err)}`;
-          await tellSession(reason, "restart the session so the plugin can observe CLAUDE_PID again").catch(() => {});
+          await tellSession(reason, "restart the session so the plugin can observe CLAUDE_PID again").catch((tellErr) => {
+            // DX-2894: this failure must never be silent — the session was never told, and the
+            // log is the only remaining record. Guard the logging itself: it is best-effort
+            // here, and must not stop the fatal shutdown below from running.
+            try {
+              log(`could NOT tell the session about the start-key verification failure: ${tellErr?.message ?? tellErr}`);
+            } catch {
+              /* logging itself failed — fall through to shutdown regardless */
+            }
+          });
           shutdown(reason, { fatal: true });
         })
         .finally(() => scheduleStartKeyCheck());
