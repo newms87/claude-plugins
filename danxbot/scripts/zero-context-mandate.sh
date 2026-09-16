@@ -30,13 +30,13 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    clone, scratch copy or backup patch lives INSIDE its repo, under that repo's git-ignored
    `<repo>/.claude/worktrees/<name>` — never as a sibling checkout in the projects folder, never
    in WSL. Whoever creates it owns removing it. Before reporting done: prove `git status
-   --porcelain` is empty and `git cherry origin/main <branch>` is empty (nothing unpushed) — or,
+   --porcelain` is empty and `git cherry origin/main <branch>` shows no `+` lines (nothing unpushed) — or,
    if it must outlive you, record on the card why and who owns it next — then `git worktree
    remove` and delete the branch, and name what you removed in your final report. A sub-agent
    brief that lets an agent create a checkout MUST carry this paragraph: hooks injected here
    reach only the session that reads this file, never a sub-agent's own zero-context window (see
    danxbot:plan-workflow "Running a plan with sub-agents").
-   Incident, 2026-09-16: 20 stray worktrees and ~25 clones/temp folders piled up in the projects
+   Incident, 2026-09-15/16: 20 stray worktrees and ~25 clones/temp folders piled up in the projects
    folder, none removed by their creators; one improvised WSL scratch copy's `rsync --delete`
    wiped the machine.
 
