@@ -42,10 +42,19 @@
  * the official docs say it does not run on a crash or kill. `CLAUDE_PID` itself is an
  * OBSERVED, UNDOCUMENTED dependency (it does not appear on
  * https://code.claude.com/docs/en/hooks); a bridge that cannot see a valid, readable
- * `CLAUDE_PID` at startup refuses to start rather than silently running unsupervised.
- * The periodic check also guards against pid reuse: it records the parent's process
- * start time at startup (`readProcessStartKey`) and treats the pid as gone the moment
- * either the pid disappears OR a DIFFERENT process' start time answers for it.
+ * `CLAUDE_PID` at startup refuses to start rather than silently running unsupervised — and
+ * so does a bridge on a platform this liveness check does not support at all.
+ *
+ * TWO CADENCES, review round 1 (2026-09-16). A cheap `isAlive(pid)` runs every
+ * PARENT_CHECK_MS (5s) — no subprocess, nothing to time out — and a normal (non-fatal) stop
+ * the instant the pid itself is gone. Pid-REUSE detection is a heavier, async,
+ * timeout-bounded OS query (Windows CIM / darwin `ps`), so it runs on the much slower
+ * START_KEY_CHECK_MS (60s) instead of every 5s: it records the parent's start time at
+ * startup and treats a DIFFERENT process now answering for the same pid as reuse (also a
+ * normal stop). A single unreadable start-key read is explicitly NOT treated as "gone" —
+ * it is logged and tolerated up to START_KEY_UNREADABLE_LIMIT CONSECUTIVE attempts (a
+ * successful read resets the count); only exhausting that limit is a FATAL stop, worded as
+ * "liveness could not be verified", never "gone".
  *
  * MODES
  *   start — the hooks. Under an exclusive-create lock: a live holder with a fresh
@@ -62,7 +71,7 @@
  * keeps only a week of events, so an older cursor cannot resume anything.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, execFile } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -78,7 +87,26 @@ export const BRIDGE_SUBCOMMAND = "bridge";
 
 export const HEARTBEAT_MS = 30_000;
 export const HEARTBEAT_STALE_MS = 90_000;
+/** The cheap per-tick liveness check (DX-2894 review round 1): `isAlive(pid)` only — no subprocess, nothing to time out. */
 const PARENT_CHECK_MS = 5_000;
+/**
+ * The SLOWER cadence for start-key (pid-reuse) verification (DX-2894 review round 1, finding 2).
+ * Every tick was previously a synchronous `spawnSync("powershell.exe", ...)`, which blocked the
+ * bridge's whole event loop and burned real CPU once per PARENT_CHECK_MS for the life of the
+ * session. The cheap `isAlive` check now runs every PARENT_CHECK_MS; the heavier, async,
+ * timeout-bounded start-key read runs only this often.
+ */
+export const START_KEY_CHECK_MS = 60_000;
+/** Hard cap on a single start-key read (CIM query / `ps`), so a hung OS call cannot hang the bridge. */
+export const START_KEY_READ_TIMEOUT_MS = 5_000;
+/**
+ * Consecutive unreadable start-key attempts (pid still alive) tolerated before liveness is
+ * treated as unverifiable and the bridge shuts down fatally. DX-2894 review round 1, finding 1:
+ * a SINGLE failed read used to be indistinguishable from "the process is gone" — a transient
+ * PowerShell/CIM hiccup silently stopped a perfectly healthy session's bridge. A successful read
+ * at any point resets the counter to zero.
+ */
+export const START_KEY_UNREADABLE_LIMIT = 3;
 /** A start that crashed mid-claim leaves its lock; one older than this is taken over. */
 export const LOCK_STALE_MS = 30_000;
 export const SOCKET_POST_ATTEMPTS = 3;
@@ -233,53 +261,167 @@ export function isAlive(pid) {
   }
 }
 
+/** Platforms this bridge knows how to read a process start time on (DX-2894 review round 1, finding 3). */
+export const SUPPORTED_START_KEY_PLATFORMS = ["win32", "linux", "darwin"];
+
+/**
+ * The fatal-refusal wording for a platform with no supported way to verify liveness — names
+ * the platform explicitly (never a generic "unreadable" message, which would wrongly suggest
+ * a transient failure that a retry could fix). DX-2894 review round 1, finding 3: darwin used
+ * to fall into the Linux `/proc` branch, which does not exist there, so every macOS session
+ * refused to start with a "restart" hint that could never help.
+ */
+export function unsupportedPlatformNotice(platform) {
+  return {
+    reason: `this platform (${platform}) is not supported by the plan event bridge's liveness check`,
+    fix: `plan event bridge liveness verification only runs on ${SUPPORTED_START_KEY_PLATFORMS.join(", ")} — ${platform} needs support added before a bridge can run here`,
+  };
+}
+
 /**
  * A stable identifier for "when process `pid` started" (DX-2894) — a bare `kill(pid, 0)`
  * cannot tell a live parent apart from an unrelated process that later reused its pid, so
- * the periodic parent check needs something that changes when the pid is recycled. Returns
+ * the periodic parent check needs something that changes when the pid is recycled. Resolves
  * `null` when the pid cannot be found (or its start time cannot be read) at all — "gone" and
- * "unreadable" are deliberately the same answer here, since the caller's job on either is the
- * same: stop trusting this pid. The two platforms' keys are incomparable formats on purpose;
- * nothing ever compares a Windows key against a Linux one.
+ * "unreadable" are deliberately the same answer at THIS layer, since the caller
+ * (`verifyStartKeyTick`) is the one place that decides what unreadable means (transient vs.
+ * exhausted). The three platforms' keys are incomparable formats on purpose; nothing ever
+ * compares a Windows key against a Linux or darwin one.
+ *
+ * `onFailure` (default no-op) is called with the real underlying error or reason exactly when
+ * the result is null because a read genuinely failed — timeout, spawn error, non-zero exit, or
+ * empty output — so a caller can log WHY, not just that it did (DX-2894 review round 1: "log
+ * each attempt with the real error").
+ *
+ * win32 and darwin run their OS query through `execFile` — NEVER `execFileSync`/`spawnSync` —
+ * bounded by `timeoutMs` (default START_KEY_READ_TIMEOUT_MS): a synchronous subprocess call
+ * here would block the bridge's whole event loop (heartbeat, relay, signal handlers) for as
+ * long as the OS call takes, once per check, for the life of the session (DX-2894 review round
+ * 1, finding 2). Linux reads `/proc` directly — no subprocess, already non-blocking, no timeout
+ * needed. The Windows key is read in UTC (`ToUniversalTime()`) — DX-2894 review round 1, finding
+ * 4: a local-time key made an operator's own timezone change read as pid reuse.
  */
 export function readProcessStartKey(
   pid,
-  { platform = process.platform, run = spawnSync, readFile = (file) => fs.readFileSync(file, "utf8") } = {},
+  {
+    platform = process.platform,
+    execFileFn = execFile,
+    readFile = (file) => fs.promises.readFile(file, "utf8"),
+    timeoutMs = START_KEY_READ_TIMEOUT_MS,
+    onFailure = () => {},
+  } = {},
 ) {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  if (!Number.isSafeInteger(pid) || pid <= 0) return Promise.resolve(null);
   if (platform === "win32") {
-    const result = run(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `$p = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=${pid}"; if ($p -and $p.CreationDate) { $p.CreationDate.ToString('o') }`,
-      ],
-      { encoding: "utf8", windowsHide: true },
+    return new Promise((resolve) => {
+      execFileFn(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `$p = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=${pid}"; if ($p -and $p.CreationDate) { $p.CreationDate.ToUniversalTime().ToString('o') }`,
+        ],
+        { encoding: "utf8", windowsHide: true, timeout: timeoutMs },
+        (error, stdout) => {
+          if (error) {
+            onFailure(error);
+            resolve(null);
+            return;
+          }
+          const stamp = (stdout ?? "").trim();
+          if (stamp === "") onFailure(new Error(`no CIM CreationDate for pid ${pid}`));
+          resolve(stamp === "" ? null : stamp);
+        },
+      );
+    });
+  }
+  if (platform === "darwin") {
+    return new Promise((resolve) => {
+      execFileFn("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: timeoutMs }, (error, stdout) => {
+        if (error) {
+          onFailure(error);
+          resolve(null);
+          return;
+        }
+        const stamp = (stdout ?? "").trim();
+        if (stamp === "") onFailure(new Error(`no ps lstart output for pid ${pid}`));
+        resolve(stamp === "" ? null : `darwin:${stamp}`);
+      });
+    });
+  }
+  if (platform === "linux") {
+    // /proc/<pid>/stat field 22 (starttime, clock ticks since boot) is stable for the life
+    // of a pid and needs no clock/timezone handling. `comm` (field 2) is parenthesized and
+    // may itself contain spaces or `)`, so the split point is the LAST ')' in the line,
+    // never a naive split(" ").
+    return readFile(`/proc/${pid}/stat`).then(
+      (stat) => {
+        const afterComm = stat.slice(stat.lastIndexOf(")") + 2).trim();
+        const starttime = afterComm.split(/\s+/)[19]; // field 22 overall; fields[0] here is field 3 (state)
+        if (!/^\d+$/.test(starttime ?? "")) {
+          onFailure(new Error(`could not parse starttime out of /proc/${pid}/stat`));
+          return null;
+        }
+        return `linux:${starttime}`;
+      },
+      (err) => {
+        onFailure(err);
+        return null;
+      },
     );
-    if (result.error || result.status !== 0) return null;
-    const stamp = (result.stdout ?? "").trim();
-    return stamp === "" ? null : stamp;
   }
-  // Linux: /proc/<pid>/stat field 22 (starttime, clock ticks since boot) is stable for the
-  // life of a pid and needs no clock/timezone handling. `comm` (field 2) is parenthesized
-  // and may itself contain spaces or `)`, so the split point is the LAST ')' in the line,
-  // never a naive split(" ").
-  try {
-    const stat = readFile(`/proc/${pid}/stat`);
-    const afterComm = stat.slice(stat.lastIndexOf(")") + 2).trim();
-    const starttime = afterComm.split(/\s+/)[19]; // field 22 overall; fields[0] here is field 3 (state)
-    return /^\d+$/.test(starttime ?? "") ? `linux:${starttime}` : null;
-  } catch {
-    return null;
-  }
+  onFailure(new Error(`no supported way to read a process start time on platform "${platform}"`));
+  return Promise.resolve(null);
 }
 
-/** Pid gone, OR a different process now answers for it (DX-2894 pid-reuse guard). */
-export function parentProcessGone(pid, expectedStartKey, { readProcessStartKey: readKey = readProcessStartKey } = {}) {
-  const currentKey = readKey(pid);
-  return currentKey === null || currentKey !== expectedStartKey;
+/**
+ * One periodic start-key (pid-reuse) verification (DX-2894 review round 1). Runs on the
+ * SLOWER START_KEY_CHECK_MS cadence, never the cheap per-tick `isAlive` check — and only does
+ * anything when the pid is still alive (a dead pid is the cheap tick's job; reading a dead
+ * pid's start key here would just fail and get misreported as "unverifiable" rather than the
+ * correct "exited").
+ *
+ * A DIFFERENT start key than the one recorded at startup means the pid was reused by another
+ * process — `action: "reused"`, always a normal (non-fatal) stop, exactly like a genuinely
+ * exited parent.
+ *
+ * An UNREADABLE key is NOT treated as "gone" (that was review round 1's headline finding: one
+ * transient read failure used to stop a perfectly healthy session's bridge). Each unreadable
+ * attempt is reported through `onUnreadableAttempt` and counted; a successful read at any point
+ * resets the counter to zero. Only after `unreadableLimit` CONSECUTIVE unreadable attempts does
+ * this report `action: "unverifiable"` — fatal, because liveness genuinely cannot be established
+ * either way, which is a materially different (and differently worded) situation from "gone".
+ *
+ * Pure aside from the injected `isAlive` / `readProcessStartKey` calls, so the whole decision
+ * table (reused / unverifiable / none, and the counter arithmetic) is unit-tested without
+ * spawning a process or waiting on a real timer.
+ */
+export async function verifyStartKeyTick(
+  pid,
+  expectedKey,
+  {
+    isAlive: alive = isAlive,
+    readProcessStartKey: readKey = readProcessStartKey,
+    platform = process.platform,
+    timeoutMs = START_KEY_READ_TIMEOUT_MS,
+    unreadableCount = 0,
+    unreadableLimit = START_KEY_UNREADABLE_LIMIT,
+    onUnreadableAttempt = () => {},
+  } = {},
+) {
+  if (!alive(pid)) return { action: "none", unreadableCount };
+  const currentKey = await readKey(pid, {
+    platform,
+    timeoutMs,
+    onFailure: (err) => onUnreadableAttempt(err, unreadableCount + 1, unreadableLimit),
+  });
+  if (currentKey === null) {
+    const nextCount = unreadableCount + 1;
+    return { action: nextCount >= unreadableLimit ? "unverifiable" : "none", unreadableCount: nextCount };
+  }
+  if (currentKey !== expectedKey) return { action: "reused", unreadableCount: 0 };
+  return { action: "none", unreadableCount: 0 };
 }
 
 /**
@@ -876,7 +1018,12 @@ export async function run(
     spawnSubcommand = defaultSpawnSubcommand,
     post: postFn = postToInbox,
     readProcessStartKey: readStartKey = readProcessStartKey,
+    isAlive: alive = isAlive,
+    platform = process.platform,
     parentCheckMs = PARENT_CHECK_MS,
+    startKeyCheckMs = START_KEY_CHECK_MS,
+    startKeyTimeoutMs = START_KEY_READ_TIMEOUT_MS,
+    unreadableLimit = START_KEY_UNREADABLE_LIMIT,
   } = {},
 ) {
   const paths = sessionPaths(stateDir(env), sessionId);
@@ -931,6 +1078,48 @@ export async function run(
   };
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => shutdown(`received ${signal}`));
 
+  // DX-2894 — the bridge's own check of its Claude process is the SOLE liveness
+  // authority (SessionEnd only makes shutdown faster; nothing depends on it firing,
+  // and it does not run on a crash or kill). CLAUDE_PID is an observed, undocumented
+  // dependency (not on https://code.claude.com/docs/en/hooks) — a missing or invalid
+  // value is a loud refusal to start, never a silent "rely on SessionEnd" fallback.
+  //
+  // Review round 1, finding 5: every check below runs BEFORE the first heartbeat write
+  // (`beat()`) or any other state that claims this bridge for the session — a doomed
+  // bridge that is about to refuse and exit must never touch `paths.pid` first.
+  if (!Number.isSafeInteger(parentPid) || parentPid <= 0) {
+    await tellSession(
+      "CLAUDE_PID is missing or not a valid process id",
+      "CLAUDE_PID is an observed, undocumented Claude Code dependency (not in the public hooks docs) — restart the session so the plugin can observe it again",
+    );
+    shutdown("CLAUDE_PID is missing or not a valid process id", { fatal: true });
+    return;
+  }
+  if (!SUPPORTED_START_KEY_PLATFORMS.includes(platform)) {
+    const { reason, fix } = unsupportedPlatformNotice(platform);
+    await tellSession(reason, fix);
+    shutdown(reason, { fatal: true });
+    return;
+  }
+  // Record the parent's start time now, so a LATER pid reuse (an unrelated process
+  // that lands on this same pid after the real Claude process exits) is detectable —
+  // a bare `kill(pid, 0)` cannot tell the two apart. Unreadable at startup is refused
+  // loudly, never a silent skip of the guard. Async + timeout-bounded like every other
+  // start-key read (see `readProcessStartKey`).
+  const parentStartKey = await readStartKey(parentPid, {
+    platform,
+    timeoutMs: startKeyTimeoutMs,
+    onFailure: (err) => log(`could not read the start time of Claude Code process ${parentPid} at startup: ${err?.message ?? err}`),
+  });
+  if (parentStartKey === null) {
+    await tellSession(
+      `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID)`,
+      "restart the session so the plugin can observe CLAUDE_PID again",
+    );
+    shutdown(`could not read the start time of Claude Code process ${parentPid}`, { fatal: true });
+    return;
+  }
+
   const beat = () => {
     try {
       heartbeatTick({ paths, selfPid: process.pid, sessionId, shutdown });
@@ -941,37 +1130,37 @@ export async function run(
   beat();
   setInterval(beat, HEARTBEAT_MS);
 
-  // DX-2894 — the bridge's own check of its Claude process is the SOLE liveness
-  // authority (SessionEnd only makes shutdown faster; nothing depends on it firing,
-  // and it does not run on a crash or kill). CLAUDE_PID is an observed, undocumented
-  // dependency (not on https://code.claude.com/docs/en/hooks) — a missing or invalid
-  // value is a loud refusal to start, never a silent "rely on SessionEnd" fallback.
-  if (!Number.isSafeInteger(parentPid) || parentPid <= 0) {
-    await tellSession(
-      "CLAUDE_PID is missing or not a valid process id",
-      "CLAUDE_PID is an observed, undocumented Claude Code dependency (not in the public hooks docs) — restart the session so the plugin can observe it again",
-    );
-    shutdown("CLAUDE_PID is missing or not a valid process id", { fatal: true });
-    return;
-  }
-  // Record the parent's start time now, so a LATER pid reuse (an unrelated process
-  // that lands on this same pid after the real Claude process exits) is detectable —
-  // a bare `kill(pid, 0)` cannot tell the two apart. Unreadable at startup is refused
-  // loudly, never a silent skip of the guard.
-  const parentStartKey = readStartKey(parentPid);
-  if (parentStartKey === null) {
-    await tellSession(
-      `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID)`,
-      "restart the session so the plugin can observe CLAUDE_PID again",
-    );
-    shutdown(`could not read the start time of Claude Code process ${parentPid}`, { fatal: true });
-    return;
-  }
+  // The cheap per-tick check (every parentCheckMs, default 5s): no subprocess, nothing to
+  // time out. A dead pid is a normal (non-fatal) stop.
   setInterval(() => {
-    if (parentProcessGone(parentPid, parentStartKey, { readProcessStartKey: readStartKey })) {
-      shutdown(`Claude Code process ${parentPid} is gone (exited, or its pid was reused by another process)`);
-    }
+    if (!alive(parentPid)) shutdown(`Claude Code process ${parentPid} exited`);
   }, parentCheckMs);
+
+  // The heavier pid-reuse verification (every startKeyCheckMs, default 60s) — see
+  // `verifyStartKeyTick` for the full decision table. `unreadableCount` is this closure's
+  // own running tally across ticks; a successful read resets it to zero.
+  let unreadableCount = 0;
+  setInterval(() => {
+    void verifyStartKeyTick(parentPid, parentStartKey, {
+      isAlive: alive,
+      readProcessStartKey: readStartKey,
+      platform,
+      timeoutMs: startKeyTimeoutMs,
+      unreadableCount,
+      unreadableLimit,
+      onUnreadableAttempt: (err, attempt, limit) =>
+        log(`could not verify Claude Code process ${parentPid}'s start time (attempt ${attempt}/${limit}): ${err?.message ?? err}`),
+    }).then(async ({ action, unreadableCount: nextCount }) => {
+      unreadableCount = nextCount;
+      if (action === "reused") {
+        shutdown(`pid ${parentPid} was reused by another process`);
+      } else if (action === "unverifiable") {
+        const reason = `Claude Code process ${parentPid}'s liveness could not be verified after ${unreadableLimit} consecutive attempts`;
+        await tellSession(reason, "restart the session so the plugin can observe CLAUDE_PID again");
+        shutdown(reason, { fatal: true });
+      }
+    });
+  }, startKeyCheckMs);
 
   const relay = createRelayQueue({
     post: (content) => postFn(content, env),

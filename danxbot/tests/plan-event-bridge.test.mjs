@@ -1,6 +1,6 @@
 // danxbot plan event bridge (DX-2784) — lifecycle, cursor, relay and supervision.
 // Run with `npm test` (node --test, no dependencies).
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,6 +12,7 @@ import { PassThrough } from "node:stream";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import * as bridge from "../scripts/plan-event-bridge.mjs";
+import { spawnStandIn } from "./fixtures/spawn-standin.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SESSION = "11111111-2222-4333-8444-555555555555";
@@ -1053,69 +1054,247 @@ describe("start waits for the bridge's own verdict", () => {
 
 // ------------------------------------------------- 12. CLAUDE_PID liveness (DX-2894)
 
-describe("parent process start-key (DX-2894 pid-reuse guard)", () => {
-  test("win32: parses the CIM CreationDate output; no match, a non-zero exit, or a spawn failure all read as null", () => {
-    const ok = bridge.readProcessStartKey(4242, {
-      platform: "win32",
-      run: () => ({ status: 0, stdout: "2026-09-16T20:10:00.0000000Z\n", error: null }),
-    });
-    assert.equal(ok, "2026-09-16T20:10:00.0000000Z");
-    assert.equal(
-      bridge.readProcessStartKey(4242, { platform: "win32", run: () => ({ status: 0, stdout: "", error: null }) }),
-      null,
-    );
-    assert.equal(
-      bridge.readProcessStartKey(4242, { platform: "win32", run: () => ({ status: 1, stdout: "", error: null }) }),
-      null,
-    );
-    assert.equal(
-      bridge.readProcessStartKey(4242, { platform: "win32", run: () => ({ error: new Error("ENOENT"), status: null, stdout: "" }) }),
-      null,
-    );
+describe("readProcessStartKey (DX-2894 review round 1 — async, timeout-bounded, three platforms)", () => {
+  test("win32: parses the CIM CreationDate output in UTC (finding 4)", async () => {
+    const calls = [];
+    const execFileFn = (command, args, opts, cb) => {
+      calls.push({ command, args, opts });
+      cb(null, "2026-09-16T20:10:00.0000000Z\n", "");
+    };
+    const key = await bridge.readProcessStartKey(4242, { platform: "win32", execFileFn });
+    assert.equal(key, "2026-09-16T20:10:00.0000000Z");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, "powershell.exe");
+    assert.match(calls[0].args.join(" "), /ToUniversalTime\(\)/, "the key must be read in UTC, never local time");
+    assert.equal(calls[0].opts.timeout, bridge.START_KEY_READ_TIMEOUT_MS);
   });
 
-  test("linux: parses field 22 (starttime) out of /proc/<pid>/stat, tolerating a comm field with spaces and parens", () => {
-    const normal = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 987654 1000 more fields follow";
-    assert.equal(bridge.readProcessStartKey(4242, { platform: "linux", readFile: () => normal }), "linux:987654");
-
-    const weirdComm = "4242 (some (odd) name) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 555555 x";
-    assert.equal(bridge.readProcessStartKey(4242, { platform: "linux", readFile: () => weirdComm }), "linux:555555");
+  test("win32: empty output, a non-zero exit, and a timeout/spawn error all resolve null and report the real failure", async () => {
+    const failures = [];
+    const onFailure = (err) => failures.push(err);
 
     assert.equal(
-      bridge.readProcessStartKey(4242, {
-        platform: "linux",
-        readFile: () => {
-          throw Object.assign(new Error("no such file"), { code: "ENOENT" });
-        },
+      await bridge.readProcessStartKey(4242, { platform: "win32", execFileFn: (c, a, o, cb) => cb(null, "", ""), onFailure }),
+      null,
+    );
+    assert.equal(
+      await bridge.readProcessStartKey(4242, {
+        platform: "win32",
+        execFileFn: (c, a, o, cb) => cb(Object.assign(new Error("Command failed"), { code: 1 }), "", ""),
+        onFailure,
       }),
       null,
     );
+    assert.equal(
+      await bridge.readProcessStartKey(4242, {
+        platform: "win32",
+        execFileFn: (c, a, o, cb) => cb(Object.assign(new Error("killed"), { killed: true, signal: "SIGTERM" }), "", ""),
+        onFailure,
+      }),
+      null,
+    );
+    assert.equal(failures.length, 3, "every unreadable case must report ITS OWN real error, not a generic one");
+    assert.ok(
+      failures.every((err) => err instanceof Error),
+      "onFailure must receive the real error/reason, not a boolean",
+    );
   });
 
-  test("a non-positive-integer pid is refused without reading anything", () => {
+  test("darwin: parses `ps -o lstart=` output; an error resolves null and reports it", async () => {
+    const key = await bridge.readProcessStartKey(4242, {
+      platform: "darwin",
+      execFileFn: (command, args, opts, cb) => {
+        assert.equal(command, "ps");
+        assert.deepEqual(args, ["-o", "lstart=", "-p", "4242"]);
+        cb(null, "Mon Sep 16 20:10:00 2026\n", "");
+      },
+    });
+    assert.equal(key, "darwin:Mon Sep 16 20:10:00 2026");
+
+    const failures = [];
+    assert.equal(
+      await bridge.readProcessStartKey(4242, {
+        platform: "darwin",
+        execFileFn: (c, a, o, cb) => cb(new Error("No such process"), "", ""),
+        onFailure: (err) => failures.push(err),
+      }),
+      null,
+    );
+    assert.equal(failures.length, 1);
+  });
+
+  test("linux: parses field 22 (starttime) out of /proc/<pid>/stat, tolerating a comm field with spaces and parens", async () => {
+    const normal = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 987654 1000 more fields follow";
+    assert.equal(await bridge.readProcessStartKey(4242, { platform: "linux", readFile: async () => normal }), "linux:987654");
+
+    const weirdComm = "4242 (some (odd) name) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 555555 x";
+    assert.equal(await bridge.readProcessStartKey(4242, { platform: "linux", readFile: async () => weirdComm }), "linux:555555");
+
+    const failures = [];
+    assert.equal(
+      await bridge.readProcessStartKey(4242, {
+        platform: "linux",
+        readFile: async () => {
+          throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+        },
+        onFailure: (err) => failures.push(err),
+      }),
+      null,
+    );
+    assert.equal(failures.length, 1);
+    assert.match(failures[0].message, /no such file/);
+  });
+
+  test("an unsupported platform (e.g. darwin was, before finding 3) resolves null and reports a reason naming the platform, without ever reading anything", async () => {
+    let reads = 0;
+    const key = await bridge.readProcessStartKey(4242, {
+      platform: "freebsd",
+      execFileFn: () => {
+        reads += 1;
+      },
+      readFile: async () => {
+        reads += 1;
+        return "";
+      },
+      onFailure: (err) => {
+        assert.match(err.message, /freebsd/);
+      },
+    });
+    assert.equal(key, null);
+    assert.equal(reads, 0, "an unsupported platform must not attempt any OS call");
+  });
+
+  test("a non-positive-integer pid is refused without reading anything", async () => {
     let calls = 0;
-    const run = () => {
+    const execFileFn = (c, a, o, cb) => {
       calls += 1;
-      return { status: 0, stdout: "x", error: null };
+      cb(null, "x", "");
     };
-    assert.equal(bridge.readProcessStartKey(0, { platform: "win32", run }), null);
-    assert.equal(bridge.readProcessStartKey(-1, { platform: "linux", readFile: () => "" }), null);
-    assert.equal(bridge.readProcessStartKey(1.5, { platform: "win32", run }), null);
+    assert.equal(await bridge.readProcessStartKey(0, { platform: "win32", execFileFn }), null);
+    assert.equal(await bridge.readProcessStartKey(-1, { platform: "linux", readFile: async () => "" }), null);
+    assert.equal(await bridge.readProcessStartKey(1.5, { platform: "win32", execFileFn }), null);
     assert.equal(calls, 0);
-  });
-
-  test("parentProcessGone: pid gone or a different start key both read as gone; a matching key does not", () => {
-    let key = "a";
-    const readKey = () => key;
-    assert.equal(bridge.parentProcessGone(1, "a", { readProcessStartKey: readKey }), false);
-    key = "b";
-    assert.equal(bridge.parentProcessGone(1, "a", { readProcessStartKey: readKey }), true, "a different start key is a reused pid");
-    assert.equal(bridge.parentProcessGone(1, "a", { readProcessStartKey: () => null }), true, "an unreadable pid is gone");
   });
 });
 
-describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
+describe("unsupportedPlatformNotice (DX-2894 review round 1, finding 3)", () => {
+  test("names the platform explicitly in both the reason and the fix", () => {
+    const { reason, fix } = bridge.unsupportedPlatformNotice("freebsd");
+    assert.match(reason, /freebsd/);
+    assert.match(fix, /freebsd/);
+    for (const platform of bridge.SUPPORTED_START_KEY_PLATFORMS) assert.match(fix, new RegExp(platform));
+  });
+});
+
+describe("verifyStartKeyTick (DX-2894 review round 1, findings 1 + 2 — pure, no process or timer)", () => {
+  test("a dead pid is left to the cheap isAlive tick — the key is never even read", async () => {
+    const result = await bridge.verifyStartKeyTick(1234, "a", {
+      isAlive: () => false,
+      readProcessStartKey: () => {
+        throw new Error("must not be called");
+      },
+      unreadableCount: 2,
+    });
+    assert.deepEqual(result, { action: "none", unreadableCount: 2 }, "the count is untouched, not silently reset");
+  });
+
+  test("a live pid whose key still matches is fine, and resets any prior unreadable count", async () => {
+    const result = await bridge.verifyStartKeyTick(1234, "a", {
+      isAlive: () => true,
+      readProcessStartKey: async () => "a",
+      unreadableCount: 2,
+    });
+    assert.deepEqual(result, { action: "none", unreadableCount: 0 });
+  });
+
+  test("a live pid whose key differs is a reused pid, unconditionally (not gated on the unreadable counter)", async () => {
+    const result = await bridge.verifyStartKeyTick(1234, "a", {
+      isAlive: () => true,
+      readProcessStartKey: async () => "b",
+      unreadableCount: 0,
+    });
+    assert.deepEqual(result, { action: "reused", unreadableCount: 0 });
+  });
+
+  test("a single unreadable read is NOT gone — it increments the counter and reports the real error, but takes no action", async () => {
+    const attempts = [];
+    const result = await bridge.verifyStartKeyTick(1234, "a", {
+      isAlive: () => true,
+      readProcessStartKey: async (pid, { onFailure }) => {
+        onFailure(new Error("CIM query timed out"));
+        return null;
+      },
+      unreadableCount: 0,
+      unreadableLimit: 3,
+      onUnreadableAttempt: (err, attempt, limit) => attempts.push({ message: err.message, attempt, limit }),
+    });
+    assert.deepEqual(result, { action: "none", unreadableCount: 1 });
+    assert.deepEqual(attempts, [{ message: "CIM query timed out", attempt: 1, limit: 3 }]);
+  });
+
+  test("a transient failure that recovers resets the counter to zero rather than accumulating toward the limit", async () => {
+    let call = 0;
+    const readKey = async (pid, { onFailure }) => {
+      call += 1;
+      if (call === 1) {
+        onFailure(new Error("transient"));
+        return null;
+      }
+      return "a"; // matches expected — recovers
+    };
+    const first = await bridge.verifyStartKeyTick(1234, "a", { isAlive: () => true, readProcessStartKey: readKey, unreadableCount: 0 });
+    assert.deepEqual(first, { action: "none", unreadableCount: 1 });
+    const second = await bridge.verifyStartKeyTick(1234, "a", {
+      isAlive: () => true,
+      readProcessStartKey: readKey,
+      unreadableCount: first.unreadableCount,
+    });
+    assert.deepEqual(second, { action: "none", unreadableCount: 0 }, "a successful read resets the counter, even after a prior failure");
+  });
+
+  test("exhausting unreadableLimit CONSECUTIVE unreadable attempts is unverifiable — fatal, and distinct from 'reused' or a plain miss", async () => {
+    const readKey = async (pid, { onFailure }) => {
+      onFailure(new Error("still unreadable"));
+      return null;
+    };
+    let count = 0;
+    let last;
+    for (let i = 0; i < 3; i += 1) {
+      last = await bridge.verifyStartKeyTick(1234, "a", {
+        isAlive: () => true,
+        readProcessStartKey: readKey,
+        unreadableCount: count,
+        unreadableLimit: 3,
+      });
+      count = last.unreadableCount;
+    }
+    assert.deepEqual(last, { action: "unverifiable", unreadableCount: 3 });
+  });
+});
+
+describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894 review round 1)", () => {
   const fixturePath = path.join(here, "fixtures", "run-bridge.mjs");
+
+  // Every process this describe block spawns is tracked here and force-killed in `after()`
+  // — DX-2894 review round 1: "no process cleanup on a failed assert" used to leak a
+  // stand-in or fixture process whenever an assertion threw before its own `finally`. A
+  // per-test `finally` is still the primary cleanup path (keeps the machine tidy while the
+  // suite runs); this set is strictly the last-resort backstop for when one throws first.
+  const spawnedForCleanup = new Set();
+  function track(child) {
+    spawnedForCleanup.add(child);
+    child.once("exit", () => spawnedForCleanup.delete(child));
+    return child;
+  }
+  after(() => {
+    for (const child of spawnedForCleanup) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }
+  });
 
   function onceWithTimeout(emitter, event, timeoutMs, label) {
     return Promise.race([
@@ -1157,27 +1336,64 @@ describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
     return { address, received, close: () => new Promise((resolve) => server.close(resolve)) };
   }
 
-  function standInProcess() {
-    return spawn(process.execPath, ["-e", "setInterval(() => {}, 1e9);"], { stdio: "ignore" });
+  /** Waits for the bridge's own "bridge started" log line — review round 1: timing assertions
+   * must be anchored to the bridge's own evidence that it has armed its checks, never a fixed
+   * guess at how long that takes. */
+  async function waitForBridgeStarted(dataDir, opts) {
+    const paths = pathsFor(dataDir);
+    assert.ok(
+      await waitFor(() => {
+        try {
+          return /bridge started for session/.test(fs.readFileSync(paths.log, "utf8"));
+        } catch {
+          return false;
+        }
+      }, opts),
+      "bridge never logged 'bridge started'",
+    );
+    return paths;
   }
 
-  function spawnFixture({ dataDir, sessionId = SESSION, intent = "resume", claudePid, parentCheckMs, reuseAfterCalls, inboxAddress }) {
+  function spawnFixture({
+    dataDir,
+    sessionId = SESSION,
+    intent = "resume",
+    claudePid,
+    parentCheckMs,
+    startKeyCheckMs,
+    unreadableLimit,
+    reuseAfterCalls,
+    startupUnreadable,
+    unreadableAfterStartup,
+    instrumentStartKey,
+    inboxAddress,
+  }) {
     const fixtureEnv = {
       ...process.env,
       CLAUDE_PLUGIN_DATA: dataDir,
       CLAUDE_CODE_MESSAGING_SOCKET: inboxAddress,
       CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret",
-      RUN_BRIDGE_FIXTURE_CONFIG: JSON.stringify({ sessionId, intent, parentCheckMs, reuseAfterCalls }),
+      RUN_BRIDGE_FIXTURE_CONFIG: JSON.stringify({
+        sessionId,
+        intent,
+        parentCheckMs,
+        startKeyCheckMs,
+        unreadableLimit,
+        reuseAfterCalls,
+        startupUnreadable,
+        unreadableAfterStartup,
+        instrumentStartKey,
+      }),
     };
     if (claudePid === undefined) delete fixtureEnv.CLAUDE_PID;
     else fixtureEnv.CLAUDE_PID = String(claudePid);
-    return spawn(process.execPath, [fixturePath], { env: fixtureEnv, stdio: ["ignore", "pipe", "pipe"] });
+    return track(spawn(process.execPath, [fixturePath], { env: fixtureEnv, stdio: ["ignore", "pipe", "pipe"] }));
   }
 
-  test("a hard-killed CLAUDE_PID stand-in makes the bridge exit within one interval, removes its pid file, and ends its own stub child", async () => {
+  test("a hard-killed CLAUDE_PID stand-in makes the bridge exit within one isAlive interval, removes its pid file, and ends its own stub child", async () => {
     const dataDir = tmpDir();
     const { address, close } = await inboxServer();
-    const standIn = standInProcess();
+    const standIn = track(spawnStandIn());
     await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
     const parentCheckMs = 250;
     const fixture = spawnFixture({ dataDir, claudePid: standIn.pid, parentCheckMs, inboxAddress: address });
@@ -1187,27 +1403,25 @@ describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
 
     try {
       assert.ok(await waitFor(() => /fixture-ready/.test(out)), "fixture did not report ready");
-      const paths = pathsFor(dataDir);
-      assert.ok(
-        await waitFor(() => {
-          try {
-            return /bridge started for session/.test(fs.readFileSync(paths.log, "utf8"));
-          } catch {
-            return false;
-          }
-        }),
-        "bridge never armed its parent check",
-      );
+      const paths = await waitForBridgeStarted(dataDir);
       assert.equal(fs.existsSync(paths.pid), true, "pid file written while the bridge is armed");
       assert.ok(await waitFor(() => /fixture-child-pid=(\d+)/.test(out)), "the stub subcommand never reported its pid");
       const stubChildPid = Number(out.match(/fixture-child-pid=(\d+)/)[1]);
 
+      const killedAt = Date.now();
       standIn.kill();
       await onceWithTimeout(standIn, "exit", 5_000, "stand-in exit");
 
       const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      const elapsedMs = Date.now() - killedAt;
+      // "Within one interval" (review round 1: this was asserted in prose but never
+      // measured). Generous multiplier + fixed slack absorbs CI scheduling noise without
+      // letting a genuinely un-armed check pass silently — the OLD code would have hung
+      // here indefinitely rather than merely being a bit slow.
+      assert.ok(elapsedMs < parentCheckMs * 4 + 3_000, `expected shutdown within ~1 interval, took ${elapsedMs}ms`);
       assert.equal(code, 0, "a parent-gone shutdown is a normal, non-fatal stop");
       assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
+      assert.match(fs.readFileSync(paths.log, "utf8"), new RegExp(`Claude Code process ${standIn.pid} exited`));
       assert.equal(
         await waitFor(() => !bridge.isAlive(stubChildPid), { timeoutMs: 5_000 }),
         true,
@@ -1240,14 +1454,50 @@ describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
     }
   });
 
-  test("a live CLAUDE_PID stand-in is never stopped by the check, across several intervals", async () => {
+  test("an unreadable start key AT STARTUP is a loud refusal, distinct from a missing CLAUDE_PID", async () => {
+    const dataDir = tmpDir();
+    const { received, address, close } = await inboxServer();
+    const standIn = track(spawnStandIn());
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      intent: "connect",
+      startupUnreadable: true,
+      inboxAddress: address,
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 1, "an unreadable start key at startup must exit non-zero, never silently skip the guard");
+      assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
+      const notice = received.find((frame) => frame.type === "user");
+      assert.match(notice.message.content, /start time of Claude Code process/);
+    } finally {
+      standIn.kill();
+      await close();
+    }
+  });
+
+  test("a live CLAUDE_PID stand-in is never stopped, across several isAlive ticks AND at least one real start-key verification", async () => {
     const dataDir = tmpDir();
     const { address, close } = await inboxServer();
-    const standIn = standInProcess();
+    const standIn = track(spawnStandIn());
     await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
-    const parentCheckMs = 100;
-    const fixture = spawnFixture({ dataDir, claudePid: standIn.pid, parentCheckMs, inboxAddress: address });
-    fixture.stdout.resume();
+    const parentCheckMs = 60;
+    const startKeyCheckMs = 150;
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      parentCheckMs,
+      startKeyCheckMs,
+      instrumentStartKey: true,
+      inboxAddress: address,
+    });
+    let out = "";
+    fixture.stdout.on("data", (chunk) => (out += chunk));
     fixture.stderr.resume();
     let exited = false;
     fixture.once("exit", () => {
@@ -1255,8 +1505,18 @@ describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
     });
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, parentCheckMs * 8));
+      await waitForBridgeStarted(dataDir);
+      // "well over several" isAlive intervals, AND at least one real (not stubbed)
+      // start-key verification actually ran and succeeded — review round 1's live-parent
+      // test only waited a fixed 800ms, shorter than one real CIM query, so it likely never
+      // exercised the start-key path on Windows at all.
+      assert.ok(
+        await waitFor(() => /fixture-start-key-check/.test(out), { timeoutMs: 10_000 }),
+        "no start-key verification tick ran",
+      );
+      await new Promise((resolve) => setTimeout(resolve, parentCheckMs * 10));
       assert.equal(exited, false, "a live parent must never trigger a shutdown");
+      assert.match(out, /fixture-start-key-check result=ok/, "the start-key verification must have succeeded, not merely run");
     } finally {
       fixture.kill("SIGTERM");
       await onceWithTimeout(fixture, "exit", 8_000, "fixture exit").catch(() => {});
@@ -1265,14 +1525,19 @@ describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
     }
   });
 
-  test("a reused pid (a different start key on the next check than at startup) is treated as gone", async () => {
+  test("a reused pid (a different start key on a later check than at startup) is treated as gone, and the log names the reason", async () => {
     const dataDir = tmpDir();
     const { address, close } = await inboxServer();
-    const parentCheckMs = 100;
+    // A REAL live stand-in — `verifyStartKeyTick` checks `isAlive(pid)` before ever
+    // reading the key, so a fake never-existed pid would short-circuit to "none" and this
+    // test would never exercise reuse detection at all. Only the KEY read is stubbed.
+    const standIn = track(spawnStandIn());
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    const startKeyCheckMs = 100;
     const fixture = spawnFixture({
       dataDir,
-      claudePid: 999999, // never dereferenced for real — readProcessStartKey is stubbed below
-      parentCheckMs,
+      claudePid: standIn.pid,
+      startKeyCheckMs,
       reuseAfterCalls: 1,
       inboxAddress: address,
     });
@@ -1284,7 +1549,44 @@ describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
       assert.equal(code, 0, "a detected pid reuse is a normal, non-fatal stop, exactly like a genuinely gone parent");
       const paths = pathsFor(dataDir);
       assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
+      // Review round 1: "the reuse test does not assert the reason" — fixed.
+      assert.match(fs.readFileSync(paths.log, "utf8"), /was reused by another process/);
     } finally {
+      standIn.kill();
+      await close();
+    }
+  });
+
+  test("N consecutive unreadable start-key checks (pid alive throughout) is a fatal stop worded 'could not be verified', never 'gone'", async () => {
+    const dataDir = tmpDir();
+    const { received, address, close } = await inboxServer();
+    const standIn = track(spawnStandIn());
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    const startKeyCheckMs = 60;
+    const unreadableLimit = 2;
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      intent: "connect",
+      startKeyCheckMs,
+      unreadableLimit,
+      unreadableAfterStartup: true,
+      inboxAddress: address,
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 1, "exhausting the unreadable-attempt tolerance must exit non-zero (fatal)");
+      assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
+      const notice = received.find((frame) => frame.type === "user");
+      assert.match(notice.message.content, /could not be verified/);
+      assert.doesNotMatch(notice.message.content, /\bgone\b/i, "an unverifiable liveness must never be worded as 'gone'");
+      const paths = pathsFor(dataDir);
+      assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
+    } finally {
+      standIn.kill();
       await close();
     }
   });
