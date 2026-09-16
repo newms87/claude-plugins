@@ -424,6 +424,38 @@ set by `/rename` — and pass it as `plan_connect`'s `title` argument (DX-2816).
 leaves the stored one untouched, so after a rename re-connect with the new title:
 `plan_connect({plan_id, title: "<new title>"})`.
 
+## Say nothing by default — the record lives on cards, not in chat
+
+Operator, 2026-09-16: sessions narrate too much. A reply that carries a findings summary, the
+reasoning behind it, a table of evidence, a status recap and a list of next steps forces the
+operator to read all of it to find the one part that needed them — and writes the real record
+into chat, where it dies with the session instead of surviving on the card the next agent or
+session will read.
+
+**By default, say nothing. Do the work. Write what you learned, decided, tried and found to the
+card it belongs to.** Findings, evidence, reasoning, what was ruled out, what could not be
+determined, status and next steps are card content — a comment, a record, an architecture
+section — never chat content.
+
+Chat carries only three things:
+
+1. **Something the operator genuinely must know now.**
+2. **A direct answer to something they asked.**
+3. **A brief note when starting a high-level action** — a deploy, dispatching an agent to do X,
+   filing a card. Brief means a line, not a paragraph.
+
+**This is not license to go quiet about anything that matters.** The rule governs narration, not
+honesty:
+
+- **A genuine failure is still reported.** Silence about a broken deploy or a failed test is not
+  brevity, it is hiding.
+- **A real operator question is still asked** — as a card with options, per "Operator questions"
+  above, with one line in chat naming the card.
+- **A correction is still made out loud.** If something already told to the operator turns out to
+  be wrong, say so plainly. Brevity never justifies leaving a false statement standing.
+
+The test is whether the operator would want the sentence, not whether it is pleasant to write.
+
 ## THE TURN GATE — before every chat reply
 
 1. Everything learned, decided, verified or disproven this turn is in the plan: a record
@@ -432,10 +464,10 @@ leaves the stored one untouched, so after a rename re-connect with the new title
 3. Any claim this turn that a dispatch or sub-agent is running or making progress cites two
    timestamped reads at least 60 seconds apart, or a named JSONL last-entry age — never a status
    field alone. See "Liveness claims need live evidence" above.
-4. Chat is a short TLDR (what happened, what is next) plus a pointer: a record ref
-   (`CAV-4`), a card id (`DX-2683`), or the plan URL `https://danxbot.sageus.ai/plans/<id>`.
-   No tables, evidence blocks, option lists or root-cause prose in chat — that content
-   belongs in the plan, so move it there first.
+4. Chat says nothing by default (see "Say nothing by default" above) — at most a short TLDR
+   (what happened, what is next) plus a pointer: a record ref (`CAV-4`), a card id (`DX-2683`),
+   or the plan URL `https://danxbot.sageus.ai/plans/<id>`. No tables, evidence blocks, option
+   lists or root-cause prose in chat — that content belongs in the plan, so move it there first.
 
 If the operator has to ask "is the plan updated?", the gate already failed.
 
