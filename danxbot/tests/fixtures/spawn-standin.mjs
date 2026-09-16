@@ -1,8 +1,7 @@
-// Shared "never-exiting process" stand-in (DX-2894 review round 1, finding 6 — this used to
-// be defined once in the run-bridge fixture and once again, slightly differently, in the test
-// file; the two spawn calls could silently drift). Used both as the CLAUDE_PID parent stand-in
-// (tests drive it directly, then kill it to prove the bridge notices) and as the bridge
-// subcommand stand-in inside the run-bridge fixture.
+// Shared "never-exiting process" stand-in (DX-2894) — one definition so the CLAUDE_PID parent
+// stand-in and the bridge subcommand stand-in can never silently drift apart. Used both as the
+// CLAUDE_PID parent stand-in (tests drive it directly, then kill it to prove the bridge
+// notices) and as the bridge subcommand stand-in inside the run-bridge fixture.
 import { spawn } from "node:child_process";
 
 /**

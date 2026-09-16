@@ -22,11 +22,11 @@ const deps = {
 };
 if (typeof config.parentCheckMs === "number") deps.parentCheckMs = config.parentCheckMs;
 if (typeof config.startKeyCheckMs === "number") deps.startKeyCheckMs = config.startKeyCheckMs;
+if (typeof config.startKeyTimeoutMs === "number") deps.startKeyTimeoutMs = config.startKeyTimeoutMs;
 if (typeof config.unreadableLimit === "number") deps.unreadableLimit = config.unreadableLimit;
-// DX-2894 review round 2, finding 8: `run()` already takes `platform` as an injectable arg
-// (used in production to decide win32/linux/darwin/unsupported) — this just threads the
-// fixture's own config value through to that SAME existing parameter, no test-only branch
-// in production code.
+// DX-2894: `run()` already takes `platform` as an injectable arg (used in production to
+// decide win32/linux/darwin/unsupported) — this just threads the fixture's own config value
+// through to that SAME existing parameter, no test-only branch in production code.
 if (typeof config.platform === "string") deps.platform = config.platform;
 
 // These `readProcessStartKey` stand-ins are mutually exclusive — each exercises one DX-2894
@@ -64,8 +64,8 @@ if (config.startupUnreadable) {
   // CLAUDE_PID stand-in), but also announces every call on stdout, NUMBERED, so a test can
   // tell the one-time STARTUP read (index 1 — the same `readProcessStartKey` override `run()`
   // uses before it ever arms the periodic timer) apart from a genuine PERIODIC check (index
-  // >= 2). DX-2894 review round 2, finding 6: an unnumbered log line let a test pass on the
-  // startup read alone even with the periodic check deleted entirely.
+  // >= 2). DX-2894: an unnumbered log line would let a test pass on the startup read alone
+  // even with the periodic check deleted entirely.
   let calls = 0;
   deps.readProcessStartKey = async (pid, opts) => {
     calls += 1;
@@ -75,7 +75,7 @@ if (config.startupUnreadable) {
     return result;
   };
 } else if (config.slowUnreadable) {
-  // DX-2894 review round 2, finding 2 (test support): the startup read succeeds (call 1, so
+  // DX-2894 (test support): the startup read succeeds (call 1, so
   // the bridge actually arms the periodic checks) — every read after that is SLOW
   // (config.slowUnreadableDelayMs, deliberately much longer than the fixture's own
   // startKeyCheckMs) and always fails. Reports whether more than one such slow read was ever
