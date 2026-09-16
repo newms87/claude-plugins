@@ -287,6 +287,12 @@ the bridge holds the session's one stream ticket.
 
 ## Operator questions — a Task card, never chat, never AskUserQuestion
 
+**PRE-SEND CHECK — mechanical, run on every chat reply before you send it.** Scan your draft for any
+sentence asking the operator to decide, approve or choose — "should I…", "want me to…", "X needs your
+word", a trailing options list, any question mark aimed at them. Run the gate below on each; a real one
+becomes a filed card and the chat line shrinks to "`<CARD-ID>` needs your call". A question left in chat
+dies with the session, cannot be answered from the dashboard, and reaches no future agent.
+
 **Gate first. Ask the operator ONLY what only the operator can answer:** domain intent, a
 business/UX judgment, scope or authority, or an action only they can take (a credential, a
 login, hardware). Everything else you decide and record. These are NOT operator questions —
