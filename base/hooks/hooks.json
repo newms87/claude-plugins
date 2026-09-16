@@ -1,5 +1,5 @@
 {
-  "description": "OPERATING CONTRACT (the four canonical operating principles — SessionStart, no matcher, so it fires on every source INCLUDING compact; plus a one-line pointer on UserPromptSubmit). Then plugin skill load mandate + convey + tool-discipline + craft mandates (SessionStart), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation and destructive-git deny guards (PreToolUse Bash), and live time injection (UserPromptSubmit + PostToolUse).",
+  "description": "OPERATING CONTRACT (the four canonical operating principles — SessionStart, no matcher, so it fires on every source INCLUDING compact; plus a one-line pointer on UserPromptSubmit). Then plugin skill load mandate + convey + tool-discipline + craft mandates (SessionStart), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation and destructive-git deny guards (PreToolUse Bash), unsafe recursive-delete / mirror-sync target guard (PreToolUse Bash|PowerShell), and live time injection (UserPromptSubmit + PostToolUse).",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -79,6 +79,15 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/deny-destructive-git.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/deny-unsafe-recursive-delete.mjs"
           }
         ]
       }
