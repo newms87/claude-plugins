@@ -36,10 +36,22 @@
  * first mint answers `not_connected`, which is terminal, and which a session start
  * passes over in silence unless this session has had events before.
  *
+ * LIVENESS AUTHORITY (DX-2894). The bridge's own periodic check of its Claude process
+ * (`CLAUDE_PID`) is the SOLE authority on whether the session it serves is still alive.
+ * `SessionEnd` only makes shutdown faster when it fires — nothing depends on it, because
+ * the official docs say it does not run on a crash or kill. `CLAUDE_PID` itself is an
+ * OBSERVED, UNDOCUMENTED dependency (it does not appear on
+ * https://code.claude.com/docs/en/hooks); a bridge that cannot see a valid, readable
+ * `CLAUDE_PID` at startup refuses to start rather than silently running unsupervised.
+ * The periodic check also guards against pid reuse: it records the parent's process
+ * start time at startup (`readProcessStartKey`) and treats the pid as gone the moment
+ * either the pid disappears OR a DIFFERENT process' start time answers for it.
+ *
  * MODES
  *   start — the hooks. Under an exclusive-create lock: a live holder with a fresh
  *           heartbeat → no-op; otherwise spawn `run` and record its pid.
- *   run   — the bridge itself: supervises the subcommand, relays its events.
+ *   run   — the bridge itself: supervises the subcommand, relays its events, and is
+ *           itself supervised by the CLAUDE_PID liveness check above.
  *   stop  — SessionEnd. Signals a live holder, whose SIGTERM handler ends its child.
  *
  * STATE lives under `${CLAUDE_PLUGIN_DATA}/plan-event-bridge/`, one set per session:
@@ -219,6 +231,55 @@ export function isAlive(pid) {
   } catch (err) {
     return err.code === "EPERM";
   }
+}
+
+/**
+ * A stable identifier for "when process `pid` started" (DX-2894) — a bare `kill(pid, 0)`
+ * cannot tell a live parent apart from an unrelated process that later reused its pid, so
+ * the periodic parent check needs something that changes when the pid is recycled. Returns
+ * `null` when the pid cannot be found (or its start time cannot be read) at all — "gone" and
+ * "unreadable" are deliberately the same answer here, since the caller's job on either is the
+ * same: stop trusting this pid. The two platforms' keys are incomparable formats on purpose;
+ * nothing ever compares a Windows key against a Linux one.
+ */
+export function readProcessStartKey(
+  pid,
+  { platform = process.platform, run = spawnSync, readFile = (file) => fs.readFileSync(file, "utf8") } = {},
+) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  if (platform === "win32") {
+    const result = run(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `$p = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=${pid}"; if ($p -and $p.CreationDate) { $p.CreationDate.ToString('o') }`,
+      ],
+      { encoding: "utf8", windowsHide: true },
+    );
+    if (result.error || result.status !== 0) return null;
+    const stamp = (result.stdout ?? "").trim();
+    return stamp === "" ? null : stamp;
+  }
+  // Linux: /proc/<pid>/stat field 22 (starttime, clock ticks since boot) is stable for the
+  // life of a pid and needs no clock/timezone handling. `comm` (field 2) is parenthesized
+  // and may itself contain spaces or `)`, so the split point is the LAST ')' in the line,
+  // never a naive split(" ").
+  try {
+    const stat = readFile(`/proc/${pid}/stat`);
+    const afterComm = stat.slice(stat.lastIndexOf(")") + 2).trim();
+    const starttime = afterComm.split(/\s+/)[19]; // field 22 overall; fields[0] here is field 3 (state)
+    return /^\d+$/.test(starttime ?? "") ? `linux:${starttime}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pid gone, OR a different process now answers for it (DX-2894 pid-reuse guard). */
+export function parentProcessGone(pid, expectedStartKey, { readProcessStartKey: readKey = readProcessStartKey } = {}) {
+  const currentKey = readKey(pid);
+  return currentKey === null || currentKey !== expectedStartKey;
 }
 
 /**
@@ -791,7 +852,33 @@ export function terminalShutdown(event) {
   return { why: event.supervised.reason, fatal: event.supervised.fatal };
 }
 
-async function run(sessionId, intent = RESUME_INTENT, env = process.env) {
+/**
+ * The real bridge subcommand child, built from `bridgeCommand()` — the only piece of
+ * `run()` that actually spawns the dashboard-talking process. Injectable (`run()`'s
+ * `spawnSubcommand`) so tests can replace it with a stand-in that never touches the
+ * network; see `danxbot/tests/fixtures/run-bridge.mjs`.
+ */
+function defaultSpawnSubcommand({ resumeIds, env }) {
+  const { command, args } = bridgeCommand({ resumeIds });
+  return spawn(command, args, {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    detached: process.platform !== "win32",
+  });
+}
+
+export async function run(
+  sessionId,
+  intent = RESUME_INTENT,
+  env = process.env,
+  {
+    spawnSubcommand = defaultSpawnSubcommand,
+    post: postFn = postToInbox,
+    readProcessStartKey: readStartKey = readProcessStartKey,
+    parentCheckMs = PARENT_CHECK_MS,
+  } = {},
+) {
   const paths = sessionPaths(stateDir(env), sessionId);
   try {
     if (fs.statSync(paths.log).size > LOG_MAX_BYTES) fs.truncateSync(paths.log, 0);
@@ -826,7 +913,7 @@ async function run(sessionId, intent = RESUME_INTENT, env = process.env) {
       reason,
       fix,
       env,
-      post: (content) => postToInbox(content, env),
+      post: (content) => postFn(content, env),
       stderr: (message) => log(`could NOT reach this session's inbox: ${message.trim()}`),
       relevant,
     });
@@ -853,16 +940,41 @@ async function run(sessionId, intent = RESUME_INTENT, env = process.env) {
   };
   beat();
   setInterval(beat, HEARTBEAT_MS);
-  if (Number.isSafeInteger(parentPid) && parentPid > 0) {
-    setInterval(() => {
-      if (!isAlive(parentPid)) shutdown(`Claude Code process ${parentPid} is gone`);
-    }, PARENT_CHECK_MS);
-  } else {
-    log("warning: CLAUDE_PID not set; relying on SessionEnd to stop");
+
+  // DX-2894 — the bridge's own check of its Claude process is the SOLE liveness
+  // authority (SessionEnd only makes shutdown faster; nothing depends on it firing,
+  // and it does not run on a crash or kill). CLAUDE_PID is an observed, undocumented
+  // dependency (not on https://code.claude.com/docs/en/hooks) — a missing or invalid
+  // value is a loud refusal to start, never a silent "rely on SessionEnd" fallback.
+  if (!Number.isSafeInteger(parentPid) || parentPid <= 0) {
+    await tellSession(
+      "CLAUDE_PID is missing or not a valid process id",
+      "CLAUDE_PID is an observed, undocumented Claude Code dependency (not in the public hooks docs) — restart the session so the plugin can observe it again",
+    );
+    shutdown("CLAUDE_PID is missing or not a valid process id", { fatal: true });
+    return;
   }
+  // Record the parent's start time now, so a LATER pid reuse (an unrelated process
+  // that lands on this same pid after the real Claude process exits) is detectable —
+  // a bare `kill(pid, 0)` cannot tell the two apart. Unreadable at startup is refused
+  // loudly, never a silent skip of the guard.
+  const parentStartKey = readStartKey(parentPid);
+  if (parentStartKey === null) {
+    await tellSession(
+      `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID)`,
+      "restart the session so the plugin can observe CLAUDE_PID again",
+    );
+    shutdown(`could not read the start time of Claude Code process ${parentPid}`, { fatal: true });
+    return;
+  }
+  setInterval(() => {
+    if (parentProcessGone(parentPid, parentStartKey, { readProcessStartKey: readStartKey })) {
+      shutdown(`Claude Code process ${parentPid} is gone (exited, or its pid was reused by another process)`);
+    }
+  }, parentCheckMs);
 
   const relay = createRelayQueue({
-    post: (content) => postToInbox(content, env),
+    post: (content) => postFn(content, env),
     record: (id) => recordDelivered(paths.cursor, id),
     log,
     sleep,
@@ -879,13 +991,7 @@ async function run(sessionId, intent = RESUME_INTENT, env = process.env) {
   const supervised = await superviseBridge({
     spawnChild: () => {
       const resumeIds = readCursor(paths.cursor);
-      const { command, args } = bridgeCommand({ resumeIds });
-      child = spawn(command, args, {
-        env: childEnv(env, sessionId),
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-        detached: process.platform !== "win32",
-      });
+      child = spawnSubcommand({ resumeIds, env: childEnv(env, sessionId) });
       log(`bridge subcommand started${resumeIds.length > 0 ? `, resuming after event ${Math.max(...resumeIds)}` : ""}`);
       return child;
     },

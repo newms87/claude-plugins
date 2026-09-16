@@ -1051,6 +1051,245 @@ describe("start waits for the bridge's own verdict", () => {
   });
 });
 
+// ------------------------------------------------- 12. CLAUDE_PID liveness (DX-2894)
+
+describe("parent process start-key (DX-2894 pid-reuse guard)", () => {
+  test("win32: parses the CIM CreationDate output; no match, a non-zero exit, or a spawn failure all read as null", () => {
+    const ok = bridge.readProcessStartKey(4242, {
+      platform: "win32",
+      run: () => ({ status: 0, stdout: "2026-09-16T20:10:00.0000000Z\n", error: null }),
+    });
+    assert.equal(ok, "2026-09-16T20:10:00.0000000Z");
+    assert.equal(
+      bridge.readProcessStartKey(4242, { platform: "win32", run: () => ({ status: 0, stdout: "", error: null }) }),
+      null,
+    );
+    assert.equal(
+      bridge.readProcessStartKey(4242, { platform: "win32", run: () => ({ status: 1, stdout: "", error: null }) }),
+      null,
+    );
+    assert.equal(
+      bridge.readProcessStartKey(4242, { platform: "win32", run: () => ({ error: new Error("ENOENT"), status: null, stdout: "" }) }),
+      null,
+    );
+  });
+
+  test("linux: parses field 22 (starttime) out of /proc/<pid>/stat, tolerating a comm field with spaces and parens", () => {
+    const normal = "4242 (node) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 987654 1000 more fields follow";
+    assert.equal(bridge.readProcessStartKey(4242, { platform: "linux", readFile: () => normal }), "linux:987654");
+
+    const weirdComm = "4242 (some (odd) name) S 1 4242 4242 0 -1 4194560 100 0 0 0 5 2 0 0 20 0 4 0 555555 x";
+    assert.equal(bridge.readProcessStartKey(4242, { platform: "linux", readFile: () => weirdComm }), "linux:555555");
+
+    assert.equal(
+      bridge.readProcessStartKey(4242, {
+        platform: "linux",
+        readFile: () => {
+          throw Object.assign(new Error("no such file"), { code: "ENOENT" });
+        },
+      }),
+      null,
+    );
+  });
+
+  test("a non-positive-integer pid is refused without reading anything", () => {
+    let calls = 0;
+    const run = () => {
+      calls += 1;
+      return { status: 0, stdout: "x", error: null };
+    };
+    assert.equal(bridge.readProcessStartKey(0, { platform: "win32", run }), null);
+    assert.equal(bridge.readProcessStartKey(-1, { platform: "linux", readFile: () => "" }), null);
+    assert.equal(bridge.readProcessStartKey(1.5, { platform: "win32", run }), null);
+    assert.equal(calls, 0);
+  });
+
+  test("parentProcessGone: pid gone or a different start key both read as gone; a matching key does not", () => {
+    let key = "a";
+    const readKey = () => key;
+    assert.equal(bridge.parentProcessGone(1, "a", { readProcessStartKey: readKey }), false);
+    key = "b";
+    assert.equal(bridge.parentProcessGone(1, "a", { readProcessStartKey: readKey }), true, "a different start key is a reused pid");
+    assert.equal(bridge.parentProcessGone(1, "a", { readProcessStartKey: () => null }), true, "an unreadable pid is gone");
+  });
+});
+
+describe("run(): CLAUDE_PID is the sole liveness authority (DX-2894)", () => {
+  const fixturePath = path.join(here, "fixtures", "run-bridge.mjs");
+
+  function onceWithTimeout(emitter, event, timeoutMs, label) {
+    return Promise.race([
+      once(emitter, event),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${label ?? event}`)), timeoutMs)),
+    ]);
+  }
+
+  async function waitFor(predicate, { timeoutMs = 5_000, intervalMs = 25 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (predicate()) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  async function inboxServer() {
+    const address =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\peb-fixture-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+        : path.join(tmpDir(), "inbox.sock");
+    const received = [];
+    const server = net.createServer((sock) => {
+      let buf = "";
+      sock.setEncoding("utf8");
+      sock.on("data", (chunk) => {
+        buf += chunk;
+        let nl = buf.indexOf("\n");
+        while (nl !== -1) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          if (line) received.push(JSON.parse(line));
+          nl = buf.indexOf("\n");
+        }
+      });
+    });
+    await new Promise((resolve) => server.listen(address, resolve));
+    return { address, received, close: () => new Promise((resolve) => server.close(resolve)) };
+  }
+
+  function standInProcess() {
+    return spawn(process.execPath, ["-e", "setInterval(() => {}, 1e9);"], { stdio: "ignore" });
+  }
+
+  function spawnFixture({ dataDir, sessionId = SESSION, intent = "resume", claudePid, parentCheckMs, reuseAfterCalls, inboxAddress }) {
+    const fixtureEnv = {
+      ...process.env,
+      CLAUDE_PLUGIN_DATA: dataDir,
+      CLAUDE_CODE_MESSAGING_SOCKET: inboxAddress,
+      CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret",
+      RUN_BRIDGE_FIXTURE_CONFIG: JSON.stringify({ sessionId, intent, parentCheckMs, reuseAfterCalls }),
+    };
+    if (claudePid === undefined) delete fixtureEnv.CLAUDE_PID;
+    else fixtureEnv.CLAUDE_PID = String(claudePid);
+    return spawn(process.execPath, [fixturePath], { env: fixtureEnv, stdio: ["ignore", "pipe", "pipe"] });
+  }
+
+  test("a hard-killed CLAUDE_PID stand-in makes the bridge exit within one interval, removes its pid file, and ends its own stub child", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = standInProcess();
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    const parentCheckMs = 250;
+    const fixture = spawnFixture({ dataDir, claudePid: standIn.pid, parentCheckMs, inboxAddress: address });
+    let out = "";
+    fixture.stdout.on("data", (chunk) => (out += chunk));
+    fixture.stderr.resume();
+
+    try {
+      assert.ok(await waitFor(() => /fixture-ready/.test(out)), "fixture did not report ready");
+      const paths = pathsFor(dataDir);
+      assert.ok(
+        await waitFor(() => {
+          try {
+            return /bridge started for session/.test(fs.readFileSync(paths.log, "utf8"));
+          } catch {
+            return false;
+          }
+        }),
+        "bridge never armed its parent check",
+      );
+      assert.equal(fs.existsSync(paths.pid), true, "pid file written while the bridge is armed");
+      assert.ok(await waitFor(() => /fixture-child-pid=(\d+)/.test(out)), "the stub subcommand never reported its pid");
+      const stubChildPid = Number(out.match(/fixture-child-pid=(\d+)/)[1]);
+
+      standIn.kill();
+      await onceWithTimeout(standIn, "exit", 5_000, "stand-in exit");
+
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 0, "a parent-gone shutdown is a normal, non-fatal stop");
+      assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
+      assert.equal(
+        await waitFor(() => !bridge.isAlive(stubChildPid), { timeoutMs: 5_000 }),
+        true,
+        "the stub bridge subcommand must be killed along with the bridge",
+      );
+    } finally {
+      await close();
+    }
+  });
+
+  test("a missing CLAUDE_PID is a loud refusal to start: non-zero exit and a notice naming CLAUDE_PID", async () => {
+    const dataDir = tmpDir();
+    const { received, address, close } = await inboxServer();
+    // intent "connect" (a plan_connect) is what `isSessionKnownToWantEvents` treats as
+    // KNOWN to want this session told — a plain "resume" with no prior cursor is not
+    // (DX-2862), which would make the inbox assertion below correctly fail for an
+    // unrelated reason. The exit-code half of this AC holds for either intent.
+    const fixture = spawnFixture({ dataDir, claudePid: undefined, intent: "connect", inboxAddress: address });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 1, "a missing CLAUDE_PID must exit non-zero, never a silent warning");
+      assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
+      const notice = received.find((frame) => frame.type === "user");
+      assert.match(notice.message.content, /CLAUDE_PID/);
+    } finally {
+      await close();
+    }
+  });
+
+  test("a live CLAUDE_PID stand-in is never stopped by the check, across several intervals", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = standInProcess();
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    const parentCheckMs = 100;
+    const fixture = spawnFixture({ dataDir, claudePid: standIn.pid, parentCheckMs, inboxAddress: address });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    let exited = false;
+    fixture.once("exit", () => {
+      exited = true;
+    });
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, parentCheckMs * 8));
+      assert.equal(exited, false, "a live parent must never trigger a shutdown");
+    } finally {
+      fixture.kill("SIGTERM");
+      await onceWithTimeout(fixture, "exit", 8_000, "fixture exit").catch(() => {});
+      standIn.kill();
+      await close();
+    }
+  });
+
+  test("a reused pid (a different start key on the next check than at startup) is treated as gone", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const parentCheckMs = 100;
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: 999999, // never dereferenced for real — readProcessStartKey is stubbed below
+      parentCheckMs,
+      reuseAfterCalls: 1,
+      inboxAddress: address,
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 0, "a detected pid reuse is a normal, non-fatal stop, exactly like a genuinely gone parent");
+      const paths = pathsFor(dataDir);
+      assert.equal(fs.existsSync(paths.pid), false, "pid file removed on shutdown");
+    } finally {
+      await close();
+    }
+  });
+});
+
 // --------------------------------------------------------------- pruning
 
 test("stale state files are pruned; fresh ones and other files are kept", () => {
