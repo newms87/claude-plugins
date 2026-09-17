@@ -207,15 +207,30 @@ the bridge holds the session's one stream ticket.
   problem's id), `answered "<problem statement>": chose "<solution>" — note: "…"`,
   `answered "<problem statement>": "<free text>"`, `opened a problem: "…"` (DX-2830 — this IS the
   "needs a human" signal now; there is no separate flag, and no "cleared" line, because there is
-  nothing left to clear once the last open problem is answered), `blocked the card: "…"`,
-  `unblocked the card`. Long text is cut with `…` — `issue_get` the card for the full body.
-  Your own session's writes never appear. Keep-alives, reconnects and plan moves relay nothing;
-  a line `[danx-dashboard listen] could not read event …` means an event arrived malformed —
-  `issue_get` the card it names, if any. Not connected to a plan → nothing arrives.
+  nothing left to clear once the last open problem is answered), `retracted the answer to
+  "<statement>"`, `changed the answer to "<statement>": now "<new solution or free text>"`
+  (DX-2935 — see below), `blocked the card: "…"`, `unblocked the card`. Long text is cut with `…`
+  — `issue_get` the card for the full body. Your own session's writes never appear. Keep-alives,
+  reconnects and plan moves relay nothing; a line `[danx-dashboard listen] could not read event
+  …` means an event arrived malformed — `issue_get` the card it names, if any. Not connected to a
+  plan → nothing arrives.
 - **Act on an event** the way you would on an operator message: an `answered "…":` line means
   read `issue_get({id, fields:["problems"]})` → the named problem's `decisions[]`, act on the
   decision, record the outcome. Answering a problem never touches `blocked` — clear that
   separately via `unblock` if the hold also needs releasing.
+- **A `retracted the answer to "…"` or `changed the answer to "…": now "…"` line is AUTHORITATIVE
+  over whatever answer you already acted on for that problem (DX-2935 — the operator's Unanswer /
+  Change-answer actions).** It is never a brand-new problem and never a duplicate of the answer
+  event you already handled — it is the operator saying that answer was wrong or has changed.
+  **Stop acting on the OLD decision the instant this line arrives.** If you have not started
+  work from the old answer, simply note the new state (`retracted` → the problem is open again,
+  no current answer; `changed` → read the problem's live decision, the one with `decisions[]`
+  entry carrying no retraction, and use THAT). If you HAVE already started or finished work
+  based on the old answer, do not just keep going to the end and call it done — reassess: is the
+  work you already did still valid under the new answer (or under "no answer yet" for a
+  retraction), does it need to be redone, or does it need to be undone outright? Decide that
+  before continuing, the same way you would if the operator had just told you in chat "actually,
+  scratch that, here's the real answer" — because that is exactly what this event means.
 - **A `commented on problem "…":` line is a follow-up question on that open problem, not an
   answer** — the problem stays open exactly as it was; `open_problem_count` and `blocked` are
   untouched either way (only an actual decision changes them, per "Operator questions" below).
@@ -381,7 +396,9 @@ for it. Read it with `issue_get({id, fields:["problems"]})` → the problem's `d
 (chosen solution + optional note, or a free-form answer). Answering the last open problem is
 what makes the card stop needing a human — automatic, nothing to clear directly; it never
 touches `blocked`. Act on the decision and record the outcome (comment on the card; update any
-affected record or the architecture).
+affected record or the architecture). The operator can also retract or change that answer later
+(DX-2935) — see "Live events" above for the `retracted the answer to "…"` /
+`changed the answer to "…"` lines and why they are authoritative over whatever you already did.
 
 ## Actionable work cards
 
@@ -614,12 +631,15 @@ DX-2830 "requires_human is retired" (`6060c8bc`), DX-2782 auto-triage-via-proble
   `issue_problems` + `issue_solutions` + `issue_decisions` (DX-2735/DX-2830 — a card's open
   questions, each one's candidate answers with at most one live recommended, and the operator's
   recorded answers; a card needs a human exactly when it has a live, undecided row in
-  `issue_problems` — `open_problem_count`, computed, not a stored flag); `issue_activity_events`
-  (durable comment/`solution_answered`/`problem_added`/blocked/unblocked events, 7-day retention
-  — no code writes a `requires_human_set`/`requires_human_cleared` event any more, retired by
-  DX-2830 (the column's CHECK constraint still admits those two kind values so pre-existing rows
-  stay valid; that is a schema-compatibility detail, not a live event type — you will never see
-  one relayed))
+  `issue_problems` — `open_problem_count`, computed, not a stored flag. DX-2935 —
+  `issue_decisions.retracted_at`, nullable: the operator's Unanswer / Change-answer actions stamp
+  it instead of ever deleting a decision row, so `decisions[]` always shows full history with the
+  current non-retracted one, if any, identifiable); `issue_activity_events` (durable
+  comment/`solution_answered`/`problem_added`/`problem_unanswered`/`problem_answer_changed`
+  (DX-2935)/blocked/unblocked events, 7-day retention — no code writes a
+  `requires_human_set`/`requires_human_cleared` event any more, retired by DX-2830 (the column's
+  CHECK constraint still admits those two kind values so pre-existing rows stay valid; that is a
+  schema-compatibility detail, not a live event type — you will never see one relayed))
   and `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
 - **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`,
   `src/issues/routes.ts`): `/api/plans` (list/create/rename, paged with `limit`/`offset`/`sort`/
