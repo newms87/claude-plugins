@@ -578,7 +578,7 @@ half-done that the next session would otherwise trip over.
 ## Feature facts (verified against danxbot `origin/main` at `9d6fd3216` — includes
 DX-2830 "requires_human is retired" (`6060c8bc`), DX-2782 auto-triage-via-problem
 (`d6a8ff31`), and DX-2834 plan status (`3233ffd2`); MCP package
-`@thehammer/danx-dashboard-mcp` at `0.1.76`)
+`@thehammer/danx-dashboard-mcp` at `0.1.83`)
 
 - **UI:** production serves the React Plans UI at `https://danxbot.sageus.ai/plans` and
   `/plans/:planId` (`frontend/src/app/routes.tsx`; `src/dashboard/server.ts` serves
