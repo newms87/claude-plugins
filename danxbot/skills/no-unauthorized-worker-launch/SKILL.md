@@ -7,7 +7,9 @@ description: 'Strict per-invocation user-auth gate for make launch-worker*, make
 
 ## The rule (no exceptions)
 
-**Starting, restarting, relaunching, or deploying a danxbot worker, poller, infra container, or production target requires explicit per-invocation human authorization in the CURRENT user message.**
+**Starting, restarting, or relaunching a danxbot WORKER/POLLER container (any `danxbot-worker-*` name), danxbot's own infra (`launch-infra`, its `docker-compose.yml`), or a production deploy target requires explicit per-invocation human authorization in the CURRENT user message.**
+
+**This is NOT a Docker/container rule.** Ordinary local containers — Docker Desktop itself, a project's own dev stack (postgres, redis, laravel.test, spa, dashboard, etc.), anything not named `danxbot-worker-*` or part of danxbot's own infra — are unrestricted dev tooling. Start, stop, or restart them freely, any time, no approval needed.
 
 A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, writes the v2 DB, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
 
