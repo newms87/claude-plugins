@@ -16,6 +16,18 @@ From the conversation context and user's `/docs` message:
 
 ## Step 2: Choose the Right Location
 
+**MANDATORY gate — run this BEFORE picking any row in the table below.** Ask: would this same
+rule help a DIFFERENT repo, a different machine, a dispatched worker, or another agent — not
+just this one project? If YES, plugin source is the ONLY place it goes. Do not also restate it
+in `CLAUDE.md`, a project rule file, or the assistant's own per-project memory system as a
+"just in case" copy — a second copy is not a safety net, it drifts the moment the plugin version
+bumps, and whichever copy the next agent finds first is the one it trusts, possibly the stale
+one. **Memory (the assistant's private per-project memory files) is NEVER a place for a
+behavioral rule or standing instruction** — it holds facts about the project/user/history, not
+agent behavior, and it reaches no other agent, session, machine, or repo. If a generalizable rule
+somehow already exists ONLY in memory or a project file, that is itself the bug: move it to the
+plugin and delete the local copy, don't leave both standing.
+
 Both `CLAUDE.md` and `.claude/rules/*.md` are loaded automatically with the same priority. The difference is organizational.
 
 | Location | What Goes There | Audience |
