@@ -267,6 +267,7 @@ Agent does NOT write `status: Done`. The worker stamps `completed_at` (and clear
    **Solution:** ...
    ```
 2. Fill the retro via `issue_retro({id, good, bad, action_item_ids[], commits[], tests[]})` (`tests[]` REQUIRED — empty array allowed, omitting the key fails). The server auto-renders the `## Retro` comment on completion — do NOT add a `## Retro` comment yourself. **Action items are LAST RESORT** — re-apply Step 1.5 filter. If required for THIS card's ACs (already done, at Done), not an action item. If small + you could do now, do it, re-commit instead of filing. Only large separate scoped follow-ups belong. Create the action item card first via `issue_create({type, title, description, ac, ...})`, push the returned `<PREFIX>-N` into `action_item_ids[]`. Empty `action_item_ids[]` is the right answer most times.
+3. **Plan notes.** Read the card's `plans` field group (`issue_get({id, fields:["plans"]})`). For each plan the card is on, decide whether this completion is a real milestone — a whole related group of cards landing, an important decision or action, or a goal/rule/caveat/architecture change (not routine progress). When it is, write ONE note linking the card: `plan_add_note({plan_id, title, body, card_ids:[id]})` (title ≤ 60 chars, body ≤ 250 chars, terse — what was done and why/how). Most completions get no note. See `danxbot:plan-workflow` "Plan notes" for format and examples.
 
 On the `danxbot_complete` call in Step 11, the worker stamps `completed_at`, renders the `## Retro` comment, spawns Action Items cards, and pushes the tracker move.
 
@@ -413,6 +414,8 @@ Skip to Step 11.
 | 6 | Terminal trigger set (`completed_at` / `cancelled_at` / `blocked.at`), or an open problem recorded (`open_problem_count` > 0) — worker stamps `completed_at`/`cancelled_at` on `danxbot_complete`; agent stamps `blocked.at` for holds and opens a problem via `issue_problem` for escalations | Step 9 (worker stamps) / Step 10 (agent stamps) |
 
 Any prereq missing → loop back to that step. Do not call `danxbot_complete` until all six hold.
+
+**Reminder (non-blocking):** did Step 9's plan-note check happen for every plan this card is on? It is not one of the six hard prereqs above and never blocks this call — but skipping it silently is how a milestone lands with nothing on the operator's timeline.
 
 ### Completion contract — `completed` means EVERYTHING on card is done
 

@@ -23,6 +23,9 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    - its own card attached to the plan it serves (issue_create + plan_add_card), or
    - a plan record or architecture section, when it is a lasting goal, rule, caveat or design fact, or
    - a comment on the card, for status and evidence.
+   A plan note (plan_add_note) is a DIFFERENT thing, not a substitute for any item above: a short
+   milestone entry on the operator's timeline, written only when a completion, decision or record
+   change is worth flagging — never the record of the work itself.
    Never: chat, TaskCreate/TaskList, the session scratchpad (wiped between sessions), your own memory,
    or "I'll remember to do that after X finishes".
 

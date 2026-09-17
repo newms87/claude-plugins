@@ -1,5 +1,5 @@
 {
-  "description": "Danxbot mantra (zero-context continuity: all work lives on cards or the plan; always the ideal, correct, zero-tech-debt solution) on SessionStart with no matcher, so it re-injects after compaction, plus a one-line pointer on UserPromptSubmit. Then the plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment (SessionStart). Plus the plan event bridge (DX-2784): one background process per session CONNECTED to a danxbot Plan, relaying the plan's dashboard events into the session inbox. An async PostToolUse hook on plan_connect and an async SessionStart hook start it; it runs `danx-dashboard-mcp bridge`, which exits at once for a session not connected to a plan. SessionEnd stops it, but is only an accelerator: the bridge's own periodic check of its Claude process (env var `CLAUDE_PID` — observed on Claude Desktop, but undocumented and not guaranteed by any Claude Code surface) is the SOLE authority on whether the session is still alive. Two cadences (DX-2894): a cheap liveness check every 5s (no subprocess), and a slower (~60s) async, timeout-bounded start-time check that detects the pid being reused by an unrelated process; a single unreadable read there is logged and tolerated for a few consecutive attempts (never mistaken for 'gone'), and only exhausting that tolerance is a fatal stop. Supported on win32, linux, and darwin; any other platform, or a missing/unreadable CLAUDE_PID at startup, is a loud refusal to start rather than running unsupervised.",
+  "description": "Danxbot mantra (zero-context continuity: all work lives on cards or the plan; always the ideal, correct, zero-tech-debt solution) on SessionStart with no matcher, so it re-injects after compaction, plus a one-line pointer on UserPromptSubmit. Then the plugin skill load mandate for danxbot autonomous dispatch + worker runtime environment (SessionStart). Plus the plan event bridge (DX-2784): one background process per session CONNECTED to a danxbot Plan, relaying the plan's dashboard events into the session inbox. An async PostToolUse hook on plan_connect and an async SessionStart hook start it; it runs `danx-dashboard-mcp bridge`, which exits at once for a session not connected to a plan. SessionEnd stops it, but is only an accelerator: the bridge's own periodic check of its Claude process (env var `CLAUDE_PID` — observed on Claude Desktop, but undocumented and not guaranteed by any Claude Code surface) is the SOLE authority on whether the session is still alive. Two cadences (DX-2894): a cheap liveness check every 5s (no subprocess), and a slower (~60s) async, timeout-bounded start-time check that detects the pid being reused by an unrelated process; a single unreadable read there is logged and tolerated for a few consecutive attempts (never mistaken for 'gone'), and only exhausting that tolerance is a fatal stop. Supported on win32, linux, and darwin; any other platform, or a missing/unreadable CLAUDE_PID at startup, is a loud refusal to start rather than running unsupervised. Plus a plan-note milestone reminder (DX-2917): a PostToolUse hook matching issue_transition (complete action only), plan_add_record, plan_update_record, plan_add_architecture_section and plan_update_architecture_section under both MCP prefixes injects one line pointing at plan_add_note; it never blocks or fails a call and stays silent for every other tool and every other issue_transition action.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -45,6 +45,15 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-event-bridge.mjs\" start",
             "async": true,
             "asyncRewake": true
+          }
+        ]
+      },
+      {
+        "matcher": "^(mcp__danx_dashboard__issue_transition|mcp__danx-dashboard__issue_transition|mcp__danx_dashboard__plan_add_record|mcp__danx-dashboard__plan_add_record|mcp__danx_dashboard__plan_update_record|mcp__danx-dashboard__plan_update_record|mcp__danx_dashboard__plan_add_architecture_section|mcp__danx-dashboard__plan_add_architecture_section|mcp__danx_dashboard__plan_update_architecture_section|mcp__danx-dashboard__plan_update_architecture_section)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-note-reminder.mjs\""
           }
         ]
       }

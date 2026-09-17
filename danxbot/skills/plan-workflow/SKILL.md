@@ -39,6 +39,7 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 | A plan whose name no longer fits | Rename it | `plan_rename({plan_id, name})` |
 | A question only the operator can answer | A `Task` card with solutions, attached to the plan | see "Operator questions" |
 | Progress, findings, evidence on a specific piece of work | A comment on that card | `issue_comment` |
+| A milestone worth flagging on the operator's timeline (a real completion, an important decision, a goal/rule/caveat/architecture change) | A plan note — never routine progress | `plan_add_note({plan_id, title, body, ...})` — see "Plan notes" |
 
 Forbidden substitutes: a plan file, `~/.claude/plans/*.md`, a repo `.md` spec or handoff doc,
 an HTML page, a `.junk/` notes file, in-session `TaskCreate`/`TaskList` as the record (it is
@@ -264,12 +265,51 @@ the bridge holds the session's one stream ticket.
   (`plan_delete_record`). The `G-n`/`R-n`/`CAV-n` ref never moves on edit and is never
   reused after delete, so cards and commits can cite it.
 
+## Plan notes — the timeline, milestones only
+
+`plan_add_note({plan_id, title, body, card_ids?, record_refs?, section_ids?})` writes one
+milestone to the plan's timeline (a stream the operator reads, not a work record). It is
+NOT a substitute for a card comment, a record, or an architecture section — those tools still
+own everything they already own; a note only points at what already landed.
+
+**Write a note when:**
+- a card, or a group of related cards, reaches Done and it is a real milestone;
+- an important decision or action happened;
+- an important new or changed goal, rule, caveat or architecture section landed.
+
+**Do not write a note for:** routine progress, an individual review round, or a status update —
+those stay a card comment (R-7). Most cards get no note of their own; several related cards
+finishing together can share one.
+
+**Format:**
+- `title` — at most 60 characters.
+- `body` — at most 250 characters, 1–2 sentences, terse (almost caveman: what was done and
+  why/how, not a teaser).
+- Link everything the note concerns: `card_ids`, `record_refs` (`G-1`, `R-3`, `CAV-2`),
+  `section_ids`. **Each link list you send on `plan_update_note` REPLACES that kind's links
+  wholesale** — resend every link you want to keep, not just the new ones.
+- `author` is server-stamped from the writing credential; a body that sends it is refused.
+
+Edit (`plan_update_note`) and delete (`plan_delete_note`) are hash-guarded the same as records
+and architecture sections — see "Hash-guarded writes" below.
+
+**Examples:**
+- title: "Bridge liveness locked to own-pid check" — body: "Bridge liveness fixed (DX-2894).
+  Own pid check is now sole authority; a start-time guard stops pid reuse from reading as
+  alive." — `card_ids: ["DX-2894"]`
+- title: "requires_human retired for problems" — body: "Operator decided (2026-09-15):
+  requires_human is now computed from open problems, never set directly. Needs You banner
+  removed; every writer that set it directly is gone." — `record_refs: ["R-16"]`
+
 ## Hash-guarded writes — mechanical
 
 - **Records:** pass `content_hash` = the record's `contentHash` from the immediately prior
   `plan_get` / `plan_get_record` / `plan_add_record`. On `stale_plan_record` the refusal
   carries `currentHash` + `currentBody`: merge your change into `currentBody`, retry with
   `content_hash: currentHash`. Never resend the old hash.
+- **Notes:** `plan_update_note`/`plan_delete_note` need `content_hash` = the note's hash from
+  the last `plan_add_note` / `plan_update_note` / `plan_get({fields:["notes"]})`. On
+  `stale_plan_note` merge against the refusal's current note, retry with its hash.
 - **Architecture is sections, not one document (DX-2726).** `plan_add_architecture_section({title,
   content})` appends one; `plan_update_architecture_section({section_id, base_hash, title?,
   content?})` edits only what changed; `plan_delete_architecture_section({section_id, base_hash})`
