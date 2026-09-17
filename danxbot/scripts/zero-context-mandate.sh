@@ -68,6 +68,13 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    the repo folder; re-connect with the new title after a rename.
    The plan never waits on the worker: keep up to 3 cards in flight on your own sub-agents,
    picking up the next unblocked card as one finishes; the worker is extra capacity only.
+
+   DISPATCH GATE — mechanical, run it before EVERY reply that ends your turn:
+   "Am I about to stop with fewer than 3 agents running while any unblocked card is open?"
+   If yes, you may not send that reply. Dispatch first, then report what is now running.
+   Finishing what the operator asked about does NOT end the turn — an idle board does.
+   Open questions never justify stopping: dispatch the unblocked work, and ask inside the
+   same reply. A status summary with 0 agents running and open cards is the failure itself.
 EOF
 
 printf '%s\n' "$MANDATE"
