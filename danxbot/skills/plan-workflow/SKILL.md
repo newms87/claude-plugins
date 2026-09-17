@@ -339,9 +339,12 @@ affected record or the architecture).
 ## Actionable work cards
 
 Create through `danxbot:issue-card-workflow` (load it before choosing a card type), on the
-board of the repo the work changes, then `plan_add_card`. Follow that skill's create →
-ready → re-read verification. A card may sit on several plans; `plan_add_card` is idempotent
-and never edits the card.
+board of the repo the work changes, then `plan_add_card`. Follow that skill's create/AC/gate-
+decision/triage_enabled mechanics — but NOT its own default routing (file + `ready` + wait for
+the poller). A card attached to an active plan is built by THIS session, inline or via your own
+sub-agents, as the primary path: see "The plan never waits on the danxbot worker" below, which
+is this skill's deliberate override of `issue-card-workflow`'s "DEFAULT IS ALWAYS" gate. `ready`
+still happens regardless, so an idle worker can claim the card opportunistically.
 
 ## Running a plan with sub-agents
 
@@ -403,6 +406,13 @@ extra capacity on top of your own sub-agents, never something the plan waits on 
 **It waits on nothing else either.** A deploy, a build, a test run, a background command, another
 sub-agent — each is time you have, not a reason to idle. Waiting is when you dispatch, not when
 you stop.
+
+**This is not scoped to "dispatch moments" — it fires before EVERY reply while the plan has
+unblocked work, including one that just wrapped up something unrelated (a docs edit, an answer,
+a side task).** Reread your own draft's last paragraph before sending: any sentence offering the
+operator a choice ("want me to...", "should I...", "or is there X you'd rather...", a trailing
+"?") is this exact violation — delete it and go dispatch the next unblocked card instead of
+sending it. Finishing a tangent is not an exemption from this check; it is the next trigger for it.
 
 **MECHANICAL CHECK, before sending ANY message while the plan has unblocked work:** count your
 running sub-agents. Under 3, with unblocked non-overlapping work on the plan → dispatch it in

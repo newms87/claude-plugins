@@ -60,9 +60,17 @@ There is NO "exploratory / tiny / lower-latency / I'm already here / the work is
 
 **Two different axes — do not cross them.** This gate decides ROUTING: does the card go to the poller's worker, or is it worked in this session. Canon principle 1 decides EXECUTION: once work is legitimately yours, do you orchestrate sub-agents or dig yourself. Orchestrating is never permission to bypass this gate — a card the operator did not explicitly hand you inline stays the worker's, and fanning it out to your own sub-agents is still self-pickup, not delegation.
 
+**Exception — a session connected to a danxbot Plan (`danxbot:plan-workflow` loaded).** That
+skill deliberately reverses this default for its own plan's cards: the planning session builds
+them itself, inline or via its own sub-agents, as the PRIMARY path — see its "The plan never
+waits on the danxbot worker" section — and readies each one anyway so an idle worker can still
+claim it opportunistically. This "DEFAULT IS ALWAYS" gate stays exactly as written above for
+every other context: no connected plan, an ad hoc operator request, or any card outside a plan's
+own scope.
+
 ## DECIDE FIRST: ready-for-worker vs build-in-session (default = WORKER)
 
-Before ANY implementation, answer one question: **does the operator want this work BUILT now in this session, or FILED for the danxbot worker to build autonomously?** On a worker-backed board the **DEFAULT is FILE + `ready` → the poller dispatches a worker** — that is the entire point of danxbot. Do NOT implement the card yourself in the operator's session unless the operator EXPLICITLY said "build/implement/do it now (here/yourself)". "We need X" / "improve X" / a feature description = a request to FILE the cards and ready them, NOT to spend the operator's interactive session coding. When unsure which they want, ASK — never assume build-in-session. Self-pickup (below) applies ONLY once you have CONFIRMED in-session build is intended.
+Before ANY implementation, answer one question: **does the operator want this work BUILT now in this session, or FILED for the danxbot worker to build autonomously?** On a worker-backed board the **DEFAULT is FILE + `ready` → the poller dispatches a worker** — that is the entire point of danxbot. Do NOT implement the card yourself in the operator's session unless the operator EXPLICITLY said "build/implement/do it now (here/yourself)". "We need X" / "improve X" / a feature description = a request to FILE the cards and ready them, NOT to spend the operator's interactive session coding. When unsure which they want, ASK — never assume build-in-session. Self-pickup (below) applies ONLY once you have CONFIRMED in-session build is intended. (A session connected to a danxbot Plan already has this confirmed — see the Exception above.)
 
 ## In-session work = self-pickup IMMEDIATELY (a ToDo card is an open dispatch request)
 
