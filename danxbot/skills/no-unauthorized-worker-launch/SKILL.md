@@ -17,7 +17,26 @@ A worker pickup is destructive. As soon as a danxbot worker boots it polls the c
 
 The operator granted standing, cross-session authorization (2026-07-29) to relaunch the production machine-level worker on the `gpt` deploy target (covers the `danxbot` and `gpt-manager` boards) whenever it's found not running, without asking first. **This is the one command exempted from the per-invocation-authorization requirement above.** When `docker ps` on the `gpt` production instance shows no `danxbot-worker-gpt` container, run `make deploy-workers TARGET=gpt` directly and report what you did — do not stop and ask.
 
-This exception is scoped narrowly: exactly `make deploy-workers TARGET=gpt`, in an operator session. It does NOT extend to any other target, to `launch-worker`/`launch-worker-host` variants, to `deploy`/`deploy-destroy`/`deploy-secrets-push`, or to dispatched-agent context — those all remain fully gated per the rule below.
+This exception is scoped narrowly: exactly `make deploy-workers TARGET=gpt`, in an operator session. It does NOT extend to any REMOTE target, to `deploy`/`deploy-destroy`/`deploy-secrets-push`, or to dispatched-agent context — those all remain fully gated per the rule below.
+
+## Standing exception — LOCAL worker launches/restarts (operator session only)
+
+The operator granted a second standing, cross-session authorization (2026-09-17, via the `explain`
+skill, verbatim: *"YOU NEVER need approval for launching local docker containers / restarting
+them. Why are you stopping because of that?"*) covering the LOCAL machine's own danxbot worker
+container(s) — `make launch-worker`, `make launch-worker-host`, and any `docker restart` /
+`docker compose restart` / `docker compose up` / retried `make launch-worker*` needed to recover
+an already-configured LOCAL worker from a crash, stale state, or a port conflict (`address already
+in use`, `port is already allocated`). Run these directly in an operator session, no per-invocation
+ask — report what you did afterward. This mirrors the `deploy-workers TARGET=gpt` exception above,
+scoped to the LOCAL target instead of a remote/production one.
+
+**Still fully gated even under this exception:** any `*-remote` variant (`launch-worker-remote`,
+`launch-worker-host-remote` — these launch against a REMOTE dashboard, never local), `launch-all-workers`,
+`launch-infra`, `launch-dashboard-host`, every `deploy*`/`deploy-destroy`/`deploy-secrets-push`
+command, and — unconditionally, no exception — dispatched-agent context (see below: a dispatched
+agent has no live user message, so this exception never reaches it regardless of what an operator
+said in a different session).
 
 ## Dispatched-agent context — effectively NEVER
 
