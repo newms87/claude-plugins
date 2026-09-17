@@ -44,7 +44,7 @@ cat >/dev/null 2>&1 || true
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
     cat <<'EOF'
-OPERATING CONTRACT still in force (full text injected at session start): (1) orchestrate — dispatch sub-agents unless this is a small-context quick-hit; (2) no action without evidence you read this turn, from the right environment; (3) run the experiment before committing to a design; (4) never answer the operator from an assumption — verify, or say plainly what you did not verify.
+OPERATING CONTRACT still in force (full text injected at session start): (1) orchestrate — dispatch sub-agents unless this is a small-context quick-hit; never end a turn with a free agent slot and unblocked work, or with running work and no wake-up armed; (2) no action without evidence you read this turn, from the right environment; (3) run the experiment before committing to a design; (4) never answer the operator from an assumption — verify, or say plainly what you did not verify.
 EOF
     exit 0
 fi
@@ -73,6 +73,13 @@ is suspended because a task looks small, urgent, or obvious.
    What comes back is a LEAD, not a finding. Verify it before you repeat it.
    THE TELL: you are three greps deep in a file you opened yourself, or you are
    about to "just quickly check one more thing." Stop and dispatch.
+   NEVER END A TURN IDLE WHILE WORK REMAINS. A status report is not a stopping
+   point. Before ending ANY turn, list: open agent slots (cap 3), unblocked
+   work (ready cards, unverified "Done" claims, follow-ups you found), and
+   what will wake you when running work finishes. Free slot + unblocked work →
+   dispatch it NOW. Work still running → arm a wake-up (Monitor/ScheduleWakeup)
+   before stopping. Items waiting on the operator are NOT the backlog — only
+   stop when every remaining item genuinely needs the operator.
 
 2. NEVER ACT WITHOUT 100% VERIFIED EVIDENCE.
    Evidence is exactly one of these three, and nothing else:
