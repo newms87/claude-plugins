@@ -270,8 +270,13 @@ the bridge holds the session's one stream ticket.
   dialog are NEVER records — they are comments on the card they concern (create the card if the
   work has none).
 - **Card states are always true.** A card is In Progress only while something is actively
-  working it: this session, a sub-agent, or a worker dispatch. Before a local sub-agent works a
-  card, `pickup manual:true` with `assigned_agent` (read it back). Buildable work goes to the
+  working it: this session, a sub-agent, or a worker dispatch. **Mechanical gate, every single
+  `Agent` dispatch, no exceptions for "I just fixed this on the last one":** call
+  `pickup manual:true` with `assigned_agent` (via the HTTP route with an `x-danx-session-id`
+  header if MCP write 403s) IN THE SAME BATCH as the dispatch, before or immediately after —
+  never dispatch first and plan to pick up later. Before reporting an aggregate count ("N cards
+  in flight") to the operator, re-`issue_get` each one and confirm `status: "In Progress"` —
+  a count based on "I dispatched N agents" without that check is a guess, not a report. Buildable work goes to the
   danxbot worker by `ready` (isolated worktrees, every quality gate). Shipped work is completed
   (checklist → gate verdicts → complete → retro) the moment it lands. The moment nobody is
   working a card you hold but are not touching, `issue_transition({action: "rollback_pickup",
