@@ -380,13 +380,30 @@ Filing a real question, in order:
      why it matters. It must stand on its own — not a second title, not a teaser.
    - `description` — the evidence: ids, file paths, log lines, how to see it. Markdown is
      fine. Options do NOT go here.
-2. `issue_problem({id, action:"add", statement, solutions})` — `statement` restates the question
-   in one plain sentence; `solutions[]` carries one entry per viable option (`title`, `body` =
-   what the option actually does, `pro`, `con`), exactly ONE with `recommended: true`. This one
-   call both opens the problem and creates its options — opening it IS what puts the card in
-   front of the operator (DX-2830: a card needs a human exactly when it has an open problem;
-   there is no separate flag to set). A single-solution problem is a valid approval question;
-   zero solutions is valid when only a free-form answer fits.
+2. `issue_problem({id, action:"add", statement, context?, solutions})` — `statement` is a TITLE,
+   **at most 100 characters, server-enforced (DX-2942)**: restate the question in one plain
+   sentence, nothing else. Every paragraph, code block, file:line citation or investigation
+   detail goes in the separate `context` field (full markdown, no cap) instead — never crammed
+   into `statement`, and never dropped. `solutions[]` carries one entry per viable option
+   (`title`, `body` = what the option actually does, `pro`, `con`), exactly ONE with
+   `recommended: true`. This one call both opens the problem and creates its options — opening
+   it IS what puts the card in front of the operator (DX-2830: a card needs a human exactly when
+   it has an open problem; there is no separate flag to set). A single-solution problem is a
+   valid approval question; zero solutions is valid when only a free-form answer fits.
+
+   Example — a real investigation split correctly, instead of dumped whole into `statement`
+   (the DX-2942 incident this rule exists because of):
+   ```
+   statement: "IOD merge drops the second provider's date range — which fix?"
+   context: |
+     ## What's happening
+     `IodMergeService::mergeWindows()` (app/Services/…, line 142) keeps only the FIRST
+     provider's date range when two providers share a window key, because the merge
+     reduces on `window_key` alone...
+     [file:line citations, code excerpts, the full root-cause writeup go here]
+   ```
+   A statement over 100 characters is refused by the server with the actual length and the
+   limit — move the detail into `context` and retry, don't shorten by guessing.
 3. `plan_add_card({card_id})`.
 4. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
 
