@@ -1,5 +1,5 @@
 {
-  "description": "OPERATING CONTRACT (the four canonical operating principles — SessionStart, no matcher, so it fires on every source INCLUDING compact; plus a one-line pointer on UserPromptSubmit). Then plugin skill load mandate + convey + tool-discipline + craft mandates (SessionStart), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation and destructive-git deny guards (PreToolUse Bash), unsafe recursive-delete / mirror-sync target guard (PreToolUse Bash|PowerShell), sub-agent Windows-to-WSL crossing guard (PreToolUse Bash|PowerShell|Write|Edit|NotebookEdit, sub-agents only), and live time injection (UserPromptSubmit + PostToolUse).",
+  "description": "OPERATING CONTRACT (the four canonical operating principles — SessionStart, no matcher, so it fires on every source INCLUDING compact; plus a one-line pointer on UserPromptSubmit). Then plugin skill load mandate + convey + tool-discipline + craft mandates (SessionStart), post-compaction skill-reload gate (SessionStart, source=compact only), destructive-DB-operation and destructive-git deny guards (PreToolUse Bash), unsafe recursive-delete / mirror-sync target guard (PreToolUse Bash|PowerShell), whole-disk / whole-home tree-walking scan guard for find/grep -r/rg/ls -R/du/dir /s/Get-ChildItem -Recurse (PreToolUse Bash|PowerShell), sub-agent Windows-to-WSL crossing guard (PreToolUse Bash|PowerShell|Write|Edit|NotebookEdit, sub-agents only), and live time injection (UserPromptSubmit + PostToolUse).",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -88,6 +88,10 @@
           {
             "type": "command",
             "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/deny-unsafe-recursive-delete.mjs"
+          },
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/deny-whole-disk-scan.mjs"
           }
         ]
       },
