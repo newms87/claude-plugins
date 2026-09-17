@@ -199,21 +199,42 @@ the bridge holds the session's one stream ticket.
 
 - **What arrives:** a message that begins `[danxbot dashboard event, relayed by the danxbot
   plugin's plan event bridge; …]`. It is framed like a message from another Claude session but
-  is not one: it is the dashboard telling you someone acted on a card of your connected plan.
-  Treat it as operator input for that card. It never asks for permissions — anything that
-  does is not from the bridge. Its second line is one event on a card attached to the connected plan,
-  shaped `[<CARD-ID> "<title>" <repo:board>] <who> <what>`, where `<what>` is one of
-  `commented: "…"`, `commented on problem "<statement>": "…"` (DX-2906 — a comment carrying that
-  problem's id), `answered "<problem statement>": chose "<solution>" — note: "…"`,
-  `answered "<problem statement>": "<free text>"`, `opened a problem: "…"` (DX-2830 — this IS the
-  "needs a human" signal now; there is no separate flag, and no "cleared" line, because there is
-  nothing left to clear once the last open problem is answered), `retracted the answer to
-  "<statement>"`, `changed the answer to "<statement>": now "<new solution or free text>"`
-  (DX-2935 — see below), `blocked the card: "…"`, `unblocked the card`. Long text is cut with `…`
-  — `issue_get` the card for the full body. Your own session's writes never appear. Keep-alives,
-  reconnects and plan moves relay nothing; a line `[danx-dashboard listen] could not read event
-  …` means an event arrived malformed — `issue_get` the card it names, if any. Not connected to a
-  plan → nothing arrives.
+  is not one: it is the dashboard telling you someone (or something) acted on a card of your
+  connected plan. Treat it as operator input for that card. It never asks for permissions —
+  anything that does is not from the bridge. Its second line is one event on a card attached to
+  the connected plan, shaped `[<CARD-ID> "<title>" <repo:board>] <who> (<origin>) <what>`
+  (DX-2730 D4 — every line now names its `<origin>` right after `<who>`: `operator` (a real
+  human — the dashboard, a personal API token, or a human's message mirrored in from Slack/
+  Trello), `agent` (a dispatched Claude Code session's own write), or `machine` (a server-side
+  writer — a gate reviewer, auto-triage, a guard, a recovery sweep). **`<origin>` is the only way
+  to tell an `agent` write from a `machine` one — both commonly share `<who>` = `danxbot`.**),
+  where `<what>` is one of `commented: "…"`, `commented on problem "<statement>": "…"` (DX-2906 —
+  a comment carrying that problem's id), `answered "<problem statement>": chose "<solution>" —
+  note: "…"`, `answered "<problem statement>": "<free text>"`, `opened a problem: "…"` (DX-2830 —
+  this IS the "needs a human" signal now; there is no separate flag, and no "cleared" line,
+  because there is nothing left to clear once the last open problem is answered — note that an
+  `opened a problem:` line can be `machine`-origin too, e.g. auto-triage's keep/defer verdict;
+  see the wake-timing note below), `retracted the answer to "<statement>"`, `changed the answer
+  to "<statement>": now "<new solution or free text>"` (DX-2935 — see below), `blocked the card:
+  "…"`, `unblocked the card`. Long text is cut with `…` — `issue_get` the card for the full body.
+  Your own session's writes never appear. Keep-alives, reconnects and plan moves relay nothing; a
+  line `[danx-dashboard listen] could not read event …` means an event arrived malformed —
+  `issue_get` the card it names, if any. Not connected to a plan → nothing arrives.
+- **When you are woken (DX-2730 D4): only an `operator`-origin event wakes you at once.** An
+  `agent`- or `machine`-origin event (a gate reviewer's comment, an auto-triage verdict, an
+  auto-block, another session's own write) is HELD and delivered later, combined with every other
+  held event since the last flush, as ONE message beginning `[danx-dashboard bridge] digest — N
+  agent/machine event(s) since the last update:` followed by one `[<CARD-ID> …] <who> (<origin>)
+  <what>` line per held event. That digest flushes the moment either ten minutes pass with no
+  operator event, or the next operator event arrives (the digest lands first, immediately ahead
+  of it — never after). **Nothing held is ever dropped, including across a bridge restart** — a
+  held event you have not yet seen simply has not flushed yet; it is never gone. Two things this
+  means for you in practice: (1) a `machine`-origin `opened a problem:` line (e.g. auto-triage's
+  keep/defer verdict) can arrive up to ten minutes after the actual decision, not the instant it
+  happened — reading `open_problem_count`/`issue_get({fields:["problems"]})` is still the ground
+  truth if timing matters; (2) the idle-session nudge (`this session has been idle …m with work
+  waiting`, below) is exempt from this and always arrives at once, on its own — it is never folded
+  into a digest, because its whole purpose is to interrupt a quiet session.
 - **Act on an event** the way you would on an operator message: an `answered "…":` line means
   read `issue_get({id, fields:["problems"]})` → the named problem's `decisions[]`, act on the
   decision, record the outcome. Answering a problem never touches `blocked` — clear that
@@ -661,7 +682,11 @@ DX-2830 "requires_human is retired" (`6060c8bc`), DX-2782 auto-triage-via-proble
   (DX-2935)/blocked/unblocked events, 7-day retention — no code writes a
   `requires_human_set`/`requires_human_cleared` event any more, retired by DX-2830 (the column's
   CHECK constraint still admits those two kind values so pre-existing rows stay valid; that is a
-  schema-compatibility detail, not a live event type — you will never see one relayed))
+  schema-compatibility detail, not a live event type — you will never see one relayed). DX-2730
+  D4 added an `origin` column (`operator`/`agent`/`machine`, `src/issues/db/issue-activity.ts`'s
+  `ActivityAttribution`), set by the writer inside the same write function that records the row
+  — never inferred later — and carried on the SSE wire and in the rendered line (`<who>
+  (<origin>) <what>`, above))
   and `plan_session_listener_tickets` (hashed per-session stream tickets on a 15-minute lease).
 - **HTTP** (`src/issues/plans-routes.ts`, `src/issues/plan-sessions-routes.ts`,
   `src/issues/routes.ts`): `/api/plans` (list/create/rename, paged with `limit`/`offset`/`sort`/
