@@ -295,9 +295,23 @@ the bridge holds the session's one stream ticket.
   `Agent` dispatch, no exceptions for "I just fixed this on the last one":** call
   `pickup manual:true` with `assigned_agent` (via the HTTP route with an `x-danx-session-id`
   header if MCP write 403s) IN THE SAME BATCH as the dispatch, before or immediately after —
-  never dispatch first and plan to pick up later. Before reporting an aggregate count ("N cards
+  never dispatch first and plan to pick up later. **Prefer doing this pickup yourself, from the
+  orchestrating session, rather than telling a dispatched sub-agent to do it** — if you do
+  delegate it, tell the sub-agent explicitly that its OWN environment's `CLAUDE_CODE_SESSION_ID`
+  IS a real, dashboard-connected session id (inherited from you, the dispatcher) and it should
+  use that value directly; a sub-agent that "checks its environment" without being told this can
+  wrongly conclude it has none and refuse the whole task (observed 2026-09-17: one sub-agent
+  correctly refused rather than fabricate an id, but the id it needed was sitting in its own
+  `CLAUDE_CODE_SESSION_ID` the whole time). Before reporting an aggregate count ("N cards
   in flight") to the operator, re-`issue_get` each one and confirm `status: "In Progress"` —
-  a count based on "I dispatched N agents" without that check is a guess, not a report. Buildable work goes to the
+  a count based on "I dispatched N agents" without that check is a guess, not a report.
+  **Before telling a sub-agent to create a fresh worktree, check whether one already exists for
+  that card** (`git worktree list` on the relevant repo) — a card can carry real, unpushed prior
+  work from an earlier session that a blind `git worktree add ... origin/main` would either
+  refuse or, worse, put a second worktree in front of an agent that then never looks at the
+  first one's commits (observed 2026-09-17: DX-2907 had two real unpushed commits from a prior
+  session; the dispatch brief said "fresh worktree," and the sub-agent correctly stopped rather
+  than risk destroying them, rather than silently continuing). Buildable work goes to the
   danxbot worker by `ready` (isolated worktrees, every quality gate). Shipped work is completed
   (checklist → gate verdicts → complete → retro) the moment it lands. The moment nobody is
   working a card you hold but are not touching, `issue_transition({action: "rollback_pickup",
