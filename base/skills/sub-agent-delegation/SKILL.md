@@ -88,3 +88,39 @@ A background `Agent()` spawn is a real process the harness tracks independently 
 - **Never block-wait on multiple agents at once** (e.g. calling a blocking task-output read with `block: true` across several dispatches in sequence or in one call). This is a documented way to freeze the entire session, not just the wait — fire-and-forget instead, and let completion notifications arrive on their own schedule.
 - **Overdue silence is itself the signal to act, not a reason to keep waiting.** If a dispatch has clearly run well past the time-box you gave it with no notification, don't let it keep running "just in case it's almost done" — resume it with a direct status-check message (does it need to report partial progress now?), or stop it outright and re-dispatch with a narrower scope. Observed on this plan (2026-09-17): a sub-agent reported "waiting for its own nested reviews to complete" and then went idle without them — recoverable in minutes once nudged directly, but only because it was caught quickly rather than left to run unmonitored; the same pattern left unattended is exactly how the multi-hour community reports happened.
 - **For genuinely large fan-outs (dozens of agents, not a handful),** reach for the `Workflow` tool instead of nested ad hoc `Agent()` dispatches — it runs the orchestration as a script outside the conversation's own context and turn loop, which sidesteps this whole class of conversational stall rather than mitigating it after the fact.
+
+## Never background a full test suite as routine verification — targeted tests only
+
+**State this in every dispatch brief that touches tests, as a hard constraint, not a suggestion:
+run ONLY the tests for the files this change actually touched (or their direct dependents),
+never the full suite, as the normal verification step.** A full-suite run is orders of magnitude
+slower than what the change needs to prove, and — combined with the time-box rule above — an
+agent that starts one and then hits its time-box either abandons it mid-run (the exact stall
+this section exists to prevent) or blocks on it and blows the time-box entirely.
+
+- **Reserve a full-suite run for a real reason stated up front**: confirming a genuinely
+  cross-cutting refactor (e.g. a shared type or a widely-imported utility) didn't regress
+  something outside the obviously-touched files, or a final pre-merge sanity pass on a large
+  card — never as the default "let's just run everything to be safe" instinct.
+- **A backgrounded full-suite run is a live liability, not a safety net, once its own dispatch
+  ends.** Observed on this plan (2026-09-17): a sub-agent backgrounded a full `npm test` run
+  inside its own worktree, then finished and reported back to the orchestrator before that run
+  completed. The orchestrator (correctly, by its own worktree-cleanup checklist) later removed
+  that now-merged worktree — out from under the still-running background test process, which
+  then crashed on every subsequent poll (`MODULE_NOT_FOUND` against a `node_modules` path that no
+  longer existed) while the harness's own task panel kept showing it as "Running" for 1h40m+ with
+  no way to tell, from the panel alone, that it was already dead. Nobody was waiting on it, it
+  was consuming a background-task slot for nothing, and it looked like an active multi-hour hang
+  to anyone glancing at the task list — the exact community-reported failure class this skill's
+  time-box section already documents, self-inflicted by the orchestrator's own dispatch choice
+  rather than a platform bug this time.
+- **Before ending your own turn, you own every background task you started** — a
+  `run_in_background` call you never awaited or reported on is not "someone else's problem" once
+  your turn ends; either wait for it (inside your time-box) and report its real result, or state
+  explicitly in your final report that it is still running and unconsumed, so the orchestrator
+  knows to treat it as live cleanup work rather than assuming it quietly finished on its own.
+- **The orchestrator's own worktree-cleanup step must check for exactly this** before removing a
+  card's worktree: a background task still running against that path turns a routine cleanup
+  into the same crash-and-orphan failure. A quick real check (is anything still writing to that
+  directory / to the output file a backgrounded test run was piping to) costs far less than the
+  stale "Running" entry it prevents.
