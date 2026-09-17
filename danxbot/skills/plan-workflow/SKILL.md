@@ -444,6 +444,12 @@ Filing a real question, in order:
    ```
    A statement over 100 characters is refused by the server with the actual length and the
    limit — move the detail into `context` and retry, don't shorten by guessing.
+
+   **When the question is about something visual** (a layout, a rendered UI, a broken screen,
+   a before/after) — attach a real screenshot (`issue_attach`) and embed its returned URL in
+   `context` (`![description](url)`) rather than describing it in prose. See
+   `danxbot:issue-card-workflow`'s "Capture a screenshot when it beats prose" — a picture settles
+   a judgment call a paragraph can't, and it costs one extra tool call.
 3. `plan_add_card({card_id})`.
 4. Chat says only: "`<CARD-ID>` needs your call" plus one line of status.
 

@@ -154,7 +154,17 @@ Full schema available via `mcp__danx-dashboard__issue_get`. Key fields:
 | `mcp__danx-dashboard__issue_quality_gate({id, gate, required, effort_level?})` | Flips the per-card **`required` FLAG** only. **Does NOT record a verdict and does NOT unblock `complete`.** Inert when the board's `default_state` for that gate is `required` or `disabled`. |
 | `mcp__danx-dashboard__issue_quality_gate_verdict({id, gate, status: 'pass'\|'fail'\|'pending', message})` | Records the **VERDICT** — this is what clears the `quality_gate_post` 409 and lets a manually-picked-up card reach Done. `message` REQUIRED at **>= 20 chars** for pass/fail. A manual verdict is a pure row write: a manual `fail` never blocks the card, a manual `pass` never releases a dispatch. See "Manual-session finalization" above. |
 | `mcp__danx-dashboard__issue_checklist({id, action: 'add_list'\|'update_list'\|'remove_list'\|'add_item'\|'update_item'\|'remove_item', checklist_id?, item_id?, name?, label?, detail?, status?, items?})` | **Targeted** checklist CUD (DX-1362) — use this to flip ONE item. Prefer it over the wholesale `issue_edit({checklists})`, which silently DROPS any checklist you omit and churns every item id (orphaning its Trello mirror). 4-state status: `incomplete\|failing\|passing\|cancelled`. |
-| `mcp__danx-dashboard__issue_attach({id, file_path})` | Attach a LOCAL file (ABSOLUTE path on the dispatch's filesystem) to the card. Auto-mirrors to Trello + the Slack card-view thread. 25 MB ceiling. |
+| `mcp__danx-dashboard__issue_attach({id, file_path})` | Attach a LOCAL file (ABSOLUTE path on the dispatch's filesystem) to the card. Auto-mirrors to Trello + the Slack card-view thread. 25 MB ceiling. Returns `{issue, attachment_id, s3_key}` — find the new attachment in `issue.attachments` by `attachment_id` to read its public, long-lived `url` (no expiry). **That `url` is not only a card-level attachment — embed it directly in ANY markdown field** (a comment, a problem's `statement`/context, a solution's `body`, a plan record's context) as `![description](url)`; the dashboard renders it inline, capped to a compact thumbnail with click-to-enlarge. See "Capture a screenshot when it beats prose" below.
+
+### Capture a screenshot when it beats prose
+
+A picture of the actual thing settles an argument a paragraph can't. Reach for `issue_attach` + inline embedding whenever a screenshot lets a human judge something faster than reading about it — a UI bug, a before/after, a broken layout, a rendered mockup, a dashboard chart. Don't reserve screenshots for card-level attachments only; embed them where the point is actually being made:
+
+- **Reporting a UI bug in a problem**: `issue_attach({id, file_path})` the screenshot, then `issue_problem({id, action:'add', statement:'...', ...})` with the image embedded in the problem's own detail, or in a follow-up `issue_comment` under it — `![the overlapping sidebar](<returned url>)`.
+- **Documenting a before/after fix**: embed both images in the landing comment, not just prose describing what changed.
+- **A design decision on a plan**: embed a mockup or a rendered screenshot directly in the plan record's `context`, not a text description of what it looks like.
+
+This costs one extra tool call and materially speeds up the human's side of the review — use it whenever the image would actually change what they conclude, not as a reflex on every card.
 
 ### MCP Error Handling
 
