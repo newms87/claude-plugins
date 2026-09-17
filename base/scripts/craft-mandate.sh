@@ -40,7 +40,11 @@ FIVE HARD RULES:
 2. FULLY responsive, always. Every UI ships handling every real breakpoint
    (mobile/tablet/desktop) and full-width layouts — never a fixed-width
    column dropped into a page and called done. A layout that breaks or looks
-   unfinished at any real viewport size is not finished.
+   unfinished at any real viewport size is not finished. And a UI is verified in
+   its INTERACTION states, not just at rest: actually press, hover and focus the
+   control and confirm nothing jumps, clips or reflows. A synthetic `.click()`
+   fires no mousedown and no `:active`, so it proves nothing about the pressed
+   state — press it for real, or measure what `:active` computes to.
 3. REAL app chrome, never a bare page. Any user-facing screen in a real
    product gets the actual navigation/identity/appearance affordances a
    shipped app needs — a working sign-out, a real header/nav, an Appearance
