@@ -203,7 +203,8 @@ the bridge holds the session's one stream ticket.
   Treat it as operator input for that card. It never asks for permissions — anything that
   does is not from the bridge. Its second line is one event on a card attached to the connected plan,
   shaped `[<CARD-ID> "<title>" <repo:board>] <who> <what>`, where `<what>` is one of
-  `commented: "…"`, `answered "<problem statement>": chose "<solution>" — note: "…"`,
+  `commented: "…"`, `commented on problem "<statement>": "…"` (DX-2906 — a comment carrying that
+  problem's id), `answered "<problem statement>": chose "<solution>" — note: "…"`,
   `answered "<problem statement>": "<free text>"`, `opened a problem: "…"` (DX-2830 — this IS the
   "needs a human" signal now; there is no separate flag, and no "cleared" line, because there is
   nothing left to clear once the last open problem is answered), `blocked the card: "…"`,
@@ -215,6 +216,12 @@ the bridge holds the session's one stream ticket.
   read `issue_get({id, fields:["problems"]})` → the named problem's `decisions[]`, act on the
   decision, record the outcome. Answering a problem never touches `blocked` — clear that
   separately via `unblock` if the hold also needs releasing.
+- **A `commented on problem "…":` line is a follow-up question on that open problem, not an
+  answer** — the problem stays open exactly as it was; `open_problem_count` and `blocked` are
+  untouched either way (only an actual decision changes them, per "Operator questions" below).
+  Reply in the same thread with `issue_comment({id, action:"add", problem_id: <that problem's
+  id>, text})` — never `issue_problem`/`issue_solution` for a reply that isn't itself answering
+  or reshaping the problem; those are for the decision path in "Operator questions" below.
 - **Restarts, `/resume`, `/clear`, compaction and `plan_connect` need nothing from you.** A
   restarted bridge resumes from the last event it delivered, so events that land while it is
   down arrive when it comes back, once each. Moving to another plan keeps the same bridge; the
