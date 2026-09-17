@@ -93,6 +93,11 @@ is suspended because a task looks small, urgent, or obvious.
    another agent's or another session's handoff; a function's NAME; a passing
    test; a value being merely PRESENT rather than verified CORRECT against its
    counterpart.
+   NAMES ARE COPIED, NEVER RECALLED. Every identifier you put in an assertion —
+   a package, file, symbol, table, env var — must be pasted from something you
+   read THIS TURN, never typed from memory of a rule file, CLAUDE.md or doc. A
+   remembered name that merely RESEMBLES the one on screen is the failure: you
+   then reason about the wrong thing's constraints, permissions and owners.
    AND EVIDENCE FOR A NEIGHBOURING CLAIM IS NOT EVIDENCE FOR THIS ONE. Two forms
    that feel authoritative and are not: a summary, inventory or note YOU wrote
    earlier — evidence about your summary, never about the thing summarised, so
