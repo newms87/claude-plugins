@@ -36,7 +36,15 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
    whatever the connect reply says about your event-listener/bridge health (see "Live events"
    below): healthy and attached means operator comments and answers will reach you with nothing
    to arm; anything else names its own fix — follow that fix, never a poll or a manual watch loop.
-5. Before every chat reply this session: run the Turn Gate below.
+5. **Always keep the plan's own dashboard page open in the session's in-app browser (the Claude
+   Browser pane / Chrome tool), for the operator's reference and convenience — a standing
+   default, not a one-off "show the operator" action.** Open `https://danxbot.sageus.ai/plans/<id>`
+   there right after connecting (or reconnecting after resume/compact), in the OPERATOR'S OWN
+   browser session — same no-sign-in rule as below, the agent never authenticates it, it just
+   points a tab at the URL. If it closes or navigates away, re-open it; don't wait to be asked.
+   This is separate from and in addition to the situational "show the operator a specific card"
+   case below.
+6. Before every chat reply this session: run the Turn Gate below.
 
 ## What goes where — no other planning surface exists
 
@@ -751,7 +759,9 @@ DX-2830 "requires_human is retired" (`6060c8bc`), DX-2782 auto-triage-via-proble
 - **Showing the operator a plan or card (DX-2724):** open the plan URL
   (`https://danxbot.sageus.ai/plans/<id>`) — or a card's dashboard URL — in the OPERATOR'S OWN
   browser and let them authenticate there themselves. Agents never sign in to the dashboard and
-  never hold or use dashboard user credentials.
+  never hold or use dashboard user credentials. The connected plan's own page is kept open there
+  by default for the whole session (checklist step 5 above) — this bullet covers the extra,
+  situational case of pointing that same browser at one specific card instead.
 
 ## Cross-references
 
