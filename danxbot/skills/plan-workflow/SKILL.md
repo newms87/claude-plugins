@@ -12,6 +12,11 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 
 ## TodoWrite checklist (mandatory on first invoke)
 
+0. **If the operator's prompt pasted a plan link** (`https://danxbot.sageus.ai/plans/<id>`), the
+   plugin's own `plan-link-connect` hook already fired on that prompt (UserPromptSubmit) and
+   injected a one-line directive naming the plan id — that directive is asking you to do exactly
+   steps 2-4 below for that plan, nothing more. The hook never calls the dashboard and never
+   handles a token; every dashboard call is still yours.
 1. `plan_list` — read `session.planId`. Connected to the right plan already? Skip to 3.
 2. Find the plan for this effort in `plans[]` (read candidates with `plan_get({plan_id})`).
    Read this session's own title first — `get_session({session_id:"self"}).title` on Claude
@@ -21,9 +26,16 @@ session restarts and handoffs because it lives in Postgres, not in the conversat
 3. Renamed since connecting? Re-run `plan_connect({plan_id, title})` with the new title — a
    `plan_connect` that omits `title` leaves the stored one untouched. See "Running a plan with
    sub-agents".
-4. `plan_get({fields:["records","architecture","cards"]})` (no id) — read the connected plan
-   before doing anything else. A BARE `plan_get` returns only cheap scalars (`plan`, `boards`,
-   `cardCount`, `bucketCounts`, session state, `available_field_groups`) — see "Reading a plan".
+4. **Orient on the plan before doing anything else.** Read whatever `plan_connect`'s own reply
+   gives you first — once the dashboard returns a compact orientation briefing on connect
+   (goals/rules/caveats/architecture/open cards in one call), that reply is the fastest path and
+   needs no follow-up read. Until then, or if the reply carries no such briefing, get the same
+   information explicitly: `plan_get({fields:["records","architecture","cards"]})` (no id). A
+   BARE `plan_get` returns only cheap scalars (`plan`, `boards`, `cardCount`, `bucketCounts`,
+   session state, `available_field_groups`) — see "Reading a plan". Either way, also check
+   whatever the connect reply says about your event-listener/bridge health (see "Live events"
+   below): healthy and attached means operator comments and answers will reach you with nothing
+   to arm; anything else names its own fix — follow that fix, never a poll or a manual watch loop.
 5. Before every chat reply this session: run the Turn Gate below.
 
 ## What goes where — no other planning surface exists
