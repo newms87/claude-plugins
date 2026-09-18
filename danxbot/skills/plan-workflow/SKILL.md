@@ -433,7 +433,7 @@ Filing a real question, in order:
    - `description` — the evidence: ids, file paths, log lines, how to see it. Markdown is
      fine. Options do NOT go here.
 2. `issue_problem({id, action:"add", statement, context?, solutions})` — `statement` is a TITLE,
-   **at most 100 characters, server-enforced (DX-2942)**: restate the question in one plain
+   **at most 200 characters, server-enforced (DX-2942/DX-2946)**: restate the question in one plain
    sentence, nothing else. Every paragraph, code block, file:line citation or investigation
    detail goes in the separate `context` field (full markdown, no cap) instead — never crammed
    into `statement`, and never dropped. `solutions[]` carries one entry per viable option
@@ -454,7 +454,7 @@ Filing a real question, in order:
      reduces on `window_key` alone...
      [file:line citations, code excerpts, the full root-cause writeup go here]
    ```
-   A statement over 100 characters is refused by the server with the actual length and the
+   A statement over 200 characters is refused by the server with the actual length and the
    limit — move the detail into `context` and retry, don't shorten by guessing.
 
    **When the question is about something visual** (a layout, a rendered UI, a broken screen,
