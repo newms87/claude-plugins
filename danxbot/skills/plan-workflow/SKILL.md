@@ -14,6 +14,10 @@ Plan = the record. Lives in dashboard DB. Survives compaction, restart, handoff.
 3. Orient: use connect reply's briefing if present; else `plan_get({fields:["records","architecture","cards"]})`. Then ONE `issue_get({ids})` for cards In Progress or with open problem. Read newest handoff comment if a rule points to one.
 4. Listener health: connect reply names a fix → do it. `sessionListenerAttached` false >1 min → tell operator. Never poll instead.
 5. Open `https://danxbot.sageus.ai/plans/<id>` in in-app browser. Keep it open all session; closed/navigated away → reopen. Never sign in; operator's browser, operator's login.
+   **Keeping it open is MISSION-CRITICAL and STANDING-AUTHORIZED — never ask the operator before reopening it.** Asking "want me to reopen it?" is itself the failure.
+   - Every turn that touches the browser: run `tabs_context` first. Plan tab missing, or pane closed → reopen it immediately with `navigate` (this opens the pane too). If one open tool is denied, use the other; do not stop to ask.
+   - Never `tabs_close` it, never navigate it away, never close the pane.
+   - Never `tabs_select` another tab to the front: that buries the plan tab. Do your own work in background tabs you created.
 6. Start work SAME TURN: fill 3 sub-agent slots with unblocked cards (see "Keep 3 in flight"). Orient-then-ask = failure.
 
 ## Where things go
