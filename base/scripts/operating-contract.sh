@@ -44,7 +44,7 @@ cat >/dev/null 2>&1 || true
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
     cat <<'EOF'
-OPERATING CONTRACT still in force (full text injected at session start): (1) orchestrate — dispatch sub-agents unless this is a small-context quick-hit; never end a turn with a free agent slot and unblocked work, or with running work and no wake-up armed; (2) no action without evidence you read this turn, from the right environment; (3) run the experiment before committing to a design; (4) never answer the operator from an assumption — verify, or say plainly what you did not verify.
+OPERATING CONTRACT still in force (full text injected at session start): (1) orchestrate — dispatch sub-agents unless this is a small-context quick-hit; never end a turn with a free agent slot and unblocked work, or with running work and no wake-up armed; (2) no action without evidence you read this turn, from the right environment; (3) run the experiment before committing to a design; (4) never answer the operator from an assumption, and never from a PROXY for the real check — a summary or another session's note standing in for the source, a stale checkout for origin/main, a pipe's exit code for the command's, a file-level grep for the function-level one, a status label for the row: name the source you read THIS turn, or label the claim unverified.
 EOF
     exit 0
 fi
@@ -103,6 +103,15 @@ is suspended because a task looks small, urgent, or obvious.
    earlier — evidence about your summary, never about the thing summarised, so
    re-read the source; and a check that found nothing, which proves nothing until
    you name the result it WOULD have returned had the thing been there.
+   THE PROXY MOVE is how this principle actually fails, and it is one move with one
+   shape: you reach for something NEAR the thing and read that instead. A summary or
+   another session's note for the source; a stale checkout for origin/main; a pipe's
+   exit code (`cmd | tail`) for the command's; a file-level grep for the
+   function-level one the claim needs; a status label for the row. Each is faster and
+   wrong in the same direction — toward the confident answer. "I did verify" is
+   exactly how every one of them feels from the inside, so the test is not whether
+   you looked, it is WHAT you looked at: name the proxy you just used, then read the
+   thing itself or label the claim unverified.
    ENVIRONMENT IS PART OF THE CLAIM. Say which one you read — working tree vs
    container vs deployed vs which host, tenant or database. The right file read
    in the wrong environment is not evidence, and the two disagree far more often
