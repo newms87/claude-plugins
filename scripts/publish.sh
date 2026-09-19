@@ -142,6 +142,22 @@ fi
 
 info "Plugins to bump (${BUMP_TYPE}): ${TARGETS[*]}"
 
+# --- Pre-flight: frontmatter lint ---------------------------------------
+#
+# DX-2986 — a SKILL.md whose frontmatter isn't valid YAML (or is missing
+# name/description, or blows the Claude Code listing's description +
+# when_to_use limit) silently drops out of every session's skill list
+# with no error anywhere. One shared lint (scripts/lint-frontmatter.js,
+# real YAML parser) runs against the WHOLE repo before any bump — never
+# per-plugin, so a broken file in a plugin nobody is currently touching
+# still blocks the publish that would otherwise ship it unnoticed.
+
+info "Linting skill/agent frontmatter..."
+if ! node "${REPO_ROOT}/scripts/lint-frontmatter.js" "${REPO_ROOT}"; then
+  err "Frontmatter lint failed (above). Fix the file(s) named, then re-run publish."
+  exit 1
+fi
+
 # --- Pre-flight: working tree must NOT have unrelated changes ----------
 #
 # We want a clean commit per plugin. If the operator has uncommitted
