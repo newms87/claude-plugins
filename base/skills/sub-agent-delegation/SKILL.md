@@ -44,9 +44,13 @@ Tool's only job = "fetch static blob" → stage on disk, agent reads via Read. F
 
 When a task decomposes into INDEPENDENT sub-tasks — multiple reviews of the same artifact, several non-overlapping fixes, independent file edits or investigations — dispatch them as parallel sub-agents in ONE message (multiple Agent/Task tool calls in a single response), NOT one at a time. Serializing work that has no ordering dependency is pure wasted wall-clock. Sub-agents are the mechanism that makes the parallelism possible; reach for them whenever independent work exists, not only for synthesis.
 
-**Hard cap: 3 concurrent sub-agents (3 parallel items).** More than 3 independent items → batch them: run 3, collect results, then run the next set. The cap is for INDEPENDENT work ONLY — never parallelize genuinely dependent steps (step B needs step A's output).
+**Hard cap: 5 concurrent sub-agents (5 parallel items).** More than 5 independent items → batch them: run 5, collect results, then run the next set. The cap is for INDEPENDENT work ONLY — never parallelize genuinely dependent steps (step B needs step A's output).
 
-**Use sub-agents to APPLY fixes, not just to review.** When findings (or any work) split into independent, non-overlapping fixes, fan THEM out to parallel sub-agents too (≤3) — never serialize independent fixes.
+**The cap is a CEILING, not permission to sit below it.** Operator, 2026-09-19, finding two agents running with unblocked cards open: *"Why are you not running more agents in parallel?"* — and, on the stale number this file used to carry: *"hard cap is 5 on this machine"*. Running under the cap while independent work waits is the same waste as serializing it. The only legitimate reasons to be below the cap are that the remaining work is genuinely dependent, genuinely waiting on a human, or would collide — and if it is collision, say which files, because an unexplained gap reads as forgetting.
+
+**A file collision is a reason to SEQUENCE two specific agents, never a reason to idle a slot.** The right response to "these two would both edit `Foo.tsx`" is to dispatch one of them *plus something else*, not to run one and wait. Partition by file and keep the slot full.
+
+**Use sub-agents to APPLY fixes, not just to review.** When findings (or any work) split into independent, non-overlapping fixes, fan THEM out to parallel sub-agents too (≤5) — never serialize independent fixes.
 
 **Guardrails (all still hold):**
 - **Non-overlapping files/state only.** Two agents must NEVER edit the same file concurrently — partition the work by file/module first; overlap → keep those items serial.
@@ -54,7 +58,7 @@ When a task decomposes into INDEPENDENT sub-tasks — multiple reviews of the sa
 - **The parent runs the test suite ONCE, after all edits land** — never run tests inside parallel sub-agents (no parallel test runs).
 
 ### Canonical case — POST code-trio quality gates
-The three POST code gates (`code-test-quality` / `code-architecture` / `code-quality`) are independent read-only reviews of the SAME diff with zero ordering dependency. Dispatch their reviewer sub-agents (`architecture-reviewer` + `code-quality-reviewer`) in ONE batch (≤3), run the inline `code-test-quality` review alongside them, collect ALL findings, fix ONCE (independent fixes fanned out, ≤3), then sign off each gate. Do NOT run the three gate reviews one at a time — that was the observed failure this rule exists to prevent.
+The three POST code gates (`code-test-quality` / `code-architecture` / `code-quality`) are independent read-only reviews of the SAME diff with zero ordering dependency. Dispatch their reviewer sub-agents (`architecture-reviewer` + `code-quality-reviewer`) in ONE batch (≤5), run the inline `code-test-quality` review alongside them, collect ALL findings, fix ONCE (independent fixes fanned out, ≤5), then sign off each gate. Do NOT run the three gate reviews one at a time — that was the observed failure this rule exists to prevent.
 
 ## Sub-agents must clean up their own subprocesses before reporting done
 
