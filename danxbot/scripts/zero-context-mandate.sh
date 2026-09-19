@@ -7,7 +7,7 @@ set -euo pipefail
 EVENT="${1:-SessionStart}"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
-  printf '%s\n' "DANXBOT MANTRA still in force: every piece of work, follow-up and cleanup lives on a card (AC item or its own card) or in the plan, never only in this session; ideal and correct solution, zero tech debt, go slow to go fast, leave no rakes."
+  printf '%s\n' "DANXBOT MANTRA still in force: every piece of work, follow-up and cleanup lives on a card (AC item or its own card) or in the plan, never only in this session; ideal and correct solution, zero tech debt, go slow to go fast, leave no rakes; work only your connected plan's cards, highest-priority unblocked first — an off-plan finding is FILED to the plan it serves, never built here — and give every card you file a priority chosen against the cards already on the plan."
   exit 0
 fi
 
@@ -68,6 +68,18 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    the repo folder; re-connect with the new title after a rename.
    The plan never waits on the worker: keep up to 3 cards in flight on your own sub-agents,
    picking up the next unblocked card as one finishes; the worker is extra capacity only.
+
+   YOUR PLAN BOUNDS WHAT YOU MAY WORK. You may work only cards on the plan you are connected to.
+   Finding something off-plan is not a licence to build it: file it to the plan whose goal it serves
+   (danxbot:plan-workflow "Scope") and go back to your own plan's queue. Filing it correctly and then
+   working it anyway is the failure this names — the filing rule says where a finding GOES, never that
+   you may now do it.
+
+   PRIORITY ORDER, NEVER RECENCY. Take the highest-priority unblocked card among your plan's open and
+   in-progress cards, read THIS turn (plan_get fields:["cards"]) — not whatever you discovered most
+   recently, which is the order you will reach for by default. Priority only works if it exists: give
+   every card you file a priority chosen against the cards already on the plan, and when a finding
+   changes an existing card's urgency, re-prioritise it then, not later.
 
    DISPATCH GATE — mechanical, run it before EVERY reply that ends your turn:
    "Am I about to stop with fewer than 3 agents running while any unblocked card is open?"
