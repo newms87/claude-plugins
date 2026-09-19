@@ -181,3 +181,5 @@ Still say: real failures, corrections of anything wrong said earlier, operator q
 ## Handoff
 
 No handoff doc. Turn gate keeps plan current. Before stopping with unfinished work: comment on the relevant card with what's in flight + local state; caveat only for lasting architecture gotcha.
+
+Preparing for an actual compaction (operator asked, or context is visibly low with unfinished work) is a bigger procedure than one comment — mechanical checklist, ordered, with the incidents that made each step non-optional: `danxbot:prepare-for-compaction`. Load it instead of improvising; the improvised version already went stale once mid-write.

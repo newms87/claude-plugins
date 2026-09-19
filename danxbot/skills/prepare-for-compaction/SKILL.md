@@ -1,0 +1,190 @@
+---
+name: prepare-for-compaction
+description: 'Operationalizes plan-workflow''s zero-context rule into a mechanical checklist for the moment BEFORE a compaction — capture the real tree, attribute interleaved uncommitted work per card, sweep stale In Progress claims, resolve a stopped agent''s uncommitted work by committing it (never discarding), route facts to record/note/card, then RE-VERIFY immediately before declaring ready. Load when: the operator asks to prepare for/wrap up before compaction; context is visibly running low and work is unfinished; handing off a session; about to stop with sub-agents still dispatched or a dirty tree. Does not cover ongoing plan hygiene (see danxbot:plan-workflow) or git safety rules (see dev:git-discipline) — cross-references both rather than repeating them.'
+---
+
+# Prepare for Compaction
+
+A compaction is not a save point. `danxbot:plan-workflow`'s zero-context rule states the
+principle — "session wiped now, would a new agent miss anything? write it first." This skill is
+the procedure for actually doing that, written from a real prep pass (SG-713, 2026-09-19) that
+worked only because it was done slowly, with corrections along the way. Every step below exists
+because skipping it produced a real, observed failure — not because it sounds thorough.
+
+## What compaction actually does — and does not do
+
+Get this right before writing anything, because two of these are load-bearing and non-obvious:
+
+| It DOES | It does NOT |
+|---|---|
+| Wipes the model's context, replaced by a summary | Stop running sub-agents — see below |
+| Truncates skill bodies in place into convincing-looking fragments (`base`'s `compaction-skill-reload.sh` exists solely to force a re-`Skill()` call after) | Touch the working tree, staged/unstaged/untracked state |
+| Re-injects the operating contract's four principles via `base/scripts/operating-contract.sh` on `SessionStart` with no matcher, so it fires on `compact` too | Undo any commit, push, dispatch, or API call already made |
+| Re-fires `SessionStart` with `matcher: "compact"` — the only hook point whose stdout still reaches the model after a compaction | Preserve YOUR reasoning about *why* something is in flight — only what got written down survives |
+
+**Sub-agents keep running through a compaction.** A background `Agent()` spawn is a real
+process the harness tracks independently of your context — `base:sub-agent-delegation` already
+documents this for the general case (an agent denying its own live spawns after compaction,
+observed 2026-07). The operator had to point this out again in the SG-713 prep pass. Preparing
+as though compaction pauses your dispatched agents means you either falsely tell the operator
+"everything stopped" or — worse — stop agents that didn't need stopping. **Before writing the
+handoff, know which of your dispatches are still alive** and say so explicitly; don't assume
+either state.
+
+**There is no reliable way to make Claude Code surface this skill automatically before a
+compaction happens.** Verified against `code.claude.com/docs/en/hooks` (2026-09-19): a
+`PreCompact` hook event exists and fires before both manual (`/compact`) and automatic
+compaction, but **its stdout is never added to the model's context** — same limitation as
+`PostCompact`, and the reason `base`'s own post-compaction gate is wired on `SessionStart` with
+`matcher: "compact"` instead (the only event that both fires around compaction and reaches the
+model). Nothing exists to inject "compaction is imminent, run the checklist" into context ahead
+of time. This skill has to be invoked deliberately — by the operator asking, or by your own
+judgment that context is running low with unfinished work — not by a hook.
+
+## The procedure
+
+Run these in order. Each cites the incident that makes it non-optional.
+
+### 1. Capture the tree NOW, don't remember it
+
+`git status` + `git diff --stat`, every modified/untracked path, right before you start writing
+anything down. Do not reconstruct it from memory of what you edited — write down what the
+command says, verbatim.
+
+**Why this order matters, not just that you do it:** a handover written while an agent was
+still actively working went stale within minutes on the SG-713 prep pass itself — it described
+work as uncommitted that had, by the time it was read, already been committed — and needed a
+correcting follow-up comment. The tree changes while you're describing it. Capture, write,
+then re-verify (step 7) before you call it done.
+
+### 2. Attribute interleaved work per card, not per tree
+
+A shared working tree with two-plus agents active produces ONE `git status` covering multiple
+cards' work. List every changed file and say which card owns it — do not hand a later session
+a diffstat and let it guess.
+
+**Real example, SG-709 / SG-711 (this session):** one dirty tree held both cards' changes. The
+SG-709 handover comment enumerated its own files (`evidence-status.ts`, `EvidencePanel.tsx`,
+`DataPointModal.tsx`, plus test files) and then explicitly named the rest — `ExtractedTab.tsx`,
+its two test files, `TeamObjectRepository.php`, `TeamObjectsControllerApplyActionTest.php`,
+`api/client.ts`, `api/team-objects.ts` — as "belongs to SG-711, not this card." Without that
+second sentence, the natural next move (commit everything dirty) merges two unrelated,
+unreviewed changesets into one commit.
+
+### 3. Resolve a stopped agent's uncommitted work by COMMITTING it — never discarding it
+
+If an agent was stopped mid-task and left uncommitted changes that are off-plan, unwanted right
+now, or breaking tests, the working tree still cannot be thrown away.
+`git checkout --`/`restore`/`reset --hard`/`clean` on someone else's uncommitted work is
+forbidden outright (`dev:git-discipline`) — this isn't a compaction-specific carve-out, and
+compaction pressure is not an exception to it.
+
+**The sanctioned pattern, used for real on SG-439 (verified: `git log` in `gpt-manager`,
+2026-09-19):**
+
+1. Commit the work as an explicit WIP, titled so nobody mistakes it for finished:
+   `wip(SG-439): the post-call provenance gate, incomplete — DO NOT SHIP AS-IS` (`97cdc3593`).
+   The body states what it is, why it's real (cites the actual measurement backing it), and
+   exactly what's missing.
+2. Revert it FORWARD in the very next commit — never `git reset` — so `main` doesn't carry
+   failing tests while the WIP is incomplete: `Revert "wip(SG-439): ..."` (`be81a7efb`), body
+   explains what's still broken (a stale test fixture, 8 failing `ArtifactGeneration` tests) and
+   that the failures are the fixture's fault, not the gate's.
+3. Save a patch of the WIP diff to the repo's scratch convention (`.junk/pln7/sg439-wip-provenance-gate.patch`
+   in this repo) so it can be reapplied without archaeology.
+4. Record all three references on the card: the WIP commit SHA, the revert commit SHA, and the
+   patch path, plus what's left to finish (here: "update the test helper so mocked calls carry
+   real citations").
+
+102 lines of measured analysis were the stakes for getting this wrong — discarding it would
+have destroyed real evidence-backed work to keep a tree tidy for a moment that doesn't need it.
+
+### 4. Sweep stale "In Progress" claims
+
+A card claimed by a session that's about to compact away (or already gone) and not actually
+being worked is worse than an unclaimed one — it hides from anyone scanning for work and makes
+the in-flight count lie.
+
+**Real example: SG-483** sat In Progress, assigned to `dan-main-session`, from
+`2026-09-13T11:34:47Z` — **153 hours** — with nothing touching it. Fix is one call:
+`issue_transition({action: "rollback_pickup", keep_assignment: true})` (documented in
+`danxbot:plan-workflow` → "Card state always true"; this step just says to actually run the
+sweep as part of compaction prep, not only when someone happens to notice). `keep_assignment:
+true` returns the card to ToDo without erasing who was holding it or implying judgment about
+the work — it makes the board tell the truth, nothing more.
+
+### 5. Every outstanding requirement lands on the card — especially the ones given live
+
+If the operator stated a requirement out loud, in chat, with a screenshot, and it exists nowhere
+else, it is one compaction away from being gone. These are the highest-risk items in the whole
+procedure because there is no fallback source to recover them from — unlike code, which survives
+in the tree regardless of what you write down.
+
+Write each one onto its card's description or as a comment, in the operator's own priority
+order if they gave one, and distinguish:
+
+- **Done** — and how you know (a command, a screenshot, a read-back).
+- **Partially done, in what state** — "in progress" alone is not a handover; say what's
+  finished, what's started-but-not-verified, and what hasn't been touched.
+- **Never started.**
+
+### 6. Route every durable fact by its actual durability — don't restate the rules, follow them
+
+`danxbot:plan-workflow` already owns the shape and the size limits — this skill doesn't repeat
+them, it just says: before compaction, make sure everything that needs one of these actually has
+one.
+
+| Fact | Goes in | Limit (see plan-workflow → Records / Plan notes) |
+|---|---|---|
+| Outcome, constraint, or lasting architecture trade-off | plan record (`goal`/`rule`/`caveat`) | body ≤250 chars, detail in `context` |
+| Real milestone (cards done, a decision, a record/section change) | plan note | title ≤60, body ≤250 |
+| Progress, evidence, local state, what a paused agent was doing, file-to-card attribution | card comment | none of the above caps apply |
+| Operator question with no answer yet | Task card + open problem | `danxbot:plan-workflow` → "Operator questions" |
+
+Getting the API shape wrong here costs real turns — `plan-workflow` already documents that
+comments take `text` not `body`, records take `{kind, body, context}` not `statement`. Don't
+rediscover it by trial and error a second time; read that skill's "Records" and "Plan notes"
+sections first.
+
+### 7. Two dashboard-API gotchas that read as facts about the board, not the request
+
+Only relevant when working the `danx_dashboard` HTTP API directly (e.g. the MCP server is down
+and you're using the token-based fallback, `.junk/pln7/*.mjs` in this repo has working
+examples) — but both are silent, and both were hit for real on 2026-09-19:
+
+- **`GET /api/issues/<id>` omits `description`, `comments`, and the checklist unless you pass
+  `?fields=description`.** Nothing in the response says a body was withheld — a carefully
+  written card reads as blank. Measured: 12,028 bytes with the param against 3,158 without, same
+  card. `?include=description` and `?full=1` also return *something*, but smaller — not
+  equivalent; use `?fields=`.
+- **`GET /api/plans/<id>?fields=cards` returns `cards: []`** for a plan that genuinely has cards
+  attached — they live at the `/api/plans/<id>/cards` sub-resource, not inline on the plan
+  object. A zero-context session reading this without knowing that will conclude the plan is
+  empty and either recreate work or search the wrong place for it.
+
+Both fail exactly the same way: the tool looks authoritative and the wrong answer looks like a
+fact about the world instead of a fact about the query. If you hit either, note it on the plan as
+a `caveat` record (not just here) so the specific plan's own future sessions inherit it too.
+
+### 8. Re-verify immediately before declaring ready — this is not optional, it is the step
+
+Everything captured in step 1 can be stale by step 6. Before telling the operator (or the
+session log) "ready for compaction": re-run `git status`, re-read back every card you just wrote
+to, and confirm the sub-agent liveness claim in the "what compaction does not do" section above
+is still true. Anything written more than roughly a minute earlier may already be false — this
+is exactly the failure step 1 names, and it recurs unless you close the loop.
+
+### 9. Say plainly, in the handoff itself, what compaction does and does not affect
+
+Don't assume the next session (or the operator, reading later) knows this. One or two sentences:
+context is being cleared and replaced with a summary; the working tree, any commits/pushes, and
+any dispatched sub-agents are untouched and continue exactly as they were.
+
+## Non-goals
+
+This skill does not own: plan record/note/card mechanics, hash-guarded writes, the "keep 3 in
+flight" dispatch rule, or live-event handling — all `danxbot:plan-workflow`. It does not own git
+safety (forbidden destructive ops, branch discipline) — `dev:git-discipline`. It does not own
+how to phrase the handoff prose — `base:convey`'s scaffold applies to the card comment/description
+you write in steps 3-5. This skill is the ordered checklist that ties those together at exactly
+one moment: right before a compaction.
