@@ -10,7 +10,7 @@ Plan = the record. Lives in dashboard DB. Survives compaction, restart, handoff.
 ## Start (TodoWrite these, every new/resumed/compacted session)
 
 1. Plan link in prompt (`danxbot.sageus.ai/plans/<id>`, with or without `https://`) → that plan. Else `plan_list`; `session.planId` already right → skip to 3. Else find plan in `plans[]`; none → `plan_create({name})`.
-2. Get own session title: `get_session({session_id:"self"}).title` (Desktop) or `/rename` name. Never repo folder. `plan_connect({plan_id, title})`. Renamed later → connect again with new title.
+2. Get own session title: `get_session({session_id:"self"}).title` (Desktop) or `/rename` name. Never repo folder. **Judge that title before connecting — it becomes this session's row on the plan and must name what you are DOING, not what you opened.** Generic ("<Repo> plans page"), stale (an earlier task), or already worn by another `list_sessions` row → `set_session_title({session_id:"self", title})` FIRST, then pass the new one. Verbatim means never invent a name, not keep an unusable one. `plan_connect({plan_id, title})`. Renamed later → connect again with new title.
 3. Orient: use connect reply's briefing if present; else `plan_get({fields:["records","architecture","cards"]})`. Then ONE `issue_get({ids})` for cards In Progress or with open problem. Read newest handoff comment if a rule points to one.
 4. Listener health: connect reply names a fix → do it. `sessionListenerAttached` false >1 min → tell operator. Never poll instead.
 5. Open `https://danxbot.sageus.ai/plans/<id>` in in-app browser. Keep it open all session; closed/navigated away → reopen. Never sign in; operator's browser, operator's login.
