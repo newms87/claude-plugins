@@ -89,7 +89,7 @@ import { fileURLToPath } from "node:url";
  * the version published with the `bridge` subcommand; move it to the version that
  * release actually publishes.
  */
-export const DASHBOARD_MCP_PACKAGE = "@thehammer/danx-dashboard-mcp@0.1.92";
+export const DASHBOARD_MCP_PACKAGE = "@thehammer/danx-dashboard-mcp@0.1.95";
 export const BRIDGE_SUBCOMMAND = "bridge";
 
 export const HEARTBEAT_MS = 30_000;
