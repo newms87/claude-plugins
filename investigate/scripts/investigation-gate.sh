@@ -21,6 +21,18 @@ if [ -z "$PROMPT" ]; then
     exit 0
 fi
 
+# DX-3051: a trigger word inside a relayed danxbot dashboard event (a card TITLE,
+# e.g. "...audit: trim every skill") is the CARD's text, not the operator's — this
+# gate exists to catch operator intent, and firing on machine-relayed card text is
+# reproduced (a title containing "audit" emitted the full investigation gate).
+# RELAY_MARKER (danxbot's plan-event-bridge.mjs) is the only available signal: Claude
+# Code's documented UserPromptSubmit hook schema carries no message-source field. Do
+# not delete this as dead code — it is load-bearing for every relayed event.
+RELAY_MARKER='[danxbot-relayed-event]'
+if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    exit 0
+fi
+
 PATTERN='(^|[^a-z])(why|how does|how come|what.?s going on|what is going on|investigate|look into|dig into|figure out|trace|audit|find out|check on|is the [a-z]+ running|did .+ dispatch|did .+ deploy|did .+ run)([^a-z]|$)'
 
 if echo "$PROMPT" | grep -qE "$PATTERN"; then
