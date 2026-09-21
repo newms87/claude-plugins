@@ -78,6 +78,7 @@
  */
 
 import { spawn, spawnSync, execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -219,7 +220,9 @@ export const STARTUP_VERDICT_MS = 45_000;
 export const CONNECT_INTENT = "connect";
 export const RESUME_INTENT = "resume";
 
-const STATE_SUFFIXES = [".pid.json", ".lock", ".cursor.json", ".log", ".tmp"];
+// DX-3028 (AC3) — `.stopped.json` added alongside the existing suffixes so
+// `pruneStale` reaches it too (see `sessionPaths`'s `stopped` path below).
+const STATE_SUFFIXES = [".pid.json", ".lock", ".cursor.json", ".log", ".stopped.json", ".tmp"];
 
 // ------------------------------------------------------------------ state files
 
@@ -236,7 +239,18 @@ export function sessionPaths(dir, sessionId) {
     throw new Error("session id is missing or has unexpected characters");
   }
   const base = path.join(dir, sessionId);
-  return { pid: `${base}.pid.json`, lock: `${base}.lock`, cursor: `${base}.cursor.json`, log: `${base}.log` };
+  return {
+    pid: `${base}.pid.json`,
+    lock: `${base}.lock`,
+    cursor: `${base}.cursor.json`,
+    log: `${base}.log`,
+    // DX-3028 (AC3) — the MCP child's `stopped` record (reason, detail, fix,
+    // paths, instanceId, degraded), persisted here by `run()` the moment the
+    // child reports one, whether or not it then stays alive in degraded
+    // mode. DX-2953's watchdog reads this file, its `reasons` and its
+    // `instanceId` — it did not exist before this card.
+    stopped: `${base}.stopped.json`,
+  };
 }
 
 export function readJsonFile(file) {
@@ -254,8 +268,51 @@ export function writeFileAtomic(file, text) {
   fs.renameSync(tmp, file);
 }
 
-export function pidRecord(pid, sessionId, now = Date.now()) {
-  return { pid, sessionId, heartbeatAt: new Date(now).toISOString() };
+/**
+ * DX-3028 (AC3) — the ONE writer of `paths.stopped`. Fires for every stop
+ * record the MCP child emits, degraded or not (`runChildOnce`'s `onStopped`,
+ * threaded through `superviseBridge`) — a plain overwrite, since only the
+ * MOST RECENT record matters to a reader (DX-2953's watchdog compares its
+ * `instanceId` against the marker's `lastStartedInstance` itself; this
+ * function does no such filtering — it just persists what it was handed).
+ * `writingInstanceId` is THIS run process's own identity (`run()`'s
+ * `instanceId`, from `DANX_BRIDGE_INSTANCE_ID`) — kept distinct from
+ * `record.instanceId` (the MCP CHILD's own, which `bridge.ts` already
+ * stamped) as a second field, in case the two ever need to be told apart;
+ * today they are always the same value, since the run process passes its
+ * own instance id to its child via the SAME env var (`childEnv`).
+ */
+export function persistStopRecord(file, record, writingInstanceId, now = Date.now()) {
+  writeFileAtomic(
+    file,
+    JSON.stringify({
+      schemaVersion: 1,
+      reason: record.reason,
+      detail: record.detail,
+      fix: record.fix,
+      paths: record.paths ?? [],
+      instanceId: record.instanceId || writingInstanceId,
+      writingInstanceId,
+      degraded: record.degraded === true,
+      recordedAt: new Date(now).toISOString(),
+    }),
+  );
+}
+
+/**
+ * DX-3028 (AC2/AC3) — `instanceId` and `startedAt` are the two fields this
+ * card adds. `instanceId` is minted once by `start()` (see there) and
+ * carried into every heartbeat/stop record the run process and its MCP
+ * child produce for this spawn — DX-2953's watchdog compares a stop
+ * record's `instanceId` against `lastStartedInstance` to tell a still-
+ * current record from one an earlier, since-superseded instance left
+ * behind. `startedAt` lets a reused pid (an unrelated process later
+ * landing on the same pid number) never be mistaken for the same
+ * instance merely because the pid number matches.
+ */
+export function pidRecord(pid, sessionId, now = Date.now(), instanceId = null) {
+  const iso = new Date(now).toISOString();
+  return { pid, sessionId, heartbeatAt: iso, instanceId, startedAt: iso };
 }
 
 /** A pid file whose process is alive AND has heartbeated recently. */
@@ -676,8 +733,14 @@ export async function start({
       kill(held.pid);
       fs.rmSync(paths.pid, { force: true });
     }
-    child = spawnRun(sessionId, env, intent);
-    writeFileAtomic(paths.pid, JSON.stringify(pidRecord(child.pid, sessionId, now())));
+    // DX-3028 (AC2/AC3) — this instance's own identity, minted here (under
+    // the lock, AFTER the fresh-holder check, IMMEDIATELY before spawning —
+    // a `start` that returns above without reaching this line never mints
+    // one), carried into the run process's env so it reaches every
+    // heartbeat/stop record it and its MCP child produce for this spawn.
+    const instanceId = randomUUID();
+    child = spawnRun(sessionId, { ...env, DANX_BRIDGE_INSTANCE_ID: instanceId }, intent);
+    writeFileAtomic(paths.pid, JSON.stringify(pidRecord(child.pid, sessionId, now(), instanceId)));
   } finally {
     fs.rmSync(paths.lock, { force: true });
   }
@@ -735,14 +798,27 @@ export function stop({ env = process.env, sessionId, isAlive: alive = isAlive, k
 
 // ------------------------------------------------------------------------- run
 
-/** One heartbeat. Yields (calls `shutdown`) when the pid file names another bridge. */
-export function heartbeatTick({ paths, selfPid, sessionId, now = Date.now(), shutdown }) {
+/**
+ * One heartbeat. Yields (calls `shutdown`) when the pid file names another
+ * bridge. DX-3028 — `instanceId`/`startedAt` are preserved from whatever
+ * record is already on file (written by `start()` at spawn time), never
+ * regenerated here: a heartbeat only refreshes `heartbeatAt`, so a stop
+ * record written later can still be compared against the SAME identity the
+ * process was spawned with. The one exception is the very first beat of a
+ * process nothing has written a record for yet (`held` is absent or carries
+ * no `instanceId`) — falls back to `instanceId` from this closure's own
+ * caller (`run()`'s own `DANX_BRIDGE_INSTANCE_ID`) so the record is never
+ * silently missing it.
+ */
+export function heartbeatTick({ paths, selfPid, sessionId, now = Date.now(), shutdown, instanceId = null }) {
   const held = readJsonFile(paths.pid);
   if (held && held.pid !== selfPid) {
     shutdown("another bridge owns this session");
     return false;
   }
-  writeFileAtomic(paths.pid, JSON.stringify(pidRecord(selfPid, sessionId, now)));
+  const record = pidRecord(selfPid, sessionId, now, held?.instanceId ?? instanceId);
+  if (held?.startedAt) record.startedAt = held.startedAt;
+  writeFileAtomic(paths.pid, JSON.stringify(record));
   return true;
 }
 
@@ -824,11 +900,20 @@ export function parseRecord(line) {
     return { kind: "event", id: Number.isSafeInteger(record.id) && record.id > 0 ? record.id : null, text: record.text };
   }
   if (record?.type === "stopped" && typeof record.reason === "string") {
+    // DX-3028 (AC3) — `paths` and `instanceId` are new on the child's own
+    // stop record; `degraded` decides whether THIS parseRecord's caller
+    // should treat the record as the child having exited (see `runChildOnce`
+    // below) — a record missing it (an older, pre-DX-3028 subcommand)
+    // defaults to `false` (exit), matching the ONLY behavior that existed
+    // before this card.
     return {
       kind: "stopped",
       reason: record.reason,
       detail: String(record.detail ?? ""),
       fix: typeof record.fix === "string" ? record.fix : "",
+      paths: Array.isArray(record.paths) ? record.paths.map(String) : [],
+      instanceId: typeof record.instanceId === "string" ? record.instanceId : "",
+      degraded: record.degraded === true,
     };
   }
   // DX-2862 — the subcommand says once, before any event, that it minted a
@@ -987,14 +1072,26 @@ export function shouldAnnounceStop(stopReason, { relevant }) {
   return relevant && !SILENT_STOP_REASONS.has(stopReason);
 }
 
-/** Runs the subcommand once. Resolves with its stop record (or null) and exit code. */
-function runChildOnce({ spawnChild, relay, log, onReady }) {
+/**
+ * Runs the subcommand once. Resolves with its stop record (or null) and exit
+ * code. DX-3028 (AC3) — `onStopped` fires for EVERY stop record the child
+ * emits, degraded or not, the MOMENT it arrives (never waiting on the child
+ * to actually exit) — the persistence to `paths.stopped` this drives must
+ * see a degraded record too, since the child stays alive after writing one.
+ * Only a NON-degraded record is kept as this call's own `stopped` result —
+ * degraded records never end supervision here (the child hasn't exited, and
+ * `superviseBridge`'s loop only reacts to `child.on("close")`, which a live
+ * degraded child never fires).
+ */
+function runChildOnce({ spawnChild, relay, log, onReady, onStopped = () => {} }) {
   return new Promise((resolve) => {
     let child;
     try {
       child = spawnChild();
     } catch (err) {
-      resolve({ stopped: { reason: "bridge_failed", detail: err.message }, code: null });
+      const record = { reason: "bridge_failed", detail: err.message, fix: "", paths: [], instanceId: "", degraded: false };
+      onStopped(record);
+      resolve({ stopped: record, code: null });
       return;
     }
     let stopped = null;
@@ -1004,7 +1101,8 @@ function runChildOnce({ spawnChild, relay, log, onReady }) {
       if (settled) return;
       settled = true;
       if (stderrTail.trim() !== "") log(`bridge subcommand stderr (tail): ${stderrTail.trim()}`);
-      resolve({ stopped: stopped ?? (spawnError ? { reason: "bridge_failed", detail: spawnError } : null), code });
+      const fallback = spawnError ? { reason: "bridge_failed", detail: spawnError, fix: "", paths: [], instanceId: "", degraded: false } : null;
+      resolve({ stopped: stopped ?? fallback, code });
     };
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -1013,8 +1111,17 @@ function runChildOnce({ spawnChild, relay, log, onReady }) {
       createLineSplitter((line) => {
         const record = parseRecord(line);
         if (record.kind === "event") relay.push({ id: record.id, text: record.text });
-        else if (record.kind === "stopped") stopped = { reason: record.reason, detail: record.detail, fix: record.fix };
-        else if (record.kind === "ready") onReady(record);
+        else if (record.kind === "stopped") {
+          const full = { reason: record.reason, detail: record.detail, fix: record.fix, paths: record.paths, instanceId: record.instanceId, degraded: record.degraded };
+          onStopped(full);
+          // DX-3028 (AC2) — a DEGRADED record does NOT end this promise: the
+          // child stays alive (heartbeating, retrying per its own policy),
+          // so `stopped` is deliberately left `null` and this call keeps
+          // waiting on the real `child.on("close")` below — which a live
+          // degraded child never fires until it is actually killed or later
+          // reaches a genuinely terminal reason.
+          if (!record.degraded) stopped = full;
+        } else if (record.kind === "ready") onReady(record);
         else log(`ignored non-record output from the bridge subcommand (${line.length} chars)`);
       }),
     );
@@ -1030,10 +1137,10 @@ function runChildOnce({ spawnChild, relay, log, onReady }) {
  * Run the subcommand until it reports a terminal outcome or dies too early to restart.
  * Returns `{ reason, fatal }` — see `classifyChildExit` for what makes an exit fatal.
  */
-export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, onReady = () => {} }) {
+export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, onReady = () => {}, onStopped = () => {} }) {
   for (;;) {
     const startedAt = now();
-    const outcome = await runChildOnce({ spawnChild, relay, log, onReady });
+    const outcome = await runChildOnce({ spawnChild, relay, log, onReady, onStopped });
     const decision = classifyChildExit({ ...outcome, ranMs: now() - startedAt });
     if (decision.action === "exit") {
       return { reason: decision.reason, fatal: decision.fatal, stopReason: decision.stopReason, fix: decision.fix };
@@ -1227,9 +1334,13 @@ export async function run(
     return;
   }
 
+  // DX-3028 — this run process's own identity, as `start()` minted it and
+  // passed down via env; a hand run (no `start()`) mints its own so the
+  // field is never silently absent from the records this process writes.
+  const instanceId = typeof env.DANX_BRIDGE_INSTANCE_ID === "string" && env.DANX_BRIDGE_INSTANCE_ID !== "" ? env.DANX_BRIDGE_INSTANCE_ID : randomUUID();
   const beat = () => {
     try {
-      heartbeatTick({ paths, selfPid: process.pid, sessionId, shutdown });
+      heartbeatTick({ paths, selfPid: process.pid, sessionId, shutdown, instanceId });
     } catch (err) {
       log(`heartbeat write failed: ${err.message}`);
     }
@@ -1341,6 +1452,19 @@ export async function run(
           `${record.boards.join(", ") || "(none — the connected plan has no cards)"}`,
       );
       sendVerdict({ verdict: "ready" });
+    },
+    // DX-3028 (AC3) — persisted the MOMENT the child reports it, before this
+    // process knows whether the child will stay alive (degraded) or exit —
+    // DX-2953's watchdog reads this file, its `reasons` and its
+    // `instanceId`, so it must exist as soon as the child says so, not only
+    // once this run process itself terminates.
+    onStopped: (record) => {
+      log(`bridge subcommand reported ${record.reason}${record.degraded ? " (degraded — staying alive)" : ""}: ${record.detail}`);
+      try {
+        persistStopRecord(paths.stopped, record, instanceId);
+      } catch (err) {
+        log(`could not persist the stop record: ${err.message}`);
+      }
     },
   });
   child = null;
