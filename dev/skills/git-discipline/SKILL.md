@@ -72,6 +72,20 @@ Force-push requires explicit user auth.
 
 Before commit: `git status` → check already-staged you didn't create. Found → another agent mid-commit. Poll every 5s up to 30s. Persists → ask user. Never commit on top, never unstage theirs.
 
+### Never stage at all when another agent shares the index — `git commit -- <paths>`
+
+The check above protects you from committing THEIR work. It does nothing about the reverse, which is the one that actually happens: **you stage, they commit, and your files land inside their commit under their message.** `git add` then `git commit` is two steps with a window, and the index is shared — anyone's commit in that window takes everything staged, including yours. Checking first does not close the window; it only tells you the index was clean at the moment you looked.
+
+Commit straight from the working tree instead, naming your paths. No staging, no window:
+
+```
+git commit -m "<message>" -- path/one path/two
+```
+
+Verified empirically rather than assumed: with another agent's file already staged in a shared index, this committed only the named path, and their work stayed staged and uncommitted — neither swept in nor disturbed.
+
+The failure this prevents is quiet and permanent: nothing is lost and nothing conflicts, so no tool reports a problem. One card's diff simply lives forever inside a commit bearing another card's name, and the history lies to whoever reads it next. Do not "fix" it afterwards by rewriting published history — record the misattribution in the next commit message and on the card, and move on.
+
 ## Own Work Is Never The Question
 
 Your own work commits separately, no questions. Mixed-state = some file has BOTH your edits AND foreign edits — question resolves on FOREIGN only. NEVER ask user about your own work. NEVER gate own-work commit on foreign attribution.
