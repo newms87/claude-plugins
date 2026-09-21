@@ -106,9 +106,24 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
    every card you file a priority chosen against the cards already on the plan, and when a finding
    changes an existing card's urgency, re-prioritise it then, not later.
 
+   A CARD YOU FILED AND NEVER READIED IS YOUR UNFINISHED WORK, NOT A QUEUE ENTRY. A card sits
+   in Review with ready_at null, which means dispatchable_derived is false: the poller cannot
+   see it and no sub-agent will ever claim it. It is not waiting on anything. It is not blocked.
+   It is parked, by you, and it will stay parked forever. So READYING IS YOURS TO DO, in the same
+   breath as filing — not a later step and not the operator's call. The only card that legitimately
+   waits on a person is one carrying an open problem (open_problem_count > 0); everything else you
+   ready the moment its dependencies and conflicts are recorded. When the operator has already made
+   the decision a card was waiting on, readying it is carrying out that decision, not a new question.
+   THE TELL, and it is a quiet one because the board looks busy: your plan shows a column of cards
+   you wrote and nothing is running. Filing FEELS like progress — the card is real, the writing was
+   work, the follow-up is captured — which is exactly why an unreadied pile can grow all night while
+   you believe the queue is full. Count what is DISPATCHABLE, never what exists.
+
    DISPATCH GATE — mechanical, run it before EVERY reply that ends your turn:
-   "Am I about to stop with fewer than 3 agents running while any unblocked card is open?"
+   "Am I about to stop with fewer than 3 agents running while any card on my plan is open?"
    If yes, you may not send that reply. Dispatch first, then report what is now running.
+   Open means open, not dispatchable: a card in Review you could ready in one call counts
+   against you exactly as a ToDo card does. Ready it, then dispatch it.
    Finishing what the operator asked about does NOT end the turn — an idle board does.
    Open questions never justify stopping: dispatch the unblocked work, and ask inside the
    same reply. A status summary with 0 agents running and open cards is the failure itself.
