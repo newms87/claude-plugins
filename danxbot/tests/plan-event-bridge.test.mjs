@@ -142,6 +142,57 @@ describe("single-instance lock", () => {
     fs.utimesSync(lock, old, old);
     assert.equal(bridge.acquireLock(lock), true);
   });
+
+  // DX-3028 (AC2/AC3) — `start()` mints an instanceId and MUST carry it into
+  // the run process's own env as DANX_BRIDGE_INSTANCE_ID (this is how the run
+  // process's heartbeats/stop records get the identity DX-2953's watchdog
+  // later compares against `lastStartedInstance`). Every pre-existing test's
+  // `spawnRun` double discards its `env` argument entirely — this is the
+  // first test that actually captures and asserts on it.
+  test("carries a minted instanceId into the run process's own env as DANX_BRIDGE_INSTANCE_ID, and it matches the pid record", async () => {
+    const dataDir = tmpDir();
+    let capturedEnv = null;
+    const result = await bridge.start({
+      env: env(dataDir),
+      sessionId: SESSION,
+      spawnRun: (sessionId, spawnEnv) => {
+        capturedEnv = spawnEnv;
+        return { pid: 4242 };
+      },
+      stderr: () => {},
+      waitVerdict: noVerdict,
+    });
+    assert.equal(result.started, true);
+    assert.equal(typeof capturedEnv.DANX_BRIDGE_INSTANCE_ID, "string");
+    assert.ok(capturedEnv.DANX_BRIDGE_INSTANCE_ID.length > 0);
+    // The base env's own keys still ride along unchanged (this is `{...env,
+    // DANX_BRIDGE_INSTANCE_ID}`, never a replacement object).
+    assert.equal(capturedEnv.CLAUDE_PLUGIN_DATA, dataDir);
+    const pidRecord = bridge.readJsonFile(pathsFor(dataDir).pid);
+    assert.equal(pidRecord.instanceId, capturedEnv.DANX_BRIDGE_INSTANCE_ID);
+  });
+
+  test("mints a DIFFERENT instanceId for each successive start (never reused across spawns)", async () => {
+    const dataDir = tmpDir();
+    const seen = [];
+    for (let i = 0; i < 2; i += 1) {
+      // Free the session for a fresh start each time.
+      fs.rmSync(pathsFor(dataDir).pid, { force: true });
+      const result = await bridge.start({
+        env: env(dataDir),
+        sessionId: SESSION,
+        spawnRun: (sessionId, spawnEnv) => {
+          seen.push(spawnEnv.DANX_BRIDGE_INSTANCE_ID);
+          return { pid: 1000 + i };
+        },
+        stderr: () => {},
+        waitVerdict: noVerdict,
+      });
+      assert.equal(result.started, true);
+    }
+    assert.equal(seen.length, 2);
+    assert.notEqual(seen[0], seen[1]);
+  });
 });
 
 // ------------------------------------------------------------- 2. stale takeover
@@ -280,6 +331,93 @@ describe("heartbeat", () => {
       instanceId: "instance-abc",
       startedAt: "2026-09-15T04:00:00.000Z",
     });
+  });
+});
+
+// -------------------------------------------------- 3b. persistStopRecord (DX-3028 AC3)
+
+// Test-review finding — `persistStopRecord` (the literal function AC3 exists
+// to add: "the parent persists that record to a local stop-record file") had
+// ZERO test coverage: no test called it, none asserted its JSON shape, and
+// the `record.instanceId || writingInstanceId` fallback was untested. This
+// matters beyond this card — DX-2953 depends on this exact file shape.
+describe("persistStopRecord (DX-3028 AC3)", () => {
+  test("writes the full stop-record shape, atomically (no leftover .tmp file)", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    bridge.persistStopRecord(
+      paths.stopped,
+      { reason: "board_unreadable", detail: "d", fix: "f", paths: ["/a.json"], instanceId: "i-1", degraded: true },
+      "i-1",
+      Date.parse("2026-09-21T00:00:00.000Z"),
+    );
+    assert.deepEqual(bridge.readJsonFile(paths.stopped), {
+      schemaVersion: 1,
+      reason: "board_unreadable",
+      detail: "d",
+      fix: "f",
+      paths: ["/a.json"],
+      instanceId: "i-1",
+      writingInstanceId: "i-1",
+      degraded: true,
+      recordedAt: "2026-09-21T00:00:00.000Z",
+    });
+    assert.deepEqual(fs.readdirSync(path.dirname(paths.stopped)).filter((n) => n.endsWith(".tmp")), []);
+  });
+
+  test("falls back to writingInstanceId when the child's own record carries none (e.g. a pre-DX-3028 subcommand, or a spawn-time bridge_failed)", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    bridge.persistStopRecord(
+      paths.stopped,
+      { reason: "bridge_failed", detail: "spawn ENOENT", fix: "", paths: [], instanceId: "", degraded: false },
+      "run-instance-xyz",
+      0,
+    );
+    const record = bridge.readJsonFile(paths.stopped);
+    assert.equal(record.instanceId, "run-instance-xyz");
+    assert.equal(record.writingInstanceId, "run-instance-xyz");
+  });
+
+  test("a record that DOES carry its own instanceId keeps it, distinct from writingInstanceId if they ever differ", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    bridge.persistStopRecord(
+      paths.stopped,
+      { reason: "revoked", detail: "d", fix: "f", paths: [], instanceId: "child-instance", degraded: true },
+      "run-instance-different",
+      0,
+    );
+    const record = bridge.readJsonFile(paths.stopped);
+    assert.equal(record.instanceId, "child-instance");
+    assert.equal(record.writingInstanceId, "run-instance-different");
+  });
+
+  test("overwrites — only the most recent record survives", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    bridge.persistStopRecord(paths.stopped, { reason: "revoked", detail: "first", fix: "", paths: [], instanceId: "i-1", degraded: true }, "i-1", 0);
+    bridge.persistStopRecord(
+      paths.stopped,
+      { reason: "not_connected", detail: "second", fix: "", paths: [], instanceId: "i-1", degraded: false },
+      "i-1",
+      1,
+    );
+    assert.equal(bridge.readJsonFile(paths.stopped).reason, "not_connected");
+  });
+
+  test("paths.stopped is a real, distinct path ending in .stopped.json, covered by pruneStale via STATE_SUFFIXES", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    assert.ok(paths.stopped.endsWith(".stopped.json"));
+    bridge.persistStopRecord(paths.stopped, { reason: "revoked", detail: "d", fix: "", paths: [], instanceId: "i-1", degraded: true }, "i-1", Date.now());
+    assert.equal(fs.existsSync(paths.stopped), true);
+    // A file far older than STALE_STATE_MS is pruned by the existing sweep —
+    // proves .stopped.json rides the same STATE_SUFFIXES list as .pid.json.
+    const old = new Date(Date.now() - bridge.STALE_STATE_MS - 5_000);
+    fs.utimesSync(paths.stopped, old, old);
+    bridge.pruneStale(path.dirname(paths.stopped));
+    assert.equal(fs.existsSync(paths.stopped), false);
   });
 });
 
@@ -450,6 +588,92 @@ describe("subcommand exit handling", () => {
     });
     assert.equal(reason, "bridge_failed: npx not found: expected X next to Y");
     assert.equal(fatal, true);
+  });
+
+  // Test-review finding (DX-3028 AC2/AC3) — `onStopped`/degraded-record
+  // non-terminal behavior was entirely unexercised: no `superviseBridge` test
+  // passed an `onStopped` callback, and no fixture emitted a degraded stop
+  // record followed by more output. This is the core of `runChildOnce`'s
+  // change: a `degraded:true` record must NOT end the promise (the child
+  // stays alive), only a non-degraded one does.
+  test("a degraded stop record reaches onStopped but does NOT end supervision — events after it still relay, and the run's own outcome reflects the LATER, non-degraded record", async () => {
+    const stopped = [];
+    const { pushed, relay } = spyRelay();
+    const { reason, fatal } = await bridge.superviseBridge({
+      spawnChild: () =>
+        fakeChild({
+          stdout: [
+            recordLine({
+              type: "stopped",
+              reason: "board_unreadable",
+              detail: "d1",
+              fix: "f1",
+              paths: ["/a.json"],
+              instanceId: "i-1",
+              degraded: true,
+            }),
+            // Proves the child was NOT treated as exited when the degraded
+            // record arrived — a genuinely-ended child would never relay
+            // another event afterward.
+            recordLine({ type: "event", id: 9, text: "still alive after degrading" }),
+            recordLine({
+              type: "stopped",
+              reason: "not_connected",
+              detail: "d2",
+              fix: "f2",
+              paths: [],
+              instanceId: "i-1",
+              degraded: false,
+            }),
+          ],
+          code: 1,
+        }),
+      relay,
+      log: () => {},
+      now: () => 0,
+      sleep: noSleep,
+      onStopped: (record) => stopped.push(record),
+    });
+    assert.deepEqual(
+      stopped.map((r) => [r.reason, r.degraded]),
+      [
+        ["board_unreadable", true],
+        ["not_connected", false],
+      ],
+    );
+    assert.deepEqual(pushed, [{ id: 9, text: "still alive after degrading" }]);
+    assert.equal(reason, "not_connected: d2");
+    assert.equal(fatal, false);
+  });
+
+  test("a spawnChild that throws still reaches onStopped with a synthesized bridge_failed record (degraded:false)", async () => {
+    const stopped = [];
+    await bridge.superviseBridge({
+      spawnChild: () => {
+        throw new Error("npx not found");
+      },
+      relay: spyRelay().relay,
+      log: () => {},
+      now: () => 0,
+      sleep: noSleep,
+      onStopped: (record) => stopped.push(record),
+    });
+    assert.equal(stopped.length, 1);
+    assert.equal(stopped[0].reason, "bridge_failed");
+    assert.equal(stopped[0].degraded, false);
+  });
+
+  test("onStopped is entirely optional — supervision behaves identically when it is omitted (pre-DX-3028 call shape)", async () => {
+    const { relay } = spyRelay();
+    const { reason, fatal } = await bridge.superviseBridge({
+      spawnChild: () => fakeChild({ stdout: [recordLine({ type: "stopped", reason: "not_connected", detail: "d" })], code: 1 }),
+      relay,
+      log: () => {},
+      now: () => 0,
+      sleep: noSleep,
+    });
+    assert.equal(reason, "not_connected: d");
+    assert.equal(fatal, false);
   });
 });
 
