@@ -20,6 +20,18 @@ if [ -z "$PROMPT" ]; then
     exit 0
 fi
 
+# DX-3051: a question mark inside a relayed danxbot dashboard event (a card comment,
+# e.g.) is the CARD's text, not the operator's — this gate exists to catch operator
+# intent, and firing on machine-relayed card text has actually stopped a live session
+# (a comment containing "?" emitted "STOP all work"). RELAY_MARKER (danxbot's
+# plan-event-bridge.mjs) is the only available signal: Claude Code's documented
+# UserPromptSubmit hook schema carries no message-source field. Do not delete this as
+# dead code — it is load-bearing for every relayed event, not just an edge case.
+RELAY_MARKER='[danxbot-relayed-event]'
+if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    exit 0
+fi
+
 if echo "$PROMPT" | grep -q '?'; then
     GATE="QUESTION DETECTED in user prompt. MANDATORY: Load Skill(human-loop) immediately.
 
