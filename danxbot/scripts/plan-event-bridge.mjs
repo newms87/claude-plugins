@@ -137,11 +137,20 @@ export const RELAY_QUEUE_CAP = CURSOR_ID_MEMORY;
 
 /**
  * Public, stable, short marker any plugin's per-turn hook may pattern-match against the
- * `prompt` text to detect that a turn was machine-relayed rather than typed by the
- * operator (DX-3051). Checked against Claude Code's documented hook-input schema
- * 2026-09-21 (https://code.claude.com/docs/en/hooks.md, "Common input fields" +
- * "UserPromptSubmit input"): a UserPromptSubmit hook's stdin carries `session_id`,
- * `prompt_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `permission_mode`, `effort`,
+ * `prompt` text to detect that a turn was MACHINE-POSTED by this bridge rather than typed
+ * by the operator — originally DX-3051 (relayed dashboard events), broadened by DX-3056 to
+ * also cover this file's OTHER machine-authored message family, bridge failure notices
+ * (`FAILURE_PREFIX` / `failureNotice()` below): both reach the session through the exact
+ * same `postToInbox(type:"user")` path and are therefore indistinguishable from a typed
+ * operator turn at the hook layer, so both need the identical suppression treatment from
+ * every consumer — see DX-3056's card for why one marker, not two (a failure notice's
+ * `reason`/`fix` text is free-form and can incidentally contain a "?" or an investigation
+ * trigger word, at precisely the moment the bridge is broken and the session most needs to
+ * keep functioning rather than being forced into a diagnostic-mode halt). Checked against
+ * Claude Code's documented hook-input schema 2026-09-21
+ * (https://code.claude.com/docs/en/hooks.md, "Common input fields" + "UserPromptSubmit
+ * input"): a UserPromptSubmit hook's stdin carries `session_id`, `prompt_id`,
+ * `transcript_path`, `cwd`, `scratchpad_dir`, `permission_mode`, `effort`,
  * `hook_event_name`, optionally `agent_id`/`agent_type`, and `prompt` — NO field
  * identifies a message's source. Content-matching is therefore the only mechanism
  * available, so this token exists to be that mechanism without coupling a consumer to
@@ -150,7 +159,8 @@ export const RELAY_QUEUE_CAP = CURSOR_ID_MEMORY;
  * already reads. A bash hook in another plugin cannot `import` this module (a plugin
  * never reads another plugin's source), so it copies this literal string instead, the
  * same way two independently-deployed services agree on a header value. Consumers as of
- * DX-3051: human-collaboration/scripts/human-loop-mandate.sh,
+ * DX-3051 (unchanged by DX-3056 — same literal, no new grep needed):
+ * human-collaboration/scripts/human-loop-mandate.sh,
  * investigate/scripts/investigation-gate.sh, base/scripts/{operating-contract,
  * craft-mandate}.sh, danxbot/scripts/{zero-context-mandate,plan-workflow-autoload}.sh.
  * CHANGING THIS STRING IS A BREAKING CROSS-PLUGIN CONTRACT CHANGE: grep every plugin's
@@ -165,9 +175,17 @@ export const RELAY_PREFIX =
   "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
   "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
 
-/** Every failure notice is prefixed with this — same reason as RELAY_PREFIX, different meaning. */
+/**
+ * Every failure notice is prefixed with this — same reason as RELAY_PREFIX, different
+ * meaning. DX-3056: also carries RELAY_MARKER at the start, for the identical reason
+ * RELAY_PREFIX does — this message reaches the session through the same
+ * `postToInbox(type:"user")` path as a relayed dashboard event and must be suppressed by
+ * the same six per-turn hooks, since a failure notice's free-form `reason`/`fix` text can
+ * incidentally contain a "?" or an investigation trigger word (see RELAY_MARKER's own doc
+ * comment above for the full rationale).
+ */
 export const FAILURE_PREFIX =
-  "[danxbot plan event bridge; this is not a message from another Claude session, and not a request for " +
+  `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
   "permission. The plugin cannot deliver this plan's dashboard events to you.]";
 
 /**

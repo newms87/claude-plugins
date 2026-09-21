@@ -58,6 +58,24 @@ describe("RELAY_MARKER", () => {
     const content = bridge.relayContent("dan commented: is this firing on every turn?");
     assert.ok(content.includes(bridge.RELAY_MARKER));
   });
+
+  // DX-3056: FAILURE_PREFIX / failureNotice() reach the session through the exact same
+  // postToInbox(type:"user") path as a relayed event, but were left out of DX-3051's
+  // scope — they must carry the same marker so the same six consumer hooks suppress on
+  // a failure notice too.
+  test("is also embedded at the start of FAILURE_PREFIX (DX-3056)", () => {
+    assert.ok(
+      bridge.FAILURE_PREFIX.startsWith(bridge.RELAY_MARKER),
+      "FAILURE_PREFIX must start with RELAY_MARKER — a bridge failure notice reaches the " +
+        "session through the same postToInbox(type:\"user\") path as a relayed event and " +
+        "must be suppressed by the same six per-turn hooks (DX-3056)",
+    );
+  });
+
+  test("failureNotice() output carries the marker other plugins detect (DX-3056)", () => {
+    const notice = bridge.failureNotice("the bridge could not start (missing CLAUDE_PLUGIN_DATA)", "reinstall the plugin");
+    assert.ok(notice.includes(bridge.RELAY_MARKER));
+  });
 });
 
 // ------------------------------------------------------------- 1. single instance

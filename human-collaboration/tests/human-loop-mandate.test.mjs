@@ -24,6 +24,17 @@ const RELAY_PREFIX =
   "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
   "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
 
+/**
+ * DX-3056 — same fixture-not-import discipline as RELAY_PREFIX above, mirroring
+ * plan-event-bridge.mjs's FAILURE_PREFIX + failureNotice() shape. A bridge failure
+ * notice's `reason`/`fix` text is free-form and can incidentally contain a "?" — this
+ * fixture's reason is contrived to do exactly that, since that is the class of text
+ * this hook must NOT fire a diagnostic-mode halt on.
+ */
+const FAILURE_PREFIX =
+  `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
+  "permission. The plugin cannot deliver this plan's dashboard events to you.]";
+
 function runHook(prompt) {
   const payload = JSON.stringify({ prompt, session_id: "test-session" });
   const result = spawnSync("bash", [SCRIPT], {
@@ -42,6 +53,15 @@ describe("human-loop-mandate.sh", () => {
       RELAY_PREFIX +
       "\ndan commented on DX-3008: This sounds concerning.... on EVERY prompt? on every turn? How often is this firing?";
     assert.equal(runHook(relayed), "");
+  });
+
+  test("stays silent on a bridge failure notice containing '?' (DX-3056)", () => {
+    const failure =
+      FAILURE_PREFIX +
+      "\ndanxbot plan events are NOT reaching this session: could not read the start time of Claude Code process " +
+      "4821 (CLAUDE_PID) — is the session still running?. Fix: restart the session so the plugin can observe " +
+      "CLAUDE_PID again.";
+    assert.equal(runHook(failure), "");
   });
 
   test("still fires on a typed operator prompt containing '?'", () => {

@@ -27,6 +27,11 @@ const RELAY_PREFIX =
   "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
   "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
 
+/** DX-3056 — mirrors plan-event-bridge.mjs's FAILURE_PREFIX, which now also carries RELAY_MARKER. */
+const FAILURE_PREFIX =
+  `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
+  "permission. The plugin cannot deliver this plan's dashboard events to you.]";
+
 function runHook(prompt) {
   const payload = JSON.stringify({ prompt, session_id: "test-session" });
   const result = spawnSync("bash", [SCRIPT, "UserPromptSubmit"], {
@@ -42,6 +47,14 @@ describe("craft-mandate.sh UserPromptSubmit", () => {
   test("suppresses the re-assert entirely on a relayed turn (DX-3051)", () => {
     const relayed = RELAY_PREFIX + "\ndan commented on DX-3008: is this firing on every turn?";
     assert.equal(runHook(relayed), "");
+  });
+
+  test("suppresses the re-assert entirely on a bridge failure notice (DX-3056)", () => {
+    const failure =
+      FAILURE_PREFIX +
+      "\ndanxbot plan events are NOT reaching this session: the bridge could not start (missing CLAUDE_PLUGIN_DATA). " +
+      "Fix: reinstall the danxbot plugin if this session has no plugin data directory.";
+    assert.equal(runHook(failure), "");
   });
 
   test("still emits on a typed operator prompt", () => {
