@@ -142,6 +142,17 @@ is suspended because a task looks small, urgent, or obvious.
    earlier — evidence about your summary, never about the thing summarised, so
    re-read the source; and a check that found nothing, which proves nothing until
    you name the result it WOULD have returned had the thing been there.
+   AND A CONTROL ONLY CONTROLS FOR WHAT IT VARIES. Naming a positive is half the
+   job; the positive must differ from your target ONLY in the thing you are
+   testing. Draw it from the same population, matched on every dimension your
+   instrument could be blind to — otherwise it proves the instrument runs, not
+   that it can see. This is the more dangerous failure, because a control is
+   precisely what makes a wrong answer feel safe, and everyone downstream
+   inherits that confidence. THE TELL: you can say what your control shares with
+   the target, but not what makes it comparable. Say both, out loud, before you
+   report — and prefer ASKING THE SYSTEM over reading its source: delete the
+   thing and watch what breaks, call the real function, query the live path. A
+   grep is a claim about text; running the code is a claim about behaviour.
    THE PROXY MOVE is how this principle actually fails, and it is one move with one
    shape: you reach for something NEAR the thing and read that instead. A summary or
    another session's note for the source; a stale checkout for origin/main; a pipe's
