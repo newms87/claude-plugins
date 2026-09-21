@@ -419,7 +419,9 @@ describe("subcommand exit handling", () => {
       sleep: noSleep,
       onReady: (record) => ready.push(record),
     });
-    assert.deepEqual(ready, [{ kind: "ready", boards: ["danxbot:danxbot-main", "gpt-manager:main"] }]);
+    assert.deepEqual(ready, [
+      { kind: "ready", boards: ["danxbot:danxbot-main", "gpt-manager:main"], cardCount: null, degraded: false },
+    ]);
     assert.deepEqual(pushed, [{ id: 1, text: "one" }]);
   });
 
@@ -638,8 +640,35 @@ describe("output parsing", () => {
       ),
       { kind: "stopped", reason: "board_unreadable", detail: "d", fix: "widen scope", paths: ["/a.json"], instanceId: "i-1", degraded: true },
     );
-    assert.deepEqual(bridge.parseRecord('{"type":"ready","boards":["a:b"]}'), { kind: "ready", boards: ["a:b"] });
-    assert.deepEqual(bridge.parseRecord('{"type":"ready"}'), { kind: "ready", boards: [] });
+    // DX-3059 — `cardCount`/`degraded` ride alongside `boards` now; `boards:
+    // null` (inventory read failed) is kept distinct from `boards: []`
+    // (read succeeded, no boards reachable) — see `describeReadyRecord`.
+    assert.deepEqual(bridge.parseRecord('{"type":"ready","boards":["a:b"],"cardCount":3,"degraded":false}'), {
+      kind: "ready",
+      boards: ["a:b"],
+      cardCount: 3,
+      degraded: false,
+    });
+    assert.deepEqual(bridge.parseRecord('{"type":"ready","boards":["a:b"],"cardCount":0,"degraded":true}'), {
+      kind: "ready",
+      boards: ["a:b"],
+      cardCount: 0,
+      degraded: true,
+    });
+    assert.deepEqual(bridge.parseRecord('{"type":"ready","boards":[],"cardCount":0,"degraded":true}'), {
+      kind: "ready",
+      boards: [],
+      cardCount: 0,
+      degraded: true,
+    });
+    assert.deepEqual(bridge.parseRecord('{"type":"ready","boards":null,"cardCount":null,"degraded":true}'), {
+      kind: "ready",
+      boards: null,
+      cardCount: null,
+      degraded: true,
+    });
+    // pre-DX-2970 subcommand: no boards/cardCount/degraded on the wire at all.
+    assert.deepEqual(bridge.parseRecord('{"type":"ready"}'), { kind: "ready", boards: [], cardCount: null, degraded: false });
     assert.deepEqual(bridge.parseRecord("npm warn exec something"), { kind: "junk" });
     assert.deepEqual(bridge.parseRecord('{"type":"event","id":3}'), { kind: "junk" });
   });
@@ -683,6 +712,61 @@ describe("output parsing", () => {
     await queue.idle();
     assert.deepEqual(posted, [bridge.relayContent("no id"), bridge.relayContent("eight")]);
     assert.deepEqual(recorded, [8]);
+  });
+});
+
+// ------------------------------------------------- 8b. degraded ready reporting (DX-3059)
+
+describe("describeReadyRecord (DX-3059)", () => {
+  test("degraded: the inventory read itself failed (boards null) reads as a problem, names what's unreachable, says what to do", () => {
+    const message = bridge.describeReadyRecord({ boards: null, cardCount: null, degraded: true });
+    assert.match(message, /^DEGRADED/);
+    assert.match(message, /inventory read failed/);
+    assert.match(message, /plan_connect/);
+    assert.doesNotMatch(message, /no cards yet/);
+  });
+
+  test("degraded: the credential can see no board at all (boards empty, read succeeded) reads as a problem, not the benign no-cards text", () => {
+    const message = bridge.describeReadyRecord({ boards: [], cardCount: 0, degraded: true });
+    assert.match(message, /^DEGRADED/);
+    assert.match(message, /cannot see any board/);
+    assert.doesNotMatch(message, /no cards yet/);
+    assert.doesNotMatch(message, /none — the connected plan has no cards/);
+  });
+
+  test("healthy but genuinely empty: real boards are known and reachable, the plan simply has zero cards — benign, not a problem", () => {
+    // Server's own `degraded` flag is true here too (cardCount === 0), but
+    // boards are known and non-empty, so this must NOT read as a problem —
+    // AC 32626.
+    const message = bridge.describeReadyRecord({
+      boards: ["danxbot:danxbot-main"],
+      cardCount: 0,
+      degraded: true,
+    });
+    assert.doesNotMatch(message, /^DEGRADED/);
+    assert.match(message, /danxbot:danxbot-main/);
+    assert.match(message, /no cards yet/);
+  });
+
+  test("healthy with cards: unchanged, no problem language, no no-cards text", () => {
+    const message = bridge.describeReadyRecord({
+      boards: ["danxbot:danxbot-main", "gpt-manager:main"],
+      cardCount: 114,
+      degraded: false,
+    });
+    assert.doesNotMatch(message, /^DEGRADED/);
+    assert.match(message, /danxbot:danxbot-main, gpt-manager:main/);
+    assert.doesNotMatch(message, /no cards yet/);
+  });
+
+  test("a test asserting only the degraded path would NOT catch the empty-plan path regressing to DEGRADED", () => {
+    // Regression guard for AC 32627's own requirement: prove the two paths
+    // are independently distinguishable, not just that "degraded" alone
+    // never appears anywhere.
+    const degraded = bridge.describeReadyRecord({ boards: [], cardCount: 0, degraded: true });
+    const emptyHealthy = bridge.describeReadyRecord({ boards: ["danxbot:danxbot-main"], cardCount: 0, degraded: true });
+    assert.match(degraded, /^DEGRADED/);
+    assert.doesNotMatch(emptyHealthy, /^DEGRADED/);
   });
 });
 

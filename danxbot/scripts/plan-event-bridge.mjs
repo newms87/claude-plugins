@@ -920,10 +920,71 @@ export function parseRecord(line) {
   // ticket AND proved its credential can read every board of the connected
   // plan. That is what `start` waits for, so a hook can report a failed start
   // rather than exiting 0 over a bridge that never worked.
+  // DX-3059 — `cardCount`/`degraded` ride alongside `boards` now (DX-2970's
+  // `fetchPlanInventory`, published `@thehammer/danx-dashboard-mcp@0.1.94`).
+  // `boards === null` is kept distinct from `boards: []` — the published
+  // shape (`BridgeReady`, bridge.ts) sends `null` ONLY when the inventory
+  // read itself failed, and `[]` when the read succeeded but found no
+  // boards; `onReady` below needs to tell those apart to name the right
+  // problem. A pre-DX-2970 subcommand never sends `boards` at all
+  // (`undefined`), which — like every other unrecognized shape here —
+  // degrades to the same "[]" this parser already produced before this
+  // card, not a new failure mode.
   if (record?.type === "ready") {
-    return { kind: "ready", boards: Array.isArray(record.boards) ? record.boards.map(String) : [] };
+    return {
+      kind: "ready",
+      boards: record.boards === null ? null : Array.isArray(record.boards) ? record.boards.map(String) : [],
+      cardCount: Number.isSafeInteger(record.cardCount) && record.cardCount >= 0 ? record.cardCount : null,
+      degraded: record.degraded === true,
+    };
   }
   return { kind: "junk" };
+}
+
+/**
+ * DX-3059 — the "ready" log line, split into the three outcomes DX-2970's
+ * `boards`/`cardCount`/`degraded` were added to distinguish. The server's own
+ * `degraded` flag is deliberately NOT used as-is here: `bridge.ts` sets it
+ * true both when the credential can't see any board (a real problem) AND
+ * when the boards are known and reachable but the plan simply has zero cards
+ * yet (not a problem at all) — see `BridgeReady` in `bridge.ts`. Telling
+ * those apart needs `boards` itself, not just the flag:
+ *
+ *   - `boards === null` — the one best-effort inventory read failed
+ *     (network/timeout/non-2xx/malformed body). Nothing is known.
+ *   - `boards.length === 0` (array, but empty) — the read succeeded and
+ *     this session's credential can see NO board of the connected plan.
+ *   - `boards.length > 0` — real, reachable boards are known. If
+ *     `cardCount === 0` too, that is a genuinely empty plan: benign, and
+ *     the ONLY case allowed to print the pre-DX-2970 "no cards" text.
+ *
+ * A pre-DX-2970 subcommand (or the DX-2920 gap this card's parent exists to
+ * close) sends none of these fields — `boards` parses to `[]`, `cardCount`
+ * to `null`, `degraded` to `false` — which falls into the same "no boards
+ * known, not flagged degraded" shape as a real empty-boards problem. That is
+ * intentional: an old subcommand's silence about its own boards is exactly
+ * the failure DX-2970 exists to stop being silent about, so it is treated as
+ * the same problem here rather than defaulting to benign.
+ */
+export function describeReadyRecord(record) {
+  const boards = record.boards;
+  const cardCount = record.cardCount;
+  if (!Array.isArray(boards) || boards.length === 0) {
+    const why =
+      boards === null
+        ? "the plan inventory read failed (network/timeout/bad response), so nothing is known"
+        : "this session's credential cannot see any board of the connected plan";
+    return (
+      `DEGRADED — ${why}. The bridge is streaming, but it may be relaying nothing. ` +
+      `Check the dashboard credential's board scope and the dashboard's reachability, ` +
+      `then run plan_connect again in this session once fixed.`
+    );
+  }
+  const boardList = boards.join(", ");
+  if (cardCount === 0) {
+    return `streaming; this session's own credential verified against board(s) ${boardList} (no cards yet)`;
+  }
+  return `streaming; this session's own credential verified against board(s) ${boardList}`;
 }
 
 /** Feeds complete lines to `onLine`, however the stream happens to split its chunks. */
@@ -1447,10 +1508,11 @@ export async function run(
     log,
     sleep,
     onReady: (record) => {
-      log(
-        `streaming; this session's own credential verified against board(s) ` +
-          `${record.boards.join(", ") || "(none — the connected plan has no cards)"}`,
-      );
+      // DX-3059 — `describeReadyRecord` tells a degraded ready record (the
+      // bridge cannot see what it should) apart from a genuinely empty plan
+      // (benign) and a populated one; see its own doc comment for why the
+      // server's coarse `degraded` flag alone can't make that call.
+      log(describeReadyRecord(record));
       sendVerdict({ verdict: "ready" });
     },
     // DX-3028 (AC3) — persisted the MOMENT the child reports it, before this
