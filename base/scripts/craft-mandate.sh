@@ -20,7 +20,21 @@ set -euo pipefail
 EVENT="${1:-SessionStart}"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
-    cat >/dev/null
+    INPUT="$(cat 2>/dev/null || true)"
+    # DX-3051: a relayed danxbot dashboard event (a card comment/title acted on in the
+    # dashboard) is not new operator intent — this mandate is already in context from
+    # SessionStart, so re-asserting it on a machine-relayed turn is pure per-event tax
+    # with nothing new to say. RELAY_MARKER (danxbot's plan-event-bridge.mjs) is the
+    # only available signal: Claude Code's documented UserPromptSubmit hook schema
+    # carries no message-source field (checked 2026-09-21,
+    # https://code.claude.com/docs/en/hooks.md). This does NOT touch the full-vs-pointer
+    # cadence question (DX-3008) — it only suppresses output entirely on a relayed turn,
+    # whatever this branch would otherwise emit. Do not delete this as dead code.
+    PROMPT="$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
+    RELAY_MARKER='[danxbot-relayed-event]'
+    if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+        exit 0
+    fi
 fi
 
 read -r -d '' MANDATE <<'EOF' || true

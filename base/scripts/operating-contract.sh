@@ -38,11 +38,27 @@
 
 EVENT="${1:-SessionStart}"
 
-# Drain stdin unconditionally. UserPromptSubmit/SessionStart hooks are handed
-# a JSON payload; not reading it can leave the writer blocked on a full pipe.
-cat >/dev/null 2>&1 || true
+# Drain stdin unconditionally into INPUT. UserPromptSubmit/SessionStart hooks are handed
+# a JSON payload; not reading it can leave the writer blocked on a full pipe. (DX-3051 also
+# needs this JSON parsed below, on UserPromptSubmit, to detect a machine-relayed turn.)
+INPUT="$(cat 2>/dev/null || true)"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
+    # DX-3051: a relayed danxbot dashboard event (a card comment/title acted on in the
+    # dashboard) is not new operator intent — the session already holds this contract
+    # from SessionStart, so re-asserting even the short pointer on a machine-relayed
+    # turn is pure per-event tax with nothing new to say. RELAY_MARKER (danxbot's
+    # plan-event-bridge.mjs) is the only available signal: Claude Code's documented
+    # UserPromptSubmit hook schema carries no message-source field (checked 2026-09-21,
+    # https://code.claude.com/docs/en/hooks.md). node, not jq, per this file's own
+    # rationale above — jq is not on the hook runtime PATH. Do not delete this as dead
+    # code; it fires on every relayed event, not just an edge case.
+    PROMPT="$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
+    RELAY_MARKER='[danxbot-relayed-event]'
+    if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+        exit 0
+    fi
+
     cat <<'EOF'
 OPERATING CONTRACT still in force (full text injected at session start): (1) orchestrate — dispatch sub-agents unless this is a small-context quick-hit; never end a turn with a free agent slot and unblocked work, or with running work and no wake-up armed; (2) no action without evidence you read this turn, from the right environment; (3) run the experiment before committing to a design; (4) never answer the operator from an assumption, and never from a PROXY for the real check — a summary or another session's note standing in for the source, a stale checkout for origin/main, a pipe's exit code for the command's, a file-level grep for the function-level one, a status label for the row: name the source you read THIS turn, or label the claim unverified.
 EOF
