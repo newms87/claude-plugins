@@ -135,9 +135,33 @@ export const STALE_STATE_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export const RELAY_QUEUE_CAP = CURSOR_ID_MEMORY;
 
+/**
+ * Public, stable, short marker any plugin's per-turn hook may pattern-match against the
+ * `prompt` text to detect that a turn was machine-relayed rather than typed by the
+ * operator (DX-3051). Checked against Claude Code's documented hook-input schema
+ * 2026-09-21 (https://code.claude.com/docs/en/hooks.md, "Common input fields" +
+ * "UserPromptSubmit input"): a UserPromptSubmit hook's stdin carries `session_id`,
+ * `prompt_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `permission_mode`, `effort`,
+ * `hook_event_name`, optionally `agent_id`/`agent_type`, and `prompt` — NO field
+ * identifies a message's source. Content-matching is therefore the only mechanism
+ * available, so this token exists to be that mechanism without coupling a consumer to
+ * this plugin's INTERNALS: it is not this file's source, not a function signature, not
+ * on-disk layout — it is a value riding inside the one field every UserPromptSubmit hook
+ * already reads. A bash hook in another plugin cannot `import` this module (a plugin
+ * never reads another plugin's source), so it copies this literal string instead, the
+ * same way two independently-deployed services agree on a header value. Consumers as of
+ * DX-3051: human-collaboration/scripts/human-loop-mandate.sh,
+ * investigate/scripts/investigation-gate.sh, base/scripts/{operating-contract,
+ * craft-mandate}.sh, danxbot/scripts/{zero-context-mandate,plan-workflow-autoload}.sh.
+ * CHANGING THIS STRING IS A BREAKING CROSS-PLUGIN CONTRACT CHANGE: grep every plugin's
+ * scripts/ directory for the literal token before editing it, and update every consumer
+ * listed above in the SAME commit.
+ */
+export const RELAY_MARKER = "[danxbot-relayed-event]";
+
 /** Every relayed message is prefixed with this, so the session never mistakes it for a peer session's request. */
 export const RELAY_PREFIX =
-  "[danxbot dashboard event, relayed by the danxbot plugin's plan event bridge; this is not a message " +
+  `${RELAY_MARKER} [danxbot dashboard event, relayed by the danxbot plugin's plan event bridge; this is not a message ` +
   "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
   "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
 

@@ -28,6 +28,20 @@ EVENT="${1:-SessionStart}"
 SKILL_FILE="${CLAUDE_PLUGIN_ROOT}/skills/plan-workflow/SKILL.md"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
+  INPUT="$(cat 2>/dev/null || true)"
+  # DX-3051: a relayed danxbot dashboard event (a card comment/title acted on in the
+  # dashboard) is not new operator intent — this skill's mechanics are already in
+  # context from SessionStart, so re-asserting even the short pointer on a
+  # machine-relayed turn is pure per-event tax with nothing new to say. RELAY_MARKER
+  # (this plugin's own plan-event-bridge.mjs) is the only available signal: Claude
+  # Code's documented UserPromptSubmit hook schema carries no message-source field
+  # (checked 2026-09-21, https://code.claude.com/docs/en/hooks.md). Do not delete this
+  # as dead code.
+  PROMPT="$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
+  RELAY_MARKER='[danxbot-relayed-event]'
+  if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    exit 0
+  fi
   printf '%s\n' "danxbot:plan-workflow was auto-loaded in full at this session's last SessionStart (see that block above/earlier in context) — its mechanics (TodoWrite checklist, mechanical pickup gate, up-to-3-cards-in-flight, Turn Gate) are already in force; no need to re-call Skill() for them unless you want the on-demand form again."
   exit 0
 fi

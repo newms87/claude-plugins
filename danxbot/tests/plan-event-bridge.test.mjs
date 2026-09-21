@@ -43,6 +43,23 @@ function writePid(dataDir, record) {
 
 const noSleep = async () => {};
 
+// ---------------------------------------------------------- 0. relay marker (DX-3051)
+
+describe("RELAY_MARKER", () => {
+  test("is exported and embedded at the start of RELAY_PREFIX", () => {
+    assert.equal(bridge.RELAY_MARKER, "[danxbot-relayed-event]");
+    assert.ok(
+      bridge.RELAY_PREFIX.startsWith(bridge.RELAY_MARKER),
+      "RELAY_PREFIX must start with RELAY_MARKER — other plugins' hooks pattern-match on this literal",
+    );
+  });
+
+  test("relayContent output carries the marker other plugins detect (DX-3051)", () => {
+    const content = bridge.relayContent("dan commented: is this firing on every turn?");
+    assert.ok(content.includes(bridge.RELAY_MARKER));
+  });
+});
+
 // ------------------------------------------------------------- 1. single instance
 
 describe("single-instance lock", () => {

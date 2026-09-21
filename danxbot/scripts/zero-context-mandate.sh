@@ -7,6 +7,19 @@ set -euo pipefail
 EVENT="${1:-SessionStart}"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
+  INPUT="$(cat 2>/dev/null || true)"
+  # DX-3051: a relayed danxbot dashboard event (a card comment/title acted on in the
+  # dashboard) is not new operator intent — this mantra is already in context from
+  # SessionStart, so re-asserting even the short pointer on a machine-relayed turn is
+  # pure per-event tax with nothing new to say. RELAY_MARKER (this plugin's own
+  # plan-event-bridge.mjs) is the only available signal: Claude Code's documented
+  # UserPromptSubmit hook schema carries no message-source field (checked 2026-09-21,
+  # https://code.claude.com/docs/en/hooks.md). Do not delete this as dead code.
+  PROMPT="$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
+  RELAY_MARKER='[danxbot-relayed-event]'
+  if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    exit 0
+  fi
   printf '%s\n' "DANXBOT MANTRA still in force: every piece of work, follow-up and cleanup lives on a card (AC item or its own card) or in the plan, never only in this session; ideal and correct solution, zero tech debt, go slow to go fast, leave no rakes; work only your connected plan's cards, highest-priority unblocked first — an off-plan finding is FILED to the plan it serves, never built here — and give every card you file a priority chosen against the cards already on the plan."
   exit 0
 fi
