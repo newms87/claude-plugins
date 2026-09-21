@@ -8,17 +8,37 @@
 // (never the actual `npx ... bridge` — that would need network access and would hide
 // the CLAUDE_PID behavior this fixture exists to exercise) so a test can observe both
 // "still running" and "the stub child is gone after shutdown" against real OS processes.
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as bridge from "../../scripts/plan-event-bridge.mjs";
 import { spawnStandIn } from "./spawn-standin.mjs";
 
+const here = path.dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(process.env.RUN_BRIDGE_FIXTURE_CONFIG ?? "{}");
 
 const deps = {
-  spawnSubcommand: () => {
-    const child = spawnStandIn({ stdio: ["ignore", "pipe", "pipe"] });
-    process.stdout.write(`fixture-child-pid=${child.pid}\n`);
-    return child;
-  },
+  // DX-2953 — `config.scriptedRecords`, when present, spawns
+  // `scripted-subcommand.mjs` instead of the plain never-emitting stand-in, so
+  // a test can drive the REAL onReady/onStopped/onEvent wiring in `run()`
+  // (the DX-2953 marker writes) through a real child process's real stdout,
+  // not a stub. `config.scriptedExitCode` (optional) makes it exit after
+  // emitting every record; omitted, it stays alive like the plain stand-in.
+  spawnSubcommand: Array.isArray(config.scriptedRecords)
+    ? () => {
+        const child = spawn(process.execPath, [path.join(here, "scripted-subcommand.mjs")], {
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+          env: { ...process.env, SCRIPTED_SUBCOMMAND_CONFIG: JSON.stringify({ records: config.scriptedRecords, exitCode: config.scriptedExitCode }) },
+        });
+        process.stdout.write(`fixture-child-pid=${child.pid}\n`);
+        return child;
+      }
+    : () => {
+        const child = spawnStandIn({ stdio: ["ignore", "pipe", "pipe"] });
+        process.stdout.write(`fixture-child-pid=${child.pid}\n`);
+        return child;
+      },
 };
 if (typeof config.parentCheckMs === "number") deps.parentCheckMs = config.parentCheckMs;
 if (typeof config.startKeyCheckMs === "number") deps.startKeyCheckMs = config.startKeyCheckMs;

@@ -63,18 +63,32 @@
  * read error, not just that the limit was hit.
  *
  * MODES
- *   start — the hooks. Under an exclusive-create lock: a live holder with a fresh
- *           heartbeat → no-op; otherwise spawn `run` and record its pid.
- *   run   — the bridge itself: supervises the subcommand, relays its events, and is
- *           itself supervised by the CLAUDE_PID liveness check above.
- *   stop  — SessionEnd. Signals a live holder, whose SIGTERM handler ends its child.
+ *   start    — the hooks (SessionStart, `plan_connect`, and the DX-2953 watchdog when it
+ *              decides to restart). Under an exclusive-create lock: a live holder with a
+ *              fresh heartbeat → no-op; otherwise spawn `run` and record its pid.
+ *   run      — the bridge itself: supervises the subcommand, relays its events, and is
+ *              itself supervised by the CLAUDE_PID liveness check above.
+ *   stop     — SessionEnd. Signals a live holder, whose SIGTERM handler ends its child.
+ *   watchdog — DX-2953: PostToolUse (all tools) and Stop. Throttled file stats that
+ *              restart a stale bridge for a session known to be connected, through the
+ *              SAME `start` path above — see `watchdogTick` and `shouldWatchdogRestart`.
  *
  * STATE lives under `${CLAUDE_PLUGIN_DATA}/plan-event-bridge/`, one set per session:
  * `<session>.pid.json` (`{pid, sessionId, heartbeatAt}`), `<session>.lock` (held only
  * during `start`), `<session>.cursor.json` (`{deliveredIds}`, kept across SessionEnd so
- * a resumed session continues) and `<session>.log` (no secrets). Every write is
+ * a resumed session continues), `<session>.log` (no secrets), `<session>.stopped.json`
+ * (the most recent stop record — DX-3028), and the DX-2953 watchdog trio:
+ * `<session>.started.json` (written only by `start()`, under its lock — `lastStartedInstance`,
+ * `startInputs`, `restartGeneration`, `consumedStopInstance`, `startedAt`),
+ * `<session>.connected.json` (written only by the run process — `connected`, `instanceId`,
+ * `at`) and `<session>.watchdog.json` (the watchdog's own once-per-WATCHDOG_THROTTLE_MS
+ * throttle stamp). Two markers, not one, because `start()` releases `.lock` before
+ * awaiting the bridge's own verdict — see `sessionPaths` and `buildStartedRecord` for why
+ * a single shared marker would lose an update under that race. Every write is
  * write-then-rename. Files untouched for STALE_STATE_MS are pruned — the dashboard
- * keeps only a week of events, so an older cursor cannot resume anything.
+ * keeps only a week of events, so an older cursor cannot resume anything; the watchdog's
+ * own tick `utimesSync`-es `.started.json`/`.connected.json` so a live session's markers
+ * are never pruned out from under it (see `watchdogTick`).
  */
 
 import { spawn, spawnSync, execFile } from "node:child_process";
@@ -121,6 +135,12 @@ const REDELIVERY_INITIAL_BACKOFF_MS = 1_000;
 const REDELIVERY_MAX_BACKOFF_MS = 60_000;
 /** A subcommand that ran this long before dying without a stop record is restarted; a quicker death is terminal. */
 export const HEALTHY_RUN_MS = 60_000;
+/**
+ * DX-2953 — the watchdog's own tick cadence: how often a PostToolUse/Stop
+ * hook invocation actually DOES anything, throttled by a timestamp file
+ * (`sessionPaths(...).watchdog`). Every tick in between is a no-op file stat.
+ */
+export const WATCHDOG_THROTTLE_MS = 60_000;
 const RESTART_DELAY_MS = 1_000;
 const DRAIN_ON_EXIT_MS = 10_000;
 const LOG_MAX_BYTES = 1_000_000;
@@ -222,7 +242,12 @@ export const RESUME_INTENT = "resume";
 
 // DX-3028 (AC3) — `.stopped.json` added alongside the existing suffixes so
 // `pruneStale` reaches it too (see `sessionPaths`'s `stopped` path below).
-const STATE_SUFFIXES = [".pid.json", ".lock", ".cursor.json", ".log", ".stopped.json", ".tmp"];
+// DX-2953 (AC3/AC4) — `.started.json` / `.connected.json` (the two marker
+// files) and `.watchdog.json` (the throttle stamp) are added the same way,
+// for the same reason: pruneStale must reach every state file, and the
+// watchdog's own 60s tick is what keeps a LIVE session's markers from aging
+// past STALE_STATE_MS (see the watchdog tick below).
+const STATE_SUFFIXES = [".pid.json", ".lock", ".cursor.json", ".log", ".stopped.json", ".started.json", ".connected.json", ".watchdog.json", ".tmp"];
 
 // ------------------------------------------------------------------ state files
 
@@ -250,6 +275,24 @@ export function sessionPaths(dir, sessionId) {
     // mode. DX-2953's watchdog reads this file, its `reasons` and its
     // `instanceId` — it did not exist before this card.
     stopped: `${base}.stopped.json`,
+    // DX-2953 — the two-marker-file split (see the module docblock addendum
+    // above `start()`). `started`: written ONLY by `start()`, under
+    // `paths.lock`, at the mint site — `lastStartedInstance`, `startInputs`,
+    // `restartGeneration`, `consumedStopInstance`, `startedAt`. `connected`:
+    // written ONLY by the run process — `connected`, `instanceId`, `at`.
+    // Splitting them (instead of one shared marker) removes the lost-update
+    // race a single file would have: `start()` releases `.lock` in its
+    // `finally` BEFORE awaiting the bridge's own verdict, so a `plan_connect`
+    // start can race the previous child's ready write; two files with one
+    // writer each can never lose either field to that race.
+    started: `${base}.started.json`,
+    connected: `${base}.connected.json`,
+    // DX-2953 — the watchdog's own once-per-WATCHDOG_THROTTLE_MS throttle
+    // stamp. Its own mtime IS its content (no fields read besides existence),
+    // and it doubles as the reference tick that also refreshes the two
+    // marker files' mtimes so `pruneStale` never reclaims a live session's
+    // markers (see the watchdog tick below).
+    watchdog: `${base}.watchdog.json`,
   };
 }
 
@@ -318,6 +361,177 @@ export function pidRecord(pid, sessionId, now = Date.now(), instanceId = null) {
 /** A pid file whose process is alive AND has heartbeated recently. */
 export function isFreshHolder(record, { isAlive: alive = isAlive, now = Date.now() } = {}) {
   return Boolean(record) && alive(record.pid) && now - Date.parse(record.heartbeatAt ?? "") < HEARTBEAT_STALE_MS;
+}
+
+// ------------------------------------------------------------- DX-2953: watchdog
+
+/**
+ * DX-2953 — write the `.connected.json` marker. The run process is the ONLY
+ * writer (see `sessionPaths`'s `connected` field doc); every call site in
+ * `run()` fences this on `.pid.json`'s `instanceId` still equalling its own
+ * first, so a superseded run process can never clobber a fresher one's
+ * marker (see `run()`'s `writeConnected` closure).
+ */
+export function writeConnectedMarker(file, { connected, instanceId, now = Date.now() }) {
+  writeFileAtomic(file, JSON.stringify({ connected: connected === true, instanceId, at: new Date(now).toISOString() }));
+}
+
+/**
+ * DX-2953 — the fenced write `run()` actually calls: writes `.connected.json`
+ * ONLY while `.pid.json`'s `instanceId` still equals this call's own —
+ * reusing the exact yield rule `heartbeatTick` already applies (`.pid.json`'s
+ * `instanceId` is set only by `start()` under the lock and merely preserved
+ * by the heartbeat, so this is free of ABA). Exported and independently
+ * testable so the "a superseded run process's write is refused" concurrency
+ * case (`plan_connect` `start()` racing the previous child's ready write)
+ * needs no spawned process, no lock, and no clock — just two calls in a
+ * controlled order against the same `paths.pid`.
+ */
+export function writeConnectedIfCurrent(paths, { connected, instanceId, now = Date.now() }) {
+  const held = readJsonFile(paths.pid);
+  if (!held || held.instanceId !== instanceId) return { written: false };
+  writeConnectedMarker(paths.connected, { connected, instanceId, now });
+  return { written: true };
+}
+
+/**
+ * DX-2953 — reasons that must NEVER cause a `.connected.json` write. Per the
+ * card: `no_connection_record` and `session_is_worker` never prove the
+ * session is bound to a plan, and every `bridge_failed` record this plugin
+ * ever persists (see `start()`'s `spawnRun` catch and `run()`'s own
+ * liveness-check fatal paths) is, by construction, a failure that happened
+ * BEFORE any mint was attempted — none of these three prove the session is
+ * bound. Every other reason (including `not_connected`, which instead
+ * writes `connected:false`) reaches a mint or a stream, so it DOES prove
+ * binding.
+ */
+export const CONNECTED_WRITE_SKIP_REASONS = new Set(["no_connection_record", "session_is_worker", "bridge_failed"]);
+
+/**
+ * DX-2953 — stop reasons that ALWAYS forbid a watchdog restart, regardless
+ * of `restartGeneration` or `consumedStopInstance`: the session is either
+ * definitively not connected, or another listener already has (or will)
+ * cover it. `bridge_failed` is handled separately (see
+ * `shouldWatchdogRestart`) — it forbids a restart only once already
+ * consumed, or while `restartGeneration` has not reset.
+ */
+export const FORBID_RESTART_ALWAYS = new Set(["no_connection_record", "not_connected", "superseded", "replaced", "session_is_worker"]);
+
+/**
+ * DX-2953 — write the `.started.json` marker's full record. `start()` is the
+ * ONLY caller (always under `paths.lock`, at the mint site). Pure so the
+ * generation/consumed-instance arithmetic is unit-tested without a lock, a
+ * clock, or a spawned process.
+ *
+ * A NON-watchdog start (SessionStart / `plan_connect`) is a deliberate,
+ * operator/system-driven fresh start unrelated to any crash-loop history, so
+ * it resets `restartGeneration` to 0 and `consumedStopInstance` to null
+ * outright. A watchdog-triggered start bumps `effectiveRestartGeneration`
+ * (see below) by one, and records `consumeStopInstance` (the bridge_failed
+ * record's `writingInstanceId`, when that is what triggered the restart) as
+ * `consumedStopInstance` — never `null`-ing out a value the caller did not
+ * pass, but never carrying one forward from an unrelated prior instance
+ * either, since `lastStartedInstance` is about to change either way.
+ */
+export function buildStartedRecord({ instanceId, sessionId, intent, transcriptPath = null, prevStarted = null, stoppedRecord = null, restartTrigger, consumeStopInstance = null, now }) {
+  const isWatchdog = restartTrigger === "watchdog";
+  const restartGeneration = isWatchdog ? effectiveRestartGeneration({ startedRecord: prevStarted, stoppedRecord, now }) + 1 : 0;
+  return {
+    lastStartedInstance: instanceId,
+    startInputs: { sessionId, intent, transcriptPath },
+    restartGeneration,
+    consumedStopInstance: isWatchdog ? (consumeStopInstance ?? null) : null,
+    startedAt: new Date(now).toISOString(),
+  };
+}
+
+/**
+ * DX-2953 — the crash-loop guard: how many watchdog-triggered restarts this
+ * "unhealthy streak" has already spent. `.started.json`'s `restartGeneration`
+ * is a literal, start()-written integer (single-writer, per the card), but
+ * ITS RESET is computed lazily here rather than written by a third party
+ * (which the two-marker design forbids): once the CURRENT `lastStartedInstance`
+ * has been alive at least HEALTHY_RUN_MS — measured from `startedAt` to
+ * either its OWN applicable stop record's `recordedAt` (it died, but lived
+ * long enough first) or `now` (it might still be alive/healthy right now) —
+ * the streak is over and the effective generation reads as 0, even though
+ * the stored value stays whatever it was until the NEXT `start()` call
+ * persists the collapsed value (the sole writer catching up on its own next
+ * write). Mirrors `classifyChildExit`'s existing `ranMs >= HEALTHY_RUN_MS`
+ * pattern for the analogous subcommand-restart decision.
+ */
+export function effectiveRestartGeneration({ startedRecord, stoppedRecord = null, now, healthyRunMs = HEALTHY_RUN_MS }) {
+  const stored = startedRecord?.restartGeneration ?? 0;
+  if (stored <= 0) return 0;
+  const startedAt = Date.parse(startedRecord?.startedAt ?? "");
+  if (!Number.isFinite(startedAt)) return stored;
+  const appliesToCurrent = stoppedRecord && stoppedRecord.writingInstanceId === startedRecord.lastStartedInstance;
+  const recordedAt = appliesToCurrent ? Date.parse(stoppedRecord.recordedAt ?? "") : NaN;
+  const ranUntil = Number.isFinite(recordedAt) ? recordedAt : now;
+  return ranUntil - startedAt >= healthyRunMs ? 0 : stored;
+}
+
+/** A `.pid.json` record the watchdog considers stale: missing, or heartbeatAt older than heartbeatStaleMs. */
+export function isMarkerStale({ pidRecord, now, heartbeatStaleMs = HEARTBEAT_STALE_MS }) {
+  if (!pidRecord) return true;
+  const heartbeatAt = Date.parse(pidRecord.heartbeatAt ?? "");
+  if (!Number.isFinite(heartbeatAt)) return true;
+  return now - heartbeatAt > heartbeatStaleMs;
+}
+
+/**
+ * DX-2953 — the watchdog's whole restart decision, pure (no fs, no clock
+ * besides the injected `now`) so every branch in the card's checklist is
+ * unit-tested without a spawned process. Reads exactly the four inputs the
+ * card names: `.pid.json` (staleness), `.started.json` (`lastStartedInstance`
+ * / `restartGeneration` / `consumedStopInstance`), `.connected.json`
+ * (whether this session is known to want a bridge at all), and
+ * `.stopped.json` (why the last one ended) — NEVER the stopped record's
+ * `paths` field, which is the live child's own watched-path retry input,
+ * not the watchdog's concern.
+ *
+ * Matches a stop record to the CURRENT instance on `writingInstanceId` ONLY
+ * — never `instanceId`, which `bridge.ts` stamps independently and which
+ * silently drifts to a fresh `randomUUID()` there on its own (see
+ * `resolveInstanceId` in `bridge.ts`, and the module docblock's drift
+ * section). A record from any other (superseded) instance is not
+ * "applicable" and never forbids or gates anything.
+ */
+export function shouldWatchdogRestart({ pidRecord, startedRecord, connectedRecord, stoppedRecord, now, heartbeatStaleMs = HEARTBEAT_STALE_MS }) {
+  if (!connectedRecord || connectedRecord.connected !== true) {
+    return { restart: false, reason: "this session is not known to be connected to a plan" };
+  }
+  if (!isMarkerStale({ pidRecord, now, heartbeatStaleMs })) {
+    return { restart: false, reason: "the bridge is not stale" };
+  }
+  const lastStartedInstance = startedRecord?.lastStartedInstance ?? null;
+  const applicable = stoppedRecord && lastStartedInstance && stoppedRecord.writingInstanceId === lastStartedInstance ? stoppedRecord : null;
+  if (applicable) {
+    if (FORBID_RESTART_ALWAYS.has(applicable.reason)) {
+      return { restart: false, reason: `an applicable stop record forbids a restart: ${applicable.reason}` };
+    }
+    if (applicable.reason === "bridge_failed") {
+      const consumedInstance = applicable.writingInstanceId;
+      if (startedRecord?.consumedStopInstance === consumedInstance) {
+        return { restart: false, reason: "this bridge_failed record was already consumed by an earlier watchdog restart" };
+      }
+      if (effectiveRestartGeneration({ startedRecord, stoppedRecord, now }) > 0) {
+        return { restart: false, reason: "restartGeneration has not reset since the last watchdog restart" };
+      }
+      return { restart: true, reason: `restarting after bridge_failed: ${applicable.detail}`, consumeStopInstance: consumedInstance };
+    }
+    // Every other applicable reason (a degraded reason left by a bridge
+    // killed while degraded, revoked, refused, scope_narrowed, ...) does not
+    // forbid a restart on its own — see the module docblock's "restart
+    // decision reads the stop record" section.
+  }
+  if (effectiveRestartGeneration({ startedRecord, stoppedRecord, now }) > 0) {
+    return { restart: false, reason: "restartGeneration has not reset since the last watchdog restart" };
+  }
+  return {
+    restart: true,
+    reason: applicable ? `restarting: an applicable stop record (${applicable.reason}) does not forbid it` : "the bridge is stale with no applicable stop record",
+  };
 }
 
 /** Exclusive-create lock. `false` means another start holds it (and it is not stale). */
@@ -706,6 +920,15 @@ export async function start({
   post = postToInbox,
   waitVerdict = waitForVerdict,
   verdictTimeoutMs = STARTUP_VERDICT_MS,
+  // DX-2953 — the hook's own `transcript_path`, recorded into `.started.json`'s
+  // `startInputs` so a watchdog restart starts the bridge with exactly the
+  // same inputs (DX-2954 relies on this). Never CLAUDE_PID — see the card.
+  transcriptPath = null,
+  // DX-2953 — set by the watchdog's own call, never by SessionStart or
+  // plan_connect. Selects the generation-bump / consumed-instance behavior
+  // in `buildStartedRecord` — see its doc comment.
+  restartTrigger,
+  consumeStopInstance = null,
 } = {}) {
   const missing = [["session id", sessionId], ...REQUIRED_ENV.map((name) => [name, env[name]])]
     .filter(([, value]) => !value)
@@ -739,8 +962,59 @@ export async function start({
     // one), carried into the run process's env so it reaches every
     // heartbeat/stop record it and its MCP child produce for this spawn.
     const instanceId = randomUUID();
-    child = spawnRun(sessionId, { ...env, DANX_BRIDGE_INSTANCE_ID: instanceId }, intent);
-    writeFileAtomic(paths.pid, JSON.stringify(pidRecord(child.pid, sessionId, now(), instanceId)));
+    const nowMs = now();
+    // DX-2953 (AC3) — a `spawnRun` throw is caught HERE, inside the lock,
+    // rather than left to propagate: this instance was still minted and
+    // "started" for bookkeeping purposes (`.started.json` gets it either
+    // way), and the failure must be visible to the watchdog as a
+    // `bridge_failed` record — nothing else will ever report it, since no
+    // run() process came into being to report anything itself.
+    try {
+      child = spawnRun(sessionId, { ...env, DANX_BRIDGE_INSTANCE_ID: instanceId }, intent);
+    } catch (err) {
+      writeFileAtomic(
+        paths.started,
+        JSON.stringify(
+          buildStartedRecord({
+            instanceId,
+            sessionId,
+            intent,
+            transcriptPath,
+            prevStarted: readJsonFile(paths.started),
+            stoppedRecord: readJsonFile(paths.stopped),
+            restartTrigger,
+            consumeStopInstance,
+            now: nowMs,
+          }),
+        ),
+      );
+      try {
+        persistStopRecord(paths.stopped, { reason: "bridge_failed", detail: `spawnRun threw: ${err.message}`, fix: "", paths: [], instanceId: "" }, instanceId, nowMs);
+      } catch {
+        /* best-effort — the watchdog falls back to "stale, no applicable record" either way */
+      }
+      return { started: false, reason: `spawnRun failed: ${err.message}`, exitCode: 2 };
+    }
+    writeFileAtomic(paths.pid, JSON.stringify(pidRecord(child.pid, sessionId, nowMs, instanceId)));
+    // DX-2953 (AC3) — written under the SAME lock, right after the pid
+    // record, on the successful path too: `.started.json` is start()'s own
+    // marker regardless of whether the resulting bridge ever reaches ready.
+    writeFileAtomic(
+      paths.started,
+      JSON.stringify(
+        buildStartedRecord({
+          instanceId,
+          sessionId,
+          intent,
+          transcriptPath,
+          prevStarted: readJsonFile(paths.started),
+          stoppedRecord: readJsonFile(paths.stopped),
+          restartTrigger,
+          consumeStopInstance,
+          now: nowMs,
+        }),
+      ),
+    );
   } finally {
     fs.rmSync(paths.lock, { force: true });
   }
@@ -1144,7 +1418,7 @@ export function shouldAnnounceStop(stopReason, { relevant }) {
  * `superviseBridge`'s loop only reacts to `child.on("close")`, which a live
  * degraded child never fires).
  */
-function runChildOnce({ spawnChild, relay, log, onReady, onStopped = () => {} }) {
+function runChildOnce({ spawnChild, relay, log, onReady, onStopped = () => {}, onEvent = () => {} }) {
   return new Promise((resolve) => {
     let child;
     try {
@@ -1171,8 +1445,16 @@ function runChildOnce({ spawnChild, relay, log, onReady, onStopped = () => {} })
       "data",
       createLineSplitter((line) => {
         const record = parseRecord(line);
-        if (record.kind === "event") relay.push({ id: record.id, text: record.text });
-        else if (record.kind === "stopped") {
+        if (record.kind === "event") {
+          relay.push({ id: record.id, text: record.text });
+          // DX-2953 — a real relayed event is the only proof available that a
+          // previously-degraded child has recovered to streaming (bridge.ts
+          // never emits a second "ready" on recovery — see the module
+          // docblock's marker-liveness section). Clearing here is what makes
+          // "a bridge that degraded, recovered, then was hard-killed IS
+          // restarted" work: its own stale degraded record is gone by then.
+          onEvent();
+        } else if (record.kind === "stopped") {
           const full = { reason: record.reason, detail: record.detail, fix: record.fix, paths: record.paths, instanceId: record.instanceId, degraded: record.degraded };
           onStopped(full);
           // DX-3028 (AC2) — a DEGRADED record does NOT end this promise: the
@@ -1198,10 +1480,10 @@ function runChildOnce({ spawnChild, relay, log, onReady, onStopped = () => {} })
  * Run the subcommand until it reports a terminal outcome or dies too early to restart.
  * Returns `{ reason, fatal }` — see `classifyChildExit` for what makes an exit fatal.
  */
-export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, onReady = () => {}, onStopped = () => {} }) {
+export async function superviseBridge({ spawnChild, relay, log, now = Date.now, sleep, onReady = () => {}, onStopped = () => {}, onEvent = () => {} }) {
   for (;;) {
     const startedAt = now();
-    const outcome = await runChildOnce({ spawnChild, relay, log, onReady, onStopped });
+    const outcome = await runChildOnce({ spawnChild, relay, log, onReady, onStopped, onEvent });
     const decision = classifyChildExit({ ...outcome, ranMs: now() - startedAt });
     if (decision.action === "exit") {
       return { reason: decision.reason, fatal: decision.fatal, stopReason: decision.stopReason, fix: decision.fix };
@@ -1330,6 +1612,44 @@ export async function run(
   };
   for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => shutdown(`received ${signal}`));
 
+  // DX-2953 — this run process's own identity. `start()` is the ONLY sanctioned
+  // spawner (:741-ish, "carries a minted instanceId into the run process's own
+  // env as DANX_BRIDGE_INSTANCE_ID") and always sets this var, so a missing one
+  // means a real bug in THIS plugin, not a session condition — refuse loudly
+  // rather than silently minting a fresh randomUUID() here. A phantom identity
+  // would poison `writingInstanceId`, which the watchdog's whole restart-match
+  // design depends on being genuine (a stop record it can never match against
+  // `.started.json`'s `lastStartedInstance` would restart a `not_connected`
+  // session every 60s forever — see the module docblock's drift section).
+  const declaredInstanceId = typeof env.DANX_BRIDGE_INSTANCE_ID === "string" ? env.DANX_BRIDGE_INSTANCE_ID.trim() : "";
+  if (declaredInstanceId === "") {
+    await tellSession(
+      "this run process has no DANX_BRIDGE_INSTANCE_ID (a plugin bug, not a session problem)",
+      "restart the session so start() can mint a fresh instance id for a new bridge",
+    );
+    shutdown("DANX_BRIDGE_INSTANCE_ID is missing from this run process's environment", { fatal: true });
+    return;
+  }
+  const instanceId = declaredInstanceId;
+
+  /** DX-2953 — every "run fails a startup check before it is ready" fatal path
+   * (CLAUDE_PID missing, unsupported platform, unreadable start key) writes a
+   * bridge_failed record naming its instance BEFORE it exits — the ONLY way
+   * the watchdog can ever learn this instance never got anywhere, and so
+   * apply its one-restart-then-stop crash-loop guard instead of restarting
+   * every 60s forever. Deliberately NOT persisted via the onStopped path
+   * below (that is for records the MCP CHILD reports; these are the RUN
+   * process's own pre-mint refusals) and deliberately never touches
+   * `.connected.json` (see CONNECTED_WRITE_SKIP_REASONS — a pre-mint
+   * bridge_failed never proves the session is bound to a plan). */
+  const persistBridgeFailed = (detail, fix) => {
+    try {
+      persistStopRecord(paths.stopped, { reason: "bridge_failed", detail, fix: fix ?? "", paths: [], instanceId: "", degraded: false }, instanceId, Date.now());
+    } catch (err) {
+      log(`could not persist the bridge_failed stop record: ${err.message}`);
+    }
+  };
+
   // DX-2894 — the bridge's own check of its Claude process is the SOLE liveness
   // authority (SessionEnd only makes shutdown faster; nothing depends on it firing,
   // and it does not run on a crash or kill). CLAUDE_PID is an observed, undocumented
@@ -1340,6 +1660,7 @@ export async function run(
   // that claims this bridge for the session — a doomed bridge that is about to refuse and
   // exit must never touch `paths.pid` first.
   if (!Number.isSafeInteger(parentPid) || parentPid <= 0) {
+    persistBridgeFailed("CLAUDE_PID is missing or not a valid process id");
     await tellSession(
       "CLAUDE_PID is missing or not a valid process id",
       "CLAUDE_PID is an observed, undocumented Claude Code dependency (not in the public hooks docs) — restart the session so the plugin can observe it again",
@@ -1349,6 +1670,7 @@ export async function run(
   }
   if (!SUPPORTED_START_KEY_PLATFORMS.includes(platform)) {
     const { reason, fix } = unsupportedPlatformNotice(platform);
+    persistBridgeFailed(reason, fix);
     await tellSession(reason, fix);
     shutdown(reason, { fatal: true });
     return;
@@ -1387,6 +1709,10 @@ export async function run(
       shutdown(`Claude Code process ${parentPid} exited`);
       return;
     }
+    persistBridgeFailed(
+      `could not read the start time of Claude Code process ${parentPid} at startup: ${describeProcessError(lastStartKeyError)}`,
+      "restart the session so the plugin can observe CLAUDE_PID again",
+    );
     await tellSession(
       `could not read the start time of Claude Code process ${parentPid} (CLAUDE_PID): ${describeProcessError(lastStartKeyError)}`,
       "restart the session so the plugin can observe CLAUDE_PID again",
@@ -1395,10 +1721,9 @@ export async function run(
     return;
   }
 
-  // DX-3028 — this run process's own identity, as `start()` minted it and
-  // passed down via env; a hand run (no `start()`) mints its own so the
-  // field is never silently absent from the records this process writes.
-  const instanceId = typeof env.DANX_BRIDGE_INSTANCE_ID === "string" && env.DANX_BRIDGE_INSTANCE_ID !== "" ? env.DANX_BRIDGE_INSTANCE_ID : randomUUID();
+  // DX-2953 — `instanceId` is resolved once, loudly, near the top of this
+  // function now (see the DANX_BRIDGE_INSTANCE_ID refusal above) — no second
+  // resolution here.
   const beat = () => {
     try {
       heartbeatTick({ paths, selfPid: process.pid, sessionId, shutdown, instanceId });
@@ -1496,6 +1821,33 @@ export async function run(
     },
   });
 
+  // DX-2953 — `.connected.json` is this run process's OWN marker (see
+  // `sessionPaths`). Fenced on `.pid.json`'s `instanceId` still equalling
+  // this process's own, reusing the same yield rule `heartbeatTick` already
+  // applies: `.pid.json`'s `instanceId` is set only by `start()` under the
+  // lock and merely preserved by the heartbeat, so a superseded run process
+  // (one `start()` has already replaced) can never clobber a fresher one's
+  // marker with this check in place — free of ABA for the same reason.
+  const writeConnected = (connected) => {
+    try {
+      const result = writeConnectedIfCurrent(paths, { connected, instanceId, now: Date.now() });
+      if (!result.written) log(`skipped writing the connected marker (connected=${connected}): another instance now owns .pid.json`);
+    } catch (err) {
+      log(`could not write the connected marker: ${err.message}`);
+    }
+  };
+  /** DX-2953 — a bridge reaching ready, or returning to streaming from degraded
+   * mode (see the `onEvent` wiring below), deletes every stop record for its
+   * session, its own included — otherwise its own now-resolved degraded
+   * record would linger as "applicable" for a later, unrelated hard kill. */
+  const clearStopRecord = () => {
+    try {
+      fs.rmSync(paths.stopped, { force: true });
+    } catch {
+      /* nothing to clear */
+    }
+  };
+
   log(`bridge started for session ${sessionId} (pid ${process.pid}, ${intent})`);
   const supervised = await superviseBridge({
     spawnChild: () => {
@@ -1513,6 +1865,10 @@ export async function run(
       // (benign) and a populated one; see its own doc comment for why the
       // server's coarse `degraded` flag alone can't make that call.
       log(describeReadyRecord(record));
+      // DX-2953 — reaching ready proves this session is bound to a plan
+      // (connected:true) and retires whatever stop record was sitting here.
+      clearStopRecord();
+      writeConnected(true);
       sendVerdict({ verdict: "ready" });
     },
     // DX-3028 (AC3) — persisted the MOMENT the child reports it, before this
@@ -1527,6 +1883,26 @@ export async function run(
       } catch (err) {
         log(`could not persist the stop record: ${err.message}`);
       }
+      // DX-2953 — cross-repo instance-id drift detection: `record.instanceId`
+      // is the MCP CHILD's own (bridge.ts's `resolveInstanceId`), which
+      // silently mints a fresh randomUUID() on its own when its env var has
+      // drifted — see the module docblock's drift section. The watchdog
+      // never trusts this field (it matches on `writingInstanceId` alone);
+      // this just makes a real drift visible instead of silently harmless.
+      if (record.instanceId && record.instanceId !== instanceId) {
+        log(`instance id drift: the stop record's own instanceId (${record.instanceId}) differs from this run process's writingInstanceId (${instanceId})`);
+      }
+      // DX-2953 — the connected marker: see CONNECTED_WRITE_SKIP_REASONS for
+      // which reasons never touch it. `not_connected` writes connected:false;
+      // every other non-skipped reason proves the session IS bound, so it
+      // writes connected:true (this includes a degraded reason like
+      // board_unreadable — see the module docblock's "what connected means").
+      if (!CONNECTED_WRITE_SKIP_REASONS.has(record.reason)) {
+        writeConnected(record.reason !== "not_connected");
+      }
+    },
+    onEvent: () => {
+      clearStopRecord();
     },
   });
   child = null;
@@ -1551,9 +1927,9 @@ export function intentFromHookEvent(hookEventName) {
   return hookEventName === "PostToolUse" ? CONNECT_INTENT : RESUME_INTENT;
 }
 
-/** The hook's stdin JSON carries `session_id` and `hook_event_name`; a hand run has neither. */
+/** The hook's stdin JSON carries `session_id`, `hook_event_name` and `transcript_path`; a hand run has none. */
 async function readHookInput() {
-  const fallback = { sessionId: process.env.CLAUDE_CODE_SESSION_ID ?? null, intent: RESUME_INTENT };
+  const fallback = { sessionId: process.env.CLAUDE_CODE_SESSION_ID ?? null, intent: RESUME_INTENT, transcriptPath: null };
   if (process.stdin.isTTY) return fallback;
   const chunks = [];
   await new Promise((resolve) => {
@@ -1566,10 +1942,104 @@ async function readHookInput() {
   try {
     const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     const id = typeof parsed.session_id === "string" && parsed.session_id !== "" ? parsed.session_id : fallback.sessionId;
-    return { sessionId: id, intent: intentFromHookEvent(parsed.hook_event_name) };
+    // DX-2953 — `transcript_path` rides the same stdin JSON every hook event
+    // already carries (confirmed against the documented UserPromptSubmit
+    // input shape — see the module docblock's RELAY_MARKER comment); recorded
+    // into `.started.json`'s `startInputs` so a watchdog restart starts the
+    // bridge with exactly the same inputs the triggering hook received.
+    const transcriptPath = typeof parsed.transcript_path === "string" && parsed.transcript_path !== "" ? parsed.transcript_path : null;
+    return { sessionId: id, intent: intentFromHookEvent(parsed.hook_event_name), transcriptPath };
   } catch {
     return fallback;
   }
+}
+
+/**
+ * DX-2953 — the watchdog tick: what `PostToolUse` (all tools) and `Stop` run.
+ * Throttled to once per `throttleMs` via `paths.watchdog`'s own mtime — every
+ * tick in between does exactly one `fs.statSync` and returns. On an actual
+ * tick: refresh the throttle stamp, `utimesSync` both marker files (the named
+ * toucher that keeps `pruneStale` from reclaiming a live session's markers —
+ * see the module docblock), read the four state files, and hand them to the
+ * pure `shouldWatchdogRestart`. Only when it says to restart does this call
+ * `startFn` (the injected `start`) — the healthy path never spawns anything.
+ */
+export async function watchdogTick({
+  env = process.env,
+  sessionId,
+  transcriptPath = null,
+  now = Date.now,
+  isAlive: alive = isAlive,
+  killTree: kill = killTree,
+  stderr = (message) => process.stderr.write(message),
+  post = postToInbox,
+  waitVerdict = waitForVerdict,
+  verdictTimeoutMs = STARTUP_VERDICT_MS,
+  spawnRun = spawnRunProcess,
+  startFn = start,
+  throttleMs = WATCHDOG_THROTTLE_MS,
+  heartbeatStaleMs = HEARTBEAT_STALE_MS,
+} = {}) {
+  if (!env.CLAUDE_PLUGIN_DATA || typeof sessionId !== "string" || sessionId === "") {
+    return { ticked: false, restarted: false, exitCode: 0 };
+  }
+  const dir = stateDir(env);
+  const paths = sessionPaths(dir, sessionId);
+  const nowMs = now();
+  let throttleAge = Infinity;
+  try {
+    throttleAge = nowMs - fs.statSync(paths.watchdog).mtimeMs;
+  } catch {
+    /* never ticked before — a fresh tick is due */
+  }
+  if (throttleAge < throttleMs) {
+    return { ticked: false, restarted: false, exitCode: 0 };
+  }
+  writeFileAtomic(paths.watchdog, JSON.stringify({ lastTickAt: new Date(nowMs).toISOString() }));
+  // DX-2953: stamp the throttle file's own mtime to the INJECTED now, not
+  // whatever the real OS clock was at write time — the throttle compare
+  // below is against this same injected `now()`, and every other timing
+  // decision in this module (heartbeat staleness, restartGeneration) is
+  // fully deterministic under an injected clock; the throttle must be too.
+  const touch = (file) => {
+    try {
+      fs.utimesSync(file, new Date(nowMs), new Date(nowMs));
+    } catch {
+      /* does not exist yet, or was removed concurrently — nothing to touch */
+    }
+  };
+  touch(paths.watchdog);
+  touch(paths.started);
+  touch(paths.connected);
+
+  const decision = shouldWatchdogRestart({
+    pidRecord: readJsonFile(paths.pid),
+    startedRecord: readJsonFile(paths.started),
+    connectedRecord: readJsonFile(paths.connected),
+    stoppedRecord: readJsonFile(paths.stopped),
+    now: nowMs,
+    heartbeatStaleMs,
+  });
+  if (!decision.restart) {
+    return { ticked: true, restarted: false, reason: decision.reason, exitCode: 0 };
+  }
+  const result = await startFn({
+    env,
+    sessionId,
+    intent: RESUME_INTENT,
+    transcriptPath,
+    restartTrigger: "watchdog",
+    consumeStopInstance: decision.consumeStopInstance,
+    spawnRun,
+    isAlive: alive,
+    killTree: kill,
+    now,
+    stderr,
+    post,
+    waitVerdict,
+    verdictTimeoutMs,
+  });
+  return { ticked: true, restarted: result.started === true, reason: decision.reason, startResult: result, exitCode: result.exitCode ?? 0 };
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -1578,7 +2048,7 @@ if (isMain) {
   const modes = {
     start: async () => {
       const hook = await readHookInput();
-      const result = await start({ sessionId: hook.sessionId, intent: hook.intent });
+      const result = await start({ sessionId: hook.sessionId, intent: hook.intent, transcriptPath: hook.transcriptPath });
       process.exit(result.exitCode ?? 0);
     },
     stop: async () => {
@@ -1586,11 +2056,17 @@ if (isMain) {
       stop({ sessionId: hook.sessionId });
       process.exit(0);
     },
+    // DX-2953 — the watchdog: PostToolUse (all tools) and Stop both run this.
+    watchdog: async () => {
+      const hook = await readHookInput();
+      const result = await watchdogTick({ sessionId: hook.sessionId, transcriptPath: hook.transcriptPath });
+      process.exit(result.exitCode ?? 0);
+    },
     run: () => run(arg, intentArg),
   };
   const main = modes[mode];
   if (!main) {
-    process.stderr.write("usage: plan-event-bridge.mjs start|stop|run <session-id>\n");
+    process.stderr.write("usage: plan-event-bridge.mjs start|stop|watchdog|run <session-id>\n");
     process.exit(2);
   }
   Promise.resolve()

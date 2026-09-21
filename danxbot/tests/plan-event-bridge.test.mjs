@@ -1873,6 +1873,10 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894)", ()
     sessionId = SESSION,
     intent = "resume",
     claudePid,
+    // DX-2953: `start()` always sets DANX_BRIDGE_INSTANCE_ID before spawning a real
+    // run process — every existing test in this describe block simulates that by
+    // defaulting it here; pass `instanceId: null` explicitly to omit it.
+    instanceId = "fixture-instance-id",
     parentCheckMs,
     startKeyCheckMs,
     startKeyTimeoutMs,
@@ -1911,6 +1915,10 @@ describe("run(): CLAUDE_PID liveness — two cadences, end-to-end (DX-2894)", ()
     };
     if (claudePid === undefined) delete fixtureEnv.CLAUDE_PID;
     else fixtureEnv.CLAUDE_PID = String(claudePid);
+    // NOTE: a destructured default only applies on `undefined`, so pass
+    // `instanceId: null` (never `undefined`) to omit it.
+    if (instanceId === null) delete fixtureEnv.DANX_BRIDGE_INSTANCE_ID;
+    else fixtureEnv.DANX_BRIDGE_INSTANCE_ID = instanceId;
     return track(spawn(process.execPath, [fixturePath], { env: fixtureEnv, stdio: ["ignore", "pipe", "pipe"] }));
   }
 
@@ -2393,4 +2401,865 @@ test("stale state files are pruned; fresh ones and other files are kept", () => 
   for (const name of [...oldFiles, "notes.txt"]) fs.utimesSync(path.join(dir, name), old, old);
   bridge.pruneStale(dir);
   assert.deepEqual(fs.readdirSync(dir).sort(), [...freshFiles, "notes.txt"].sort());
+});
+
+// ============================================================= DX-2953: watchdog
+//
+// The card's "TDD — watchdog restart decision" checklist (17 items, all red
+// against pre-DX-2953 code) maps onto the describe blocks below. Most of the
+// decision table is exercised as PURE unit tests against `shouldWatchdogRestart`
+// / `effectiveRestartGeneration` — the same style this file already uses for
+// `verifyStartKeyTick` — because the decision logic itself is what the card's
+// gates most need proven, and a pure test proves every branch deterministically
+// without racing a spawned process. The two scenarios that are specifically
+// about REAL process lifecycle (a hard-killed bridge actually restarting
+// through `start()` and its lock; a real run() process actually writing the
+// markers via its real onReady/onStopped/onEvent wiring) are driven through
+// real spawned processes — see "watchdog — real process lifecycle" below.
+
+const started = (over = {}) => ({
+  lastStartedInstance: "instance-a",
+  startInputs: { sessionId: SESSION, intent: "resume", transcriptPath: null },
+  restartGeneration: 0,
+  consumedStopInstance: null,
+  startedAt: "2026-09-21T00:00:00.000Z",
+  ...over,
+});
+const stopped = (reason, over = {}) => ({
+  schemaVersion: 1,
+  reason,
+  detail: "d",
+  fix: "",
+  paths: [],
+  instanceId: "instance-a",
+  writingInstanceId: "instance-a",
+  degraded: false,
+  recordedAt: "2026-09-21T00:00:30.000Z",
+  ...over,
+});
+const NOW = Date.parse("2026-09-21T00:05:00.000Z");
+const freshPid = { pid: 1, sessionId: SESSION, heartbeatAt: new Date(NOW).toISOString(), instanceId: "instance-a", startedAt: "2026-09-21T00:00:00.000Z" };
+const stalePid = { pid: 1, sessionId: SESSION, heartbeatAt: new Date(NOW - bridge.HEARTBEAT_STALE_MS - 5_000).toISOString(), instanceId: "instance-a", startedAt: "2026-09-21T00:00:00.000Z" };
+const connectedTrue = { connected: true, instanceId: "instance-a", at: new Date(NOW).toISOString() };
+const connectedFalse = { connected: false, instanceId: "instance-a", at: new Date(NOW).toISOString() };
+
+describe("isMarkerStale (DX-2953)", () => {
+  test("missing pid record is stale", () => {
+    assert.equal(bridge.isMarkerStale({ pidRecord: null, now: NOW }), true);
+  });
+  test("fresh heartbeat is not stale", () => {
+    assert.equal(bridge.isMarkerStale({ pidRecord: freshPid, now: NOW }), false);
+  });
+  test("heartbeat older than heartbeatStaleMs is stale", () => {
+    assert.equal(bridge.isMarkerStale({ pidRecord: stalePid, now: NOW }), true);
+  });
+  test("an unparsable heartbeatAt is stale", () => {
+    assert.equal(bridge.isMarkerStale({ pidRecord: { ...freshPid, heartbeatAt: "not-a-date" }, now: NOW }), true);
+  });
+});
+
+describe("effectiveRestartGeneration (DX-2953)", () => {
+  test("stored 0 stays 0 regardless of timing", () => {
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: started({ restartGeneration: 0 }), stoppedRecord: null, now: NOW }), 0);
+  });
+  test("no startedRecord at all reads as 0", () => {
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: null, stoppedRecord: null, now: NOW }), 0);
+  });
+  test("stored generation > 0, ran less than HEALTHY_RUN_MS (no applicable stop record, still running): stays elevated", () => {
+    const s = started({ restartGeneration: 1, startedAt: new Date(NOW - 5_000).toISOString() });
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: s, stoppedRecord: null, now: NOW }), 1);
+  });
+  test("stored generation > 0, ran at least HEALTHY_RUN_MS (still alive, measured against now): resets to 0", () => {
+    const s = started({ restartGeneration: 1, startedAt: new Date(NOW - bridge.HEALTHY_RUN_MS - 5_000).toISOString() });
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: s, stoppedRecord: null, now: NOW }), 0);
+  });
+  test("stored generation > 0, an APPLICABLE stop record recorded before HEALTHY_RUN_MS elapsed: stays elevated (quick death)", () => {
+    const startedAt = NOW - 10_000;
+    const s = started({ restartGeneration: 1, lastStartedInstance: "instance-b", startedAt: new Date(startedAt).toISOString() });
+    const rec = stopped("bridge_failed", { writingInstanceId: "instance-b", recordedAt: new Date(startedAt + 2_000).toISOString() });
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: s, stoppedRecord: rec, now: NOW }), 1);
+  });
+  test("stored generation > 0, an APPLICABLE stop record recorded AFTER HEALTHY_RUN_MS: resets to 0 (ran healthy first)", () => {
+    const startedAt = NOW - bridge.HEALTHY_RUN_MS - 100_000;
+    const s = started({ restartGeneration: 1, lastStartedInstance: "instance-b", startedAt: new Date(startedAt).toISOString() });
+    const rec = stopped("bridge_failed", { writingInstanceId: "instance-b", recordedAt: new Date(startedAt + bridge.HEALTHY_RUN_MS + 5_000).toISOString() });
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: s, stoppedRecord: rec, now: NOW }), 0);
+  });
+  test("a stop record from a DIFFERENT (superseded) instance is not applicable — measured against now instead", () => {
+    const s = started({ restartGeneration: 1, lastStartedInstance: "instance-b", startedAt: new Date(NOW - bridge.HEALTHY_RUN_MS - 5_000).toISOString() });
+    const rec = stopped("bridge_failed", { writingInstanceId: "instance-OLD", recordedAt: new Date(NOW - 500_000).toISOString() });
+    assert.equal(bridge.effectiveRestartGeneration({ startedRecord: s, stoppedRecord: rec, now: NOW }), 0);
+  });
+});
+
+describe("buildStartedRecord (DX-2953)", () => {
+  test("a non-watchdog start (SessionStart / plan_connect) always resets generation and consumed instance to fresh", () => {
+    const prev = started({ restartGeneration: 3, consumedStopInstance: "old-instance" });
+    const rec = bridge.buildStartedRecord({ instanceId: "instance-new", sessionId: SESSION, intent: "connect", prevStarted: prev, stoppedRecord: null, restartTrigger: undefined, now: NOW });
+    assert.equal(rec.lastStartedInstance, "instance-new");
+    assert.equal(rec.restartGeneration, 0);
+    assert.equal(rec.consumedStopInstance, null);
+    assert.equal(rec.startInputs.sessionId, SESSION);
+    assert.equal(rec.startInputs.intent, "connect");
+  });
+  test("a watchdog restart bumps the effective generation by one and records the consumed instance", () => {
+    const prev = started({ restartGeneration: 0 });
+    const rec = bridge.buildStartedRecord({
+      instanceId: "instance-new",
+      sessionId: SESSION,
+      intent: "resume",
+      prevStarted: prev,
+      stoppedRecord: null,
+      restartTrigger: "watchdog",
+      consumeStopInstance: "instance-a",
+      now: NOW,
+    });
+    assert.equal(rec.restartGeneration, 1);
+    assert.equal(rec.consumedStopInstance, "instance-a");
+  });
+  test("a watchdog restart with no consumed instance (plain stale-no-record case) records null", () => {
+    const rec = bridge.buildStartedRecord({ instanceId: "instance-new", sessionId: SESSION, intent: "resume", prevStarted: null, stoppedRecord: null, restartTrigger: "watchdog", now: NOW });
+    assert.equal(rec.consumedStopInstance, null);
+    assert.equal(rec.restartGeneration, 1);
+  });
+  test("carries transcriptPath through into startInputs verbatim (null when absent)", () => {
+    const rec = bridge.buildStartedRecord({ instanceId: "i", sessionId: SESSION, intent: "resume", transcriptPath: "/tmp/transcript.jsonl", prevStarted: null, stoppedRecord: null, now: NOW });
+    assert.equal(rec.startInputs.transcriptPath, "/tmp/transcript.jsonl");
+    const rec2 = bridge.buildStartedRecord({ instanceId: "i", sessionId: SESSION, intent: "resume", prevStarted: null, stoppedRecord: null, now: NOW });
+    assert.equal(rec2.startInputs.transcriptPath, null);
+  });
+});
+
+describe("shouldWatchdogRestart (DX-2953) — the full decision table", () => {
+  test("never-connected (no connected record at all) never restarts, whatever else is true", () => {
+    const d = bridge.shouldWatchdogRestart({ pidRecord: null, startedRecord: started(), connectedRecord: null, stoppedRecord: null, now: NOW });
+    assert.equal(d.restart, false);
+  });
+  test("connected:false never restarts (a not_connected stop already answered the question)", () => {
+    const d = bridge.shouldWatchdogRestart({ pidRecord: null, startedRecord: started(), connectedRecord: connectedFalse, stoppedRecord: null, now: NOW });
+    assert.equal(d.restart, false);
+  });
+  test("connected:true but the bridge is not stale (fresh heartbeat): never restarts — covers a LIVE degraded bridge", () => {
+    const d = bridge.shouldWatchdogRestart({ pidRecord: freshPid, startedRecord: started(), connectedRecord: connectedTrue, stoppedRecord: stopped("board_unreadable"), now: NOW });
+    assert.equal(d.restart, false);
+    assert.match(d.reason, /not stale/);
+  });
+  test("stale, connected, no applicable stop record at all: restarts (the hard-kill headline case)", () => {
+    const d = bridge.shouldWatchdogRestart({ pidRecord: stalePid, startedRecord: started(), connectedRecord: connectedTrue, stoppedRecord: null, now: NOW });
+    assert.equal(d.restart, true);
+  });
+  test("stale, connected, an applicable record from a DIFFERENT (superseded) instance: ignored, treated as no-applicable-record — restarts", () => {
+    const d = bridge.shouldWatchdogRestart({
+      pidRecord: stalePid,
+      startedRecord: started({ lastStartedInstance: "instance-b" }),
+      connectedRecord: connectedTrue,
+      stoppedRecord: stopped("not_connected", { writingInstanceId: "instance-OLD" }),
+      now: NOW,
+    });
+    assert.equal(d.restart, true, "a not_connected record from an unrelated, superseded instance must not block a different, current instance");
+  });
+  for (const reason of ["no_connection_record", "not_connected", "superseded", "replaced", "session_is_worker"]) {
+    test(`applicable ${reason} record always forbids a restart`, () => {
+      const d = bridge.shouldWatchdogRestart({ pidRecord: stalePid, startedRecord: started(), connectedRecord: connectedTrue, stoppedRecord: stopped(reason), now: NOW });
+      assert.equal(d.restart, false, `${reason} must forbid a restart`);
+      assert.match(d.reason, new RegExp(reason));
+    });
+  }
+  test("an applicable degraded-and-killed reason (e.g. board_unreadable) does NOT forbid — restarts", () => {
+    const d = bridge.shouldWatchdogRestart({ pidRecord: stalePid, startedRecord: started(), connectedRecord: connectedTrue, stoppedRecord: stopped("board_unreadable", { degraded: true }), now: NOW });
+    assert.equal(d.restart, true);
+  });
+  test("applicable bridge_failed, not yet consumed, generation 0: restarts and names the instance to consume", () => {
+    const d = bridge.shouldWatchdogRestart({ pidRecord: stalePid, startedRecord: started(), connectedRecord: connectedTrue, stoppedRecord: stopped("bridge_failed"), now: NOW });
+    assert.equal(d.restart, true);
+    assert.equal(d.consumeStopInstance, "instance-a");
+  });
+  test("applicable bridge_failed already named by consumedStopInstance: does not restart again", () => {
+    const d = bridge.shouldWatchdogRestart({
+      pidRecord: stalePid,
+      startedRecord: started({ consumedStopInstance: "instance-a" }),
+      connectedRecord: connectedTrue,
+      stoppedRecord: stopped("bridge_failed"),
+      now: NOW,
+    });
+    assert.equal(d.restart, false);
+    assert.match(d.reason, /already consumed/);
+  });
+  test("applicable bridge_failed, unconsumed, but restartGeneration has not reset (a restarted bridge failing again quickly): does not restart", () => {
+    const startedAt = NOW - 10_000;
+    const d = bridge.shouldWatchdogRestart({
+      pidRecord: stalePid,
+      startedRecord: started({ restartGeneration: 1, startedAt: new Date(startedAt).toISOString() }),
+      connectedRecord: connectedTrue,
+      stoppedRecord: stopped("bridge_failed", { recordedAt: new Date(startedAt + 2_000).toISOString() }),
+      now: NOW,
+    });
+    assert.equal(d.restart, false);
+    assert.match(d.reason, /restartGeneration/);
+  });
+  test("a plain stale-no-record case is ALSO gated by a non-reset restartGeneration (crash-loop guard applies uniformly)", () => {
+    const startedAt = NOW - 10_000;
+    const d = bridge.shouldWatchdogRestart({
+      pidRecord: stalePid,
+      startedRecord: started({ restartGeneration: 1, startedAt: new Date(startedAt).toISOString() }),
+      connectedRecord: connectedTrue,
+      stoppedRecord: null,
+      now: NOW,
+    });
+    assert.equal(d.restart, false);
+  });
+  test("bridge_failed restarts again once restartGeneration has reset (ran healthy first)", () => {
+    const startedAt = NOW - bridge.HEALTHY_RUN_MS - 100_000;
+    const d = bridge.shouldWatchdogRestart({
+      pidRecord: stalePid,
+      startedRecord: started({ restartGeneration: 1, startedAt: new Date(startedAt).toISOString() }),
+      connectedRecord: connectedTrue,
+      stoppedRecord: stopped("bridge_failed", { recordedAt: new Date(startedAt + bridge.HEALTHY_RUN_MS + 5_000).toISOString() }),
+      now: NOW,
+    });
+    assert.equal(d.restart, true);
+  });
+  test("does not read the applicable record's paths field at all (not part of the decision)", () => {
+    const rec = stopped("board_unreadable", { paths: ["/should/never/matter.json"] });
+    const d = bridge.shouldWatchdogRestart({ pidRecord: stalePid, startedRecord: started(), connectedRecord: connectedTrue, stoppedRecord: rec, now: NOW });
+    assert.equal(d.restart, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(d, "paths"), false);
+  });
+});
+
+describe("CONNECTED_WRITE_SKIP_REASONS / writeConnectedMarker semantics (DX-2953)", () => {
+  test("no_connection_record, session_is_worker and bridge_failed are the exact skip set", () => {
+    assert.deepEqual([...bridge.CONNECTED_WRITE_SKIP_REASONS].sort(), ["bridge_failed", "no_connection_record", "session_is_worker"].sort());
+  });
+  test("writeConnectedMarker writes connected/instanceId/at, atomically", () => {
+    const dataDir = tmpDir();
+    const file = pathsFor(dataDir).connected;
+    bridge.writeConnectedMarker(file, { connected: true, instanceId: "i-1", now: Date.parse("2026-09-21T00:00:00.000Z") });
+    assert.deepEqual(bridge.readJsonFile(file), { connected: true, instanceId: "i-1", at: "2026-09-21T00:00:00.000Z" });
+    assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((n) => n.endsWith(".tmp")), []);
+  });
+});
+
+describe("writeConnectedIfCurrent — the .pid.json instance fence (DX-2953 concurrency)", () => {
+  test("writes when .pid.json's instanceId still matches the caller's own", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.pid, JSON.stringify({ pid: 1, sessionId: SESSION, heartbeatAt: new Date().toISOString(), instanceId: "instance-a" }));
+    const result = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId: "instance-a", now: Date.now() });
+    assert.equal(result.written, true);
+    assert.equal(bridge.readJsonFile(paths.connected).connected, true);
+  });
+  test("refuses when .pid.json has since been claimed by a DIFFERENT instance (a superseded run process's late write)", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    // Simulates: instance A's run process is about to write .connected.json
+    // (e.g. its own ready-write), but a `plan_connect` start() already
+    // replaced the holder with instance B before A's write lands.
+    fs.writeFileSync(paths.pid, JSON.stringify({ pid: 2, sessionId: SESSION, heartbeatAt: new Date().toISOString(), instanceId: "instance-b" }));
+    const result = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId: "instance-a", now: Date.now() });
+    assert.equal(result.written, false);
+    assert.equal(fs.existsSync(paths.connected), false, "instance A's write must be refused outright, not silently succeed");
+  });
+  test("refuses when .pid.json is missing entirely (the holder already shut down)", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    const result = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId: "instance-a", now: Date.now() });
+    assert.equal(result.written, false);
+  });
+  test("both interleavings of a plan_connect start() racing the previous child's ready write lose neither field", () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    // Interleaving 1: the OLD instance's ready-write (writeConnectedIfCurrent)
+    // arrives BEFORE the new plan_connect start() replaces .pid.json — a
+    // perfectly ordinary, un-raced write. It must succeed.
+    fs.writeFileSync(paths.pid, JSON.stringify({ pid: 1, sessionId: SESSION, heartbeatAt: new Date().toISOString(), instanceId: "instance-old" }));
+    const first = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId: "instance-old", now: Date.now() });
+    assert.equal(first.written, true);
+    // Interleaving 2: NOW the race — a plan_connect start() mints a fresh
+    // instance and overwrites .pid.json (simulating the .lock having already
+    // been released) BEFORE the old instance's write arrives.
+    fs.writeFileSync(paths.pid, JSON.stringify({ pid: 2, sessionId: SESSION, heartbeatAt: new Date().toISOString(), instanceId: "instance-new" }));
+    fs.writeFileSync(paths.started, JSON.stringify(started({ lastStartedInstance: "instance-new" })));
+    const stale = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId: "instance-old", now: Date.now() });
+    assert.equal(stale.written, false, "the superseded (old) instance's write must be refused");
+    // lastStartedInstance survives untouched — single-writer, never raced.
+    assert.equal(bridge.readJsonFile(paths.started).lastStartedInstance, "instance-new");
+    // The new instance's own (later) write still succeeds normally.
+    const fresh = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId: "instance-new", now: Date.now() });
+    assert.equal(fresh.written, true);
+  });
+});
+
+describe("start() writes .started.json (DX-2953)", () => {
+  test("a start that returns early (lock held) never writes .started.json", async () => {
+    const dataDir = tmpDir();
+    fs.writeFileSync(pathsFor(dataDir).lock, "");
+    await bridge.start({ env: env(dataDir), sessionId: SESSION, spawnRun: () => ({ pid: 1 }), stderr: () => {}, waitVerdict: noVerdict });
+    assert.equal(fs.existsSync(pathsFor(dataDir).started), false);
+  });
+  test("a start that returns early (fresh holder, non-connect intent) never writes or overwrites .started.json", async () => {
+    const dataDir = tmpDir();
+    writePid(dataDir, { pid: process.pid, sessionId: SESSION, heartbeatAt: new Date().toISOString(), instanceId: "instance-already-there" });
+    fs.writeFileSync(pathsFor(dataDir).started, JSON.stringify(started({ lastStartedInstance: "instance-already-there" })));
+    const result = await bridge.start({ env: env(dataDir), sessionId: SESSION, intent: "resume", spawnRun: () => ({ pid: 999 }), isAlive: () => true, stderr: () => {}, waitVerdict: noVerdict });
+    assert.equal(result.started, false);
+    assert.equal(bridge.readJsonFile(pathsFor(dataDir).started).lastStartedInstance, "instance-already-there", "lastStartedInstance must not be overwritten by a start that never actually spawned");
+  });
+  test("a successful start writes .started.json with a fresh, non-watchdog record (generation 0)", async () => {
+    const dataDir = tmpDir();
+    const result = await bridge.start({ env: env(dataDir), sessionId: SESSION, intent: "connect", transcriptPath: "/x/transcript.jsonl", spawnRun: () => ({ pid: 4242 }), stderr: () => {}, waitVerdict: noVerdict });
+    assert.equal(result.started, true);
+    const rec = bridge.readJsonFile(pathsFor(dataDir).started);
+    assert.equal(rec.lastStartedInstance, bridge.readJsonFile(pathsFor(dataDir).pid).instanceId);
+    assert.equal(rec.restartGeneration, 0);
+    assert.equal(rec.consumedStopInstance, null);
+    assert.equal(rec.startInputs.transcriptPath, "/x/transcript.jsonl");
+    assert.equal(rec.startInputs.intent, "connect");
+  });
+  test("a spawnRun throw writes .started.json for the attempted instance AND a bridge_failed stop record, then returns started:false", async () => {
+    const dataDir = tmpDir();
+    const result = await bridge.start({
+      env: env(dataDir),
+      sessionId: SESSION,
+      spawnRun: () => {
+        throw new Error("ENOENT: spawn failed");
+      },
+      stderr: () => {},
+      waitVerdict: noVerdict,
+    });
+    assert.equal(result.started, false);
+    assert.match(result.reason, /ENOENT/);
+    assert.equal(result.exitCode, 2);
+    const paths = pathsFor(dataDir);
+    assert.equal(fs.existsSync(paths.pid), false, "no child, so no pid record");
+    const startedRec = bridge.readJsonFile(paths.started);
+    assert.equal(typeof startedRec.lastStartedInstance, "string");
+    assert.ok(startedRec.lastStartedInstance.length > 0);
+    const stoppedRec = bridge.readJsonFile(paths.stopped);
+    assert.equal(stoppedRec.reason, "bridge_failed");
+    assert.match(stoppedRec.detail, /ENOENT/);
+    assert.equal(stoppedRec.writingInstanceId, startedRec.lastStartedInstance);
+  });
+  test("a watchdog-triggered start bumps restartGeneration and records the consumed instance", async () => {
+    const dataDir = tmpDir();
+    await bridge.start({
+      env: env(dataDir),
+      sessionId: SESSION,
+      intent: "resume",
+      restartTrigger: "watchdog",
+      consumeStopInstance: "the-failed-instance",
+      spawnRun: () => ({ pid: 111 }),
+      stderr: () => {},
+      waitVerdict: noVerdict,
+    });
+    const rec = bridge.readJsonFile(pathsFor(dataDir).started);
+    assert.equal(rec.restartGeneration, 1);
+    assert.equal(rec.consumedStopInstance, "the-failed-instance");
+  });
+});
+
+describe(".started.json / .connected.json / the watchdog throttle stamp ride STATE_SUFFIXES (DX-2953)", () => {
+  test("pruneStale reaches all three when stale", () => {
+    const dataDir = tmpDir();
+    const dir = bridge.stateDir({ CLAUDE_PLUGIN_DATA: dataDir });
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.started, "{}");
+    fs.writeFileSync(paths.connected, "{}");
+    fs.writeFileSync(paths.watchdog, "{}");
+    const old = new Date(Date.now() - bridge.STALE_STATE_MS - 5_000);
+    for (const f of [paths.started, paths.connected, paths.watchdog]) fs.utimesSync(f, old, old);
+    bridge.pruneStale(dir);
+    for (const f of [paths.started, paths.connected, paths.watchdog]) assert.equal(fs.existsSync(f), false, `${f} should have been pruned`);
+  });
+  test("fresh copies of all three survive pruneStale", () => {
+    const dataDir = tmpDir();
+    const dir = bridge.stateDir({ CLAUDE_PLUGIN_DATA: dataDir });
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.started, "{}");
+    fs.writeFileSync(paths.connected, "{}");
+    fs.writeFileSync(paths.watchdog, "{}");
+    bridge.pruneStale(dir);
+    for (const f of [paths.started, paths.connected, paths.watchdog]) assert.equal(fs.existsSync(f), true);
+  });
+});
+
+describe("watchdog — real process lifecycle (DX-2953)", () => {
+  const fixturePath = path.join(here, "fixtures", "run-bridge.mjs");
+  const spawnedForCleanup = new Set();
+  function track(child) {
+    spawnedForCleanup.add(child);
+    child.once("exit", () => spawnedForCleanup.delete(child));
+    return child;
+  }
+  after(() => {
+    for (const child of spawnedForCleanup) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }
+  });
+  function onceWithTimeout(emitter, event, timeoutMs, label) {
+    return Promise.race([
+      once(emitter, event),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${label ?? event}`)), timeoutMs)),
+    ]);
+  }
+  async function waitFor(predicate, { timeoutMs = 5_000, intervalMs = 25 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (predicate()) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+  function killIfAlive(target, { tree = false } = {}) {
+    if (typeof target === "number") {
+      if (bridge.isAlive(target)) bridge.killTree(target);
+      return;
+    }
+    if (target.exitCode !== null || target.signalCode !== null) return;
+    if (tree) bridge.killTree(target.pid);
+    else target.kill();
+  }
+  /** A real CLAUDE_PID stand-in the fixture's run() process supervises. */
+  async function spawnStandInTracked() {
+    const standIn = track(spawnStandIn());
+    await onceWithTimeout(standIn, "spawn", 5_000, "stand-in spawn");
+    return standIn;
+  }
+  function spawnFixture({ dataDir, sessionId = SESSION, intent = "resume", claudePid, inboxAddress, scriptedRecords, scriptedExitCode, instanceId = "watchdog-test-instance" }) {
+    const fixtureEnv = {
+      ...process.env,
+      CLAUDE_PLUGIN_DATA: dataDir,
+      CLAUDE_CODE_MESSAGING_SOCKET: inboxAddress,
+      CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret",
+      RUN_BRIDGE_FIXTURE_CONFIG: JSON.stringify({ sessionId, intent, parentCheckMs: 250, scriptedRecords, scriptedExitCode }),
+    };
+    if (claudePid === undefined) delete fixtureEnv.CLAUDE_PID;
+    else fixtureEnv.CLAUDE_PID = String(claudePid);
+    // NOTE: a destructured default only applies on `undefined`, so pass
+    // `instanceId: null` (never `undefined`) to omit it.
+    if (instanceId === null) delete fixtureEnv.DANX_BRIDGE_INSTANCE_ID;
+    else fixtureEnv.DANX_BRIDGE_INSTANCE_ID = instanceId;
+    return track(spawn(process.execPath, [fixturePath], { env: fixtureEnv, stdio: ["ignore", "pipe", "pipe"] }));
+  }
+  async function waitForBridgeStarted(dataDir) {
+    const paths = pathsFor(dataDir);
+    assert.ok(
+      await waitFor(() => {
+        try {
+          return /bridge started for session/.test(fs.readFileSync(paths.log, "utf8"));
+        } catch {
+          return false;
+        }
+      }, { timeoutMs: 10_000 }),
+      "bridge never logged 'bridge started'",
+    );
+    return paths;
+  }
+  async function inboxServer() {
+    const address =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\peb-watchdog-fixture-${process.pid}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+        : path.join(tmpDir(), "inbox.sock");
+    const received = [];
+    const server = net.createServer((sock) => {
+      let buf = "";
+      sock.setEncoding("utf8");
+      sock.on("data", (chunk) => {
+        buf += chunk;
+        let nl = buf.indexOf("\n");
+        while (nl !== -1) {
+          const line = buf.slice(0, nl);
+          buf = buf.slice(nl + 1);
+          if (line) received.push(JSON.parse(line));
+          nl = buf.indexOf("\n");
+        }
+      });
+    });
+    await new Promise((resolve) => server.listen(address, resolve));
+    let closed = false;
+    const close = () =>
+      new Promise((resolve) => {
+        if (closed) return resolve();
+        closed = true;
+        server.close(resolve);
+      });
+    return { address, received, close };
+  }
+  /** Directly ages `.pid.json`'s heartbeat so the watchdog sees a genuinely dead
+   * (hard-killed) process as stale without a real ~90s wait — the process was
+   * really spawned, really reached the state under test, and was really killed;
+   * only the STALENESS CLOCK is fast-forwarded, the same technique this file
+   * already uses for "a lock left by a crashed start is taken over once it is
+   * stale". */
+  function ageHeartbeat(paths) {
+    const record = bridge.readJsonFile(paths.pid);
+    record.heartbeatAt = new Date(Date.now() - bridge.HEARTBEAT_STALE_MS - 5_000).toISOString();
+    fs.writeFileSync(paths.pid, JSON.stringify(record));
+  }
+
+  test("hard-kill a running (connected) bridge, fire the watchdog: exactly one new bridge starts, through start() and its .lock", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = await spawnStandInTracked();
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      inboxAddress: address,
+      scriptedRecords: [{ type: "ready", boards: ["b"], cardCount: 1, degraded: false }],
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const paths = await waitForBridgeStarted(dataDir);
+      assert.ok(await waitFor(() => fs.existsSync(paths.connected)), ".connected.json was never written by the real run() process");
+      assert.equal(bridge.readJsonFile(paths.connected).connected, true);
+      const firstInstance = bridge.readJsonFile(paths.pid).instanceId;
+
+      // Hard-kill the real bridge process — no graceful shutdown, so .pid.json
+      // is left behind with a now-frozen heartbeat (see ageHeartbeat above).
+      killIfAlive(fixture, { tree: true });
+      await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      ageHeartbeat(paths);
+
+      let spawnedNewRun = 0;
+      const result = await bridge.watchdogTick({
+        env: { CLAUDE_PLUGIN_DATA: dataDir, CLAUDE_CODE_MESSAGING_SOCKET: address, CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret" },
+        sessionId: SESSION,
+        // The real `start()` (lock, instance mint, marker writes) runs for real;
+        // only the FINAL "spawn a brand-new OS process" step is a stand-in —
+        // that exact mechanism is already proven for real by the
+        // "concurrent starts in separate processes spawn exactly one bridge"
+        // test in the single-instance-lock describe block above.
+        startFn: bridge.start,
+        spawnRun: () => {
+          spawnedNewRun += 1;
+          return { pid: 999_000 + spawnedNewRun };
+        },
+        waitVerdict: async () => null,
+      });
+
+      assert.equal(result.ticked, true);
+      assert.equal(result.restarted, true, `expected a restart; reason was: ${result.reason}`);
+      assert.equal(spawnedNewRun, 1, "exactly one new bridge must start");
+      const secondInstance = bridge.readJsonFile(paths.pid).instanceId;
+      assert.notEqual(secondInstance, firstInstance, "the watchdog restart must mint a genuinely new instance");
+      assert.equal(bridge.readJsonFile(paths.started).lastStartedInstance, secondInstance);
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      killIfAlive(standIn);
+      await close();
+    }
+  });
+
+  test("a never-connected session (no .connected.json ever written) spawns nothing, ever, even after a hard kill", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = await spawnStandInTracked();
+    // No scriptedRecords: the stub subcommand never emits "ready", so onReady
+    // never fires and .connected.json is never created — a real, never-connected
+    // session, exactly as if the operator never called plan_connect.
+    const fixture = spawnFixture({ dataDir, claudePid: standIn.pid, inboxAddress: address });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const paths = await waitForBridgeStarted(dataDir);
+      assert.equal(fs.existsSync(paths.connected), false, "connected marker must not exist — this session never reached ready");
+      killIfAlive(fixture, { tree: true });
+      await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      ageHeartbeat(paths);
+
+      let spawned = 0;
+      const result = await bridge.watchdogTick({
+        env: { CLAUDE_PLUGIN_DATA: dataDir, CLAUDE_CODE_MESSAGING_SOCKET: address, CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret" },
+        sessionId: SESSION,
+        startFn: bridge.start,
+        spawnRun: () => {
+          spawned += 1;
+          return { pid: 1 };
+        },
+        waitVerdict: async () => null,
+      });
+      assert.equal(result.restarted, false);
+      assert.equal(spawned, 0, "a never-connected session must never spawn a bridge, whatever the watchdog observes");
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      killIfAlive(standIn);
+      await close();
+    }
+  });
+
+  test("a live degraded bridge (fresh heartbeat) is never restarted, whatever its stop record says", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = await spawnStandInTracked();
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      inboxAddress: address,
+      // ready, then a DEGRADED stop record (the child stays alive, heartbeating,
+      // per DX-3028) — the subcommand stand-in never exits (no scriptedExitCode).
+      scriptedRecords: [
+        { type: "ready", boards: ["b"], cardCount: 1, degraded: false },
+        { type: "stopped", reason: "board_unreadable", detail: "cannot read board", fix: "", paths: [], instanceId: "", degraded: true },
+      ],
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const paths = await waitForBridgeStarted(dataDir);
+      assert.ok(await waitFor(() => fs.existsSync(paths.stopped)), "the degraded stop record was never persisted");
+      assert.equal(bridge.readJsonFile(paths.stopped).reason, "board_unreadable");
+      assert.equal(bridge.readJsonFile(paths.connected).connected, true, "a degraded-but-bound session still records connected:true");
+      // NOT killed — the fixture's run() process is still alive and heartbeating.
+
+      let spawned = 0;
+      const result = await bridge.watchdogTick({
+        env: { CLAUDE_PLUGIN_DATA: dataDir, CLAUDE_CODE_MESSAGING_SOCKET: address, CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret" },
+        sessionId: SESSION,
+        startFn: bridge.start,
+        spawnRun: () => {
+          spawned += 1;
+          return { pid: 1 };
+        },
+        waitVerdict: async () => null,
+      });
+      assert.equal(result.restarted, false);
+      assert.match(result.reason, /not stale/);
+      assert.equal(spawned, 0);
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      killIfAlive(standIn);
+      await close();
+    }
+  });
+
+  test("a bridge that degraded, recovered to streaming (a real event arrives), then was hard-killed IS restarted", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = await spawnStandInTracked();
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      inboxAddress: address,
+      scriptedRecords: [
+        { type: "ready", boards: ["b"], cardCount: 1, degraded: false },
+        { type: "stopped", reason: "board_unreadable", detail: "cannot read board", fix: "", paths: [], instanceId: "", degraded: true },
+        // Recovery: a real relayed event proves the child is streaming again —
+        // this must delete the (now-stale) degraded stop record above.
+        { type: "event", id: 1, text: "recovered event" },
+      ],
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const paths = await waitForBridgeStarted(dataDir);
+      assert.ok(await waitFor(() => fs.existsSync(paths.stopped)), "the degraded stop record was never persisted");
+      assert.ok(
+        await waitFor(() => !fs.existsSync(paths.stopped)),
+        "the stop record must be deleted once the recovery event arrives",
+      );
+      const instanceBefore = bridge.readJsonFile(paths.pid).instanceId;
+
+      killIfAlive(fixture, { tree: true });
+      await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      ageHeartbeat(paths);
+
+      let spawned = 0;
+      const result = await bridge.watchdogTick({
+        env: { CLAUDE_PLUGIN_DATA: dataDir, CLAUDE_CODE_MESSAGING_SOCKET: address, CLAUDE_CODE_MESSAGING_TOKEN: "inbox-secret" },
+        sessionId: SESSION,
+        startFn: bridge.start,
+        spawnRun: () => {
+          spawned += 1;
+          return { pid: 1 };
+        },
+        waitVerdict: async () => null,
+      });
+      assert.equal(result.restarted, true, `expected a restart; reason was: ${result.reason}`);
+      assert.equal(spawned, 1);
+      assert.notEqual(bridge.readJsonFile(paths.pid).instanceId, instanceBefore);
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      killIfAlive(standIn);
+      await close();
+    }
+  });
+
+  test("run()'s own CLAUDE_PID-missing fatal refusal persists a bridge_failed stop record naming its instance", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    // intent "connect" so isSessionKnownToWantEvents is true regardless of cursor state.
+    const fixture = spawnFixture({ dataDir, claudePid: undefined, intent: "connect", inboxAddress: address, instanceId: "no-claude-pid-instance" });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 1, "a missing CLAUDE_PID must exit non-zero");
+      const paths = pathsFor(dataDir);
+      assert.ok(await waitFor(() => fs.existsSync(paths.stopped)), "no bridge_failed record was persisted for the CLAUDE_PID-missing refusal");
+      const rec = bridge.readJsonFile(paths.stopped);
+      assert.equal(rec.reason, "bridge_failed");
+      assert.equal(rec.writingInstanceId, "no-claude-pid-instance");
+      assert.match(rec.detail, /CLAUDE_PID/);
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      await close();
+    }
+  });
+
+  test("run() refuses loudly (never silently mints a fresh id) when DANX_BRIDGE_INSTANCE_ID is absent from its own environment", async () => {
+    const dataDir = tmpDir();
+    const { received, address, close } = await inboxServer();
+    const standIn = await spawnStandInTracked();
+    const fixture = spawnFixture({ dataDir, claudePid: standIn.pid, intent: "connect", inboxAddress: address, instanceId: null });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const [code] = await onceWithTimeout(fixture, "exit", 8_000, "fixture exit");
+      assert.equal(code, 1, "a missing DANX_BRIDGE_INSTANCE_ID must exit non-zero, never a silent randomUUID() fallback");
+      assert.ok(await waitFor(() => received.some((frame) => frame.type === "user")), "no notice reached the session's inbox");
+      const notice = received.find((frame) => frame.type === "user");
+      assert.match(notice.message.content, /DANX_BRIDGE_INSTANCE_ID/);
+      // No pid record either — the refusal happens before this instance could ever claim the session.
+      assert.equal(fs.existsSync(pathsFor(dataDir).pid), false);
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      killIfAlive(standIn);
+      await close();
+    }
+  });
+
+  test("cross-repo instance-id drift: a stop record's own instanceId differing from writingInstanceId is logged", async () => {
+    const dataDir = tmpDir();
+    const { address, close } = await inboxServer();
+    const standIn = await spawnStandInTracked();
+    const fixture = spawnFixture({
+      dataDir,
+      claudePid: standIn.pid,
+      inboxAddress: address,
+      instanceId: "run-process-instance",
+      scriptedRecords: [
+        { type: "ready", boards: ["b"], cardCount: 1, degraded: false },
+        // The MCP child's OWN instanceId (bridge.ts's resolveInstanceId) has
+        // drifted from what this run process was actually spawned with.
+        { type: "stopped", reason: "revoked", detail: "d", fix: "", paths: [], instanceId: "drifted-child-instance", degraded: true },
+      ],
+    });
+    fixture.stdout.resume();
+    fixture.stderr.resume();
+    try {
+      const paths = await waitForBridgeStarted(dataDir);
+      assert.ok(await waitFor(() => fs.existsSync(paths.stopped)));
+      assert.ok(
+        await waitFor(() => /instance id drift/.test(fs.readFileSync(paths.log, "utf8"))),
+        "no drift message was logged",
+      );
+      const logText = fs.readFileSync(paths.log, "utf8");
+      assert.match(logText, /drifted-child-instance/);
+      assert.match(logText, /run-process-instance/);
+    } finally {
+      killIfAlive(fixture, { tree: true });
+      killIfAlive(standIn);
+      await close();
+    }
+  });
+});
+
+describe("watchdogTick — throttle, marker liveness, orchestration (DX-2953)", () => {
+  test("with no CLAUDE_PLUGIN_DATA or session id, no-ops without touching disk", async () => {
+    const result = await bridge.watchdogTick({ env: {}, sessionId: SESSION });
+    assert.deepEqual(result, { ticked: false, restarted: false, exitCode: 0 });
+  });
+  test("the first-ever tick (no throttle stamp yet) runs; a second tick inside throttleMs is a no-op that spawns nothing", async () => {
+    const dataDir = tmpDir();
+    let starts = 0;
+    const startFn = async () => {
+      starts += 1;
+      return { started: true, exitCode: 0 };
+    };
+    // Not connected, so the decision is "no restart" either way — this test is
+    // purely about the THROTTLE gating a second tick, not the decision.
+    const first = await bridge.watchdogTick({ env: env(dataDir), sessionId: SESSION, startFn, throttleMs: 60_000, now: () => 1_000_000 });
+    assert.equal(first.ticked, true);
+    const second = await bridge.watchdogTick({ env: env(dataDir), sessionId: SESSION, startFn, throttleMs: 60_000, now: () => 1_010_000 });
+    assert.equal(second.ticked, false, "a tick inside the throttle window must be a pure no-op");
+    const third = await bridge.watchdogTick({ env: env(dataDir), sessionId: SESSION, startFn, throttleMs: 60_000, now: () => 1_070_000 });
+    assert.equal(third.ticked, true, "a tick past the throttle window must run again");
+    assert.equal(starts, 0, "never connected — startFn must never be called by any of these ticks");
+  });
+  test("the healthy path (not stale) does file stats only and never calls startFn", async () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.pid, JSON.stringify(freshPid));
+    fs.writeFileSync(paths.started, JSON.stringify(started()));
+    fs.writeFileSync(paths.connected, JSON.stringify(connectedTrue));
+    let starts = 0;
+    const result = await bridge.watchdogTick({ env: env(dataDir), sessionId: SESSION, startFn: async () => { starts += 1; return { started: true }; }, now: () => NOW + 1 });
+    assert.equal(result.ticked, true);
+    assert.equal(result.restarted, false);
+    assert.equal(starts, 0);
+  });
+  test("a restart-eligible tick calls startFn with restartTrigger:'watchdog' and the decision's consumeStopInstance", async () => {
+    const dataDir = tmpDir();
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.pid, JSON.stringify(stalePid));
+    fs.writeFileSync(paths.started, JSON.stringify(started()));
+    fs.writeFileSync(paths.connected, JSON.stringify(connectedTrue));
+    fs.writeFileSync(paths.stopped, JSON.stringify(stopped("bridge_failed")));
+    let captured = null;
+    const result = await bridge.watchdogTick({
+      env: env(dataDir),
+      sessionId: SESSION,
+      startFn: async (opts) => {
+        captured = opts;
+        return { started: true, exitCode: 0 };
+      },
+      now: () => NOW,
+    });
+    assert.equal(result.restarted, true);
+    assert.equal(captured.restartTrigger, "watchdog");
+    assert.equal(captured.consumeStopInstance, "instance-a");
+    assert.equal(captured.intent, bridge.RESUME_INTENT);
+  });
+  test("prune liveness, direction 1: one tick refreshes both marker mtimes past STALE_STATE_MS so a following pruneStale keeps them", async () => {
+    const dataDir = tmpDir();
+    const dir = bridge.stateDir({ CLAUDE_PLUGIN_DATA: dataDir });
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.connected, JSON.stringify(connectedFalse)); // not connected -> decision is trivially "no restart"
+    fs.writeFileSync(paths.started, JSON.stringify(started()));
+    const old = new Date(Date.now() - bridge.STALE_STATE_MS - 5_000);
+    fs.utimesSync(paths.started, old, old);
+    fs.utimesSync(paths.connected, old, old);
+    await bridge.watchdogTick({ env: env(dataDir), sessionId: SESSION, startFn: async () => ({ started: false }), now: () => Date.now() });
+    bridge.pruneStale(dir);
+    assert.equal(fs.existsSync(paths.started), true, ".started.json must survive — the watchdog tick just refreshed its mtime");
+    assert.equal(fs.existsSync(paths.connected), true, ".connected.json must survive — the watchdog tick just refreshed its mtime");
+  });
+  test("prune liveness, direction 2: with NO tick over the window, pruneStale removes both, and a following start()/ready rewrites them with no restart lost", async () => {
+    const dataDir = tmpDir();
+    const dir = bridge.stateDir({ CLAUDE_PLUGIN_DATA: dataDir });
+    const paths = pathsFor(dataDir);
+    fs.writeFileSync(paths.started, JSON.stringify(started()));
+    fs.writeFileSync(paths.connected, JSON.stringify(connectedTrue));
+    const old = new Date(Date.now() - bridge.STALE_STATE_MS - 5_000);
+    fs.utimesSync(paths.started, old, old);
+    fs.utimesSync(paths.connected, old, old);
+    bridge.pruneStale(dir); // no watchdog tick ran in between — both should be reclaimed
+    assert.equal(fs.existsSync(paths.started), false);
+    assert.equal(fs.existsSync(paths.connected), false);
+    // A following start() rewrites .started.json regardless of the prune...
+    const result = await bridge.start({ env: env(dataDir), sessionId: SESSION, intent: "connect", spawnRun: () => ({ pid: 55 }), stderr: () => {}, waitVerdict: noVerdict });
+    assert.equal(result.started, true);
+    assert.equal(fs.existsSync(paths.started), true);
+    // ...and the new bridge itself would rewrite .connected.json at ready — simulated
+    // here via the same fenced writer `run()` uses, proving nothing about the prune
+    // stops a subsequent legitimate write from succeeding.
+    const instanceId = bridge.readJsonFile(paths.pid).instanceId;
+    const written = bridge.writeConnectedIfCurrent(paths, { connected: true, instanceId, now: Date.now() });
+    assert.equal(written.written, true, "no restart capability was lost by the prune — the new bridge can still record connected:true");
+  });
 });
