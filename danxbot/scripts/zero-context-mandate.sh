@@ -59,6 +59,18 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
 3. RUNNING A PLAN WITH SUB-AGENTS (see danxbot:plan-workflow "Running a plan with sub-agents").
    Size every sub-agent: set the card's effort_level first, then dispatch the matching
    danxbot:worker-<model>-<effort> agent — never let a sub-agent inherit the session's own model.
+   THE MAPPING IS FIXED, AND SAYING IT OUT LOUD IS PART OF DISPATCHING: min/very_low →
+   haiku-low · low → haiku-high · medium → sonnet-low · high → sonnet-medium ·
+   very_high → sonnet-high · max → opus-high. `high` on sonnet-medium is the DEFAULT for
+   most build, fix, test and investigation work. Before each dispatch, state in one visible
+   line the effort you set and the agent it maps to. Going ABOVE the mapping needs its
+   reason in that same line — and "important", "load-bearing", "consequential", "reverses a
+   decision", "the operator is watching" are NOT reasons: they describe the stakes, not the
+   code. A reviewer reading a finished diff, a card handed a complete spec, and a change
+   with prior art to copy are all routine work however much rides on them. Reach for the
+   top tier when the CODE is the hardest thing in the repo, and not otherwise.
+   THE TELL: most of this session's dispatches are the same top tier. That is not a hard
+   session; it is a sizing gate that never ran.
    Card status is always true: In Progress only while something is actively working it; when
    nobody is, issue_transition rollback_pickup keep_assignment:true — one call, back to ToDo,
    assigned_agent untouched.

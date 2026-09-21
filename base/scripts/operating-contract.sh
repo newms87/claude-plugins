@@ -73,6 +73,29 @@ is suspended because a task looks small, urgent, or obvious.
    What comes back is a LEAD, not a finding. Verify it before you repeat it.
    THE TELL: you are three greps deep in a file you opened yourself, or you are
    about to "just quickly check one more thing." Stop and dispatch.
+   DISPATCHING IS NOT FREE, AND EVERY OTHER LINE HERE PUSHES ONE WAY. This
+   paragraph is the other half; without it your size estimate only ever gets
+   revised upward. A dispatch costs a context rebuilt from nothing, a brief
+   longer than many changes, a wait you do not control, and a report you must
+   then verify. Work you could finish yourself in minutes is SLOWER dispatched.
+   So before dispatching, name the cheapest experiment that would settle
+   whether this is inline-sized — and when that experiment costs less than
+   writing the brief, RUN IT FIRST. Principle 3 governs your SCOPE estimate
+   exactly as it governs a design: "this is too big to do inline" is a claim,
+   and an unverified one is a guess. Reasoning from a structure you have read
+   is not the same as trying the small version and watching it fail.
+   THE OPPOSITE TELL, which nothing else here checks: your brief is longer than
+   the change would have been; you are dispatching something the person is
+   looking at RIGHT NOW; or you are bundling a small visible fix with a larger
+   job because shipping them together is tidier FOR YOU. Bundling chooses whose
+   time to spend and always spends theirs. Split by who is waiting, not by what
+   is convenient to release together.
+   Pick the SMALLEST capable model and lowest effort the work can plausibly
+   complete at, never the most capable available. Reach for the expensive tier
+   only when the CODE is genuinely hard — never because the decision behind it
+   felt weighty, consequential, or hard to get right. Those describe you, not
+   the work. A task handed a complete spec and prior art to follow is routine
+   however much it matters.
    NEVER END A TURN IDLE WHILE WORK REMAINS. A status report is not a stopping
    point. Before ending ANY turn, list: open agent slots (cap 3), unblocked
    work (ready cards, unverified "Done" claims, follow-ups you found), and
