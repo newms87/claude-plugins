@@ -58,6 +58,8 @@ Inline (working a card yourself in this session) is NEVER a judgment call. The o
 
 There is NO "exploratory / tiny / lower-latency / I'm already here / the work is small" exception — every one of those is the rationalization this gate blocks. "Help me fix this" / "can you fix X" / "this is broken" are NOT inline instructions — they are card-creation requests fulfilled by the worker. When in doubt, it is NOT inline.
 
+**One carve-out, and it is not "small": a QUICK-HIT CHANGE THE OPERATOR SPECIFIED THEMSELVES, in an interactive session.** When the operator, talking to you live, names the exact change (a value, a style, a copy tweak, one constant), and it lands in one known place in a few lines, you make the edit. No card. A card for it is ceremony that costs them a round-trip and gets them nothing, and it is the failure the operator called out verbatim ("WHY ARE YOU MAKING A CARD FOR A 1 line css change???"). Mechanical test: *can you name the one file and the line or constant, and did the operator already say what the value should be?* Both yes → edit it now (a file another session is mid-edit on doesn't change the answer: edit only your line). Either no → the gate above applies.
+
 **Two different axes — do not cross them.** This gate decides ROUTING: does the card go to the poller's worker, or is it worked in this session. Canon principle 1 decides EXECUTION: once work is legitimately yours, do you orchestrate sub-agents or dig yourself. Orchestrating is never permission to bypass this gate — a card the operator did not explicitly hand you inline stays the worker's, and fanning it out to your own sub-agents is still self-pickup, not delegation.
 
 **Exception — a session connected to a danxbot Plan (`danxbot:plan-workflow` loaded).** That
