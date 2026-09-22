@@ -53,14 +53,55 @@ if echo "$COMMAND" | grep -qiE 'git[[:space:]]+(rebase|merge|cherry-pick|revert)
   exit 0
 fi
 
-# Each alternative matches ONLY the destructive form:
+# `git restore --staged <path>` only moves changes out of the index — it never
+# touches the working tree, exactly like `git reset` without `--hard` (already
+# allowed below). Cleared here, before PATTERN, the same way `--abort` is
+# cleared above, so the general `restore` alternative in PATTERN can treat
+# every OTHER form of restore (bare, `--worktree`, `--source=<ref>`) as
+# destructive without having to carve this one shape back out of a single
+# regex alternative.
+if echo "$COMMAND" | grep -qiE 'git[[:space:]]+restore[[:space:]].*--staged' \
+   && ! echo "$COMMAND" | grep -qiE 'git[[:space:]]+restore[[:space:]].*--(worktree|source)'; then
+  exit 0
+fi
+
+# Each alternative matches ONLY the destructive form. DX-3094 — every bullet
+# below is followed by a `FORM:`/`ALLOWED-FORM:` example; base/tests/deny-destructive-git.test.mjs
+# reads these lines straight out of this file and runs each example through
+# this real script, so a bullet that claims coverage PATTERN does not actually
+# have fails the test instead of drifting silently (the 2026-09-04 comment/
+# PATTERN mismatch this rewrite fixes).
 #  - reset --hard        (soft/mixed keep the working tree, so they are allowed)
+#    FORM: git reset --hard origin/main
+#    ALLOWED-FORM: git reset origin/main
+#    ALLOWED-FORM: git reset --soft HEAD~1
 #  - clean with -f/-x/-d (clean -n / --dry-run is allowed)
+#    FORM: git clean -fd
+#    ALLOWED-FORM: git clean -n
+#    ALLOWED-FORM: git clean --dry-run -fd
 #  - stash               (every form: push/save/create hide work an agent then
 #                         forgets; the operator finds a stash weeks later)
-#  - checkout/switch to a ref or -- <path>, which discards local modifications
-#    (checkout -b / switch -c create a branch and are allowed)
-PATTERN='git[[:space:]]+reset[[:space:]]+(--hard|.*[[:space:]]--hard)|git[[:space:]]+clean[[:space:]]+-[a-z]*[fxd]|git[[:space:]]+stash|git[[:space:]]+(checkout|switch)[[:space:]]+(--[[:space:]]|--force|-f[[:space:]])'
+#    FORM: git stash
+#    FORM: git stash push
+#  - checkout/switch with the discard marker right after the verb
+#    FORM: git checkout -- file.txt
+#    FORM: git checkout --force other-branch
+#    FORM: git switch -f other-branch
+#    ALLOWED-FORM: git checkout -b new-branch
+#    ALLOWED-FORM: git switch -c new-branch
+#  - checkout with a STARTING POINT named before the discard marker — the
+#    shape DX-3094 found uncaught, and the one that actually ran in the
+#    2026-09-21 incident (DX-3091/DX-3089)
+#    FORM: git checkout origin/main -- file.txt
+#    FORM: git checkout HEAD~1 -- src/agent/launcher.ts
+#  - restore, the newer plain-verb equivalent of `checkout -- <path>` that the
+#    refusal message below already tells an agent not to reach for — added
+#    here so the pattern actually backs that claim (DX-3094 AC2)
+#    FORM: git restore file.txt
+#    FORM: git restore --worktree file.txt
+#    FORM: git restore --source=HEAD~1 file.txt
+#    ALLOWED-FORM: git restore --staged file.txt
+PATTERN='git[[:space:]]+reset[[:space:]]+(--hard|.*[[:space:]]--hard)|git[[:space:]]+clean[[:space:]]+-[a-z]*[fxd]|git[[:space:]]+stash|git[[:space:]]+(checkout|switch)[[:space:]]+(--[[:space:]]|--force|-f[[:space:]])|git[[:space:]]+checkout[[:space:]]+[^[:space:]-][^[:space:]]*[[:space:]]+--([[:space:]]|$)|git[[:space:]]+restore([[:space:]]|$)'
 
 MATCH=$(echo "$COMMAND" | grep -oiE "$PATTERN" | head -1 || true)
 
