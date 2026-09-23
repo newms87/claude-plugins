@@ -299,47 +299,142 @@ if [ -z "${DANX_AGENT_WORKTREE:-}" ] && [ -x "${REPO_ROOT}/scripts/update-plugin
 
   # Post-delivery check (AC3): prove delivery instead of assuming it. For
   # each plugin just bumped, compare the version this publish JUST pushed
-  # against what THIS machine actually has: the user-scope row in
-  # installed_plugins.json, and the newest version dir materialized under
-  # the plugin's cache. update-plugins.sh exiting 0 only means every row it
-  # touched updated or was already current — it does not by itself prove
-  # the specific version we care about right now is the one that landed.
+  # against what THIS machine actually has.
+  #
+  # DX-3057: Check EVERY live install-scope row (user-scope + all project-scope
+  # rows whose projectPath exists on disk), not just user-scope. A row whose
+  # projectPath no longer exists on disk is skipped with an informational message.
+  # All other rows must have the version we just published. Errors are reported
+  # loud, not swallowed into "?" placeholders.
   info "Verifying delivered versions..."
   DELIVERY_FAILED=0
   for plugin in "${TARGETS[@]}"; do
     expected="${BUMPED_VERSION[$plugin]}"
-    IFS=$'\t' read -r ok_flag user_version cache_version <<<"$(node -e '
+    
+    # Extract results as JSON lines; process each one to report status
+    while IFS= read -r result_line; do
+      [ -z "$result_line" ] && continue
+      
+      # Parse the JSON result line
+      status=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).status)")
+      label=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).label)")
+      
+      case "$status" in
+        ok)
+          ok "  ${plugin} [${label}]: v${expected} confirmed installed."
+          ;;
+        skipped)
+          reason=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).reason)")
+          info "  ${plugin} [${label}]: SKIPPED (${reason})"
+          ;;
+        mismatch)
+          version=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).version)")
+          newestCache=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).newestCache)")
+          err "  ${plugin} [${label}]: expected v${expected} but installed_plugins.json shows '${version}' and newest cache dir is '${newestCache}'."
+          DELIVERY_FAILED=1
+          ;;
+      esac
+    done < <(node -e '
       const fs = require("fs");
       const path = require("path");
       const [installedFile, cacheRoot, marketplace, plugin, expected] = process.argv.slice(1);
-      let userVersion = "?";
+
+      // Read all rows from installed_plugins.json
+      let allRows = [];
       try {
         const data = JSON.parse(fs.readFileSync(installedFile, "utf8"));
-        const rows = (data.plugins && data.plugins[`${plugin}@${marketplace}`]) || [];
-        const userRow = rows.find((r) => r.scope === "user");
-        userVersion = userRow ? userRow.version : "<none>";
-      } catch { /* leave "?" — reported as a mismatch below */ }
-      let newestCache = "?";
+        const entries = (data.plugins && data.plugins[`${plugin}@${marketplace}`]) || [];
+        allRows = entries.map((entry) => ({
+          pluginId: `${plugin}@${marketplace}`,
+          scope: entry.scope || "user",
+          projectPath: entry.projectPath || null,
+          version: entry.version || "?",
+        }));
+      } catch (err) {
+        console.error(`ERROR reading ${installedFile}: ${err.message}`);
+        process.exit(1);
+      }
+
+      if (allRows.length === 0) {
+        console.error(`ERROR: no rows found for ${plugin}@${marketplace} in ${installedFile}`);
+        process.exit(1);
+      }
+
+      // Get the newest cache version
+      let newestCache = null;
       try {
-        const dirs = fs.readdirSync(path.join(cacheRoot, plugin)).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
+        const cachePath = path.join(cacheRoot, plugin);
+        const dirs = fs.readdirSync(cachePath).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
         dirs.sort((a, b) => {
           const pa = a.split(".").map(Number);
           const pb = b.split(".").map(Number);
           for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
           return 0;
         });
-        newestCache = dirs.length ? dirs[dirs.length - 1] : "<none>";
-      } catch { /* leave "?" — reported as a mismatch below */ }
-      const ok = userVersion === expected && newestCache === expected;
-      process.stdout.write([ok, userVersion, newestCache].join("\t"));
-    ' "${HOME}/.claude/plugins/installed_plugins.json" "${HOME}/.claude/plugins/cache/${MARKETPLACE_NAME}" "${MARKETPLACE_NAME}" "$plugin" "$expected")"
-    if [ "$ok_flag" != "true" ]; then
-      err "  ${plugin}: expected v${expected} installed, but installed_plugins.json (user scope) shows '${user_version}' and the newest cache dir is '${cache_version}'."
-      DELIVERY_FAILED=1
-    else
-      ok "  ${plugin}: v${expected} confirmed installed (user scope + cache)."
-    fi
+        newestCache = dirs.length ? dirs[dirs.length - 1] : null;
+      } catch (err) {
+        console.error(`ERROR reading cache at ${path.join(cacheRoot, plugin)}: ${err.message}`);
+        process.exit(1);
+      }
+
+      if (!newestCache) {
+        console.error(`ERROR: no cache versions found for ${plugin} at ${path.join(cacheRoot, plugin)}`);
+        process.exit(1);
+      }
+
+      // Check each row and collect results
+      const results = [];
+      for (const row of allRows) {
+        const label = row.scope === "user" 
+          ? `${row.scope}` 
+          : `${row.scope} @ ${row.projectPath ? path.basename(row.projectPath) : "?"}`;
+        
+        // Skip rows whose project path no longer exists on disk
+        if (row.projectPath && !fs.existsSync(row.projectPath)) {
+          results.push({
+            pluginId: row.pluginId,
+            status: "skipped",
+            label,
+            reason: `project path missing: ${row.projectPath}`,
+            version: row.version,
+          });
+          continue;
+        }
+
+        // Check if the version matches expected
+        const versionMatch = row.version === expected;
+        const cacheMatch = newestCache === expected;
+        
+        if (versionMatch && cacheMatch) {
+          results.push({
+            pluginId: row.pluginId,
+            status: "ok",
+            label,
+            version: row.version,
+          });
+        } else {
+          results.push({
+            pluginId: row.pluginId,
+            status: "mismatch",
+            label,
+            version: row.version,
+            newestCache,
+            expected,
+          });
+        }
+      }
+
+      // Output results as JSON (one per line for shell parsing)
+      for (const result of results) {
+        console.log(JSON.stringify(result));
+      }
+
+      // Exit non-zero if any mismatches (skipped is OK)
+      const hasMismatch = results.some((r) => r.status === "mismatch");
+      process.exit(hasMismatch ? 1 : 0);
+    ' "${HOME}/.claude/plugins/installed_plugins.json" "${HOME}/.claude/plugins/cache/${MARKETPLACE_NAME}" "${MARKETPLACE_NAME}" "$plugin" "$expected") || DELIVERY_FAILED=1
   done
+  
   if [ "$DELIVERY_FAILED" -eq 1 ]; then
     err "Plugin delivery verification FAILED — the bump was pushed to origin/main, but at"
     err "least one plugin above is NOT running the published version on this machine."
