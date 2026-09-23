@@ -306,133 +306,24 @@ if [ -z "${DANX_AGENT_WORKTREE:-}" ] && [ -x "${REPO_ROOT}/scripts/update-plugin
   # projectPath no longer exists on disk is skipped with an informational message.
   # All other rows must have the version we just published. Errors are reported
   # loud, not swallowed into "?" placeholders.
+  #
+  # DX-3057: this used to shell out through `while ... done < <(node -e '...')`
+  # — a process substitution, whose exit status bash silently discards. A
+  # node-side process.exit(1) (unreadable file, no rows, no cache) printed to
+  # stderr but never flipped DELIVERY_FAILED, so publish.sh reported SUCCESS
+  # even when this machine wasn't running the published version. The checker
+  # is now one script (scripts/verify-delivery.mjs) called directly, and its
+  # exit status is tested with `if ! ... ; then` — nothing hides it.
   info "Verifying delivered versions..."
   DELIVERY_FAILED=0
   for plugin in "${TARGETS[@]}"; do
     expected="${BUMPED_VERSION[$plugin]}"
-    
-    # Extract results as JSON lines; process each one to report status
-    while IFS= read -r result_line; do
-      [ -z "$result_line" ] && continue
-      
-      # Parse the JSON result line
-      status=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).status)")
-      label=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).label)")
-      
-      case "$status" in
-        ok)
-          ok "  ${plugin} [${label}]: v${expected} confirmed installed."
-          ;;
-        skipped)
-          reason=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).reason)")
-          info "  ${plugin} [${label}]: SKIPPED (${reason})"
-          ;;
-        mismatch)
-          version=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).version)")
-          newestCache=$(echo "$result_line" | node -e "console.log(JSON.parse(require('fs').readFileSync(0, 'utf8')).newestCache)")
-          err "  ${plugin} [${label}]: expected v${expected} but installed_plugins.json shows '${version}' and newest cache dir is '${newestCache}'."
-          DELIVERY_FAILED=1
-          ;;
-      esac
-    done < <(node -e '
-      const fs = require("fs");
-      const path = require("path");
-      const [installedFile, cacheRoot, marketplace, plugin, expected] = process.argv.slice(1);
-
-      // Read all rows from installed_plugins.json
-      let allRows = [];
-      try {
-        const data = JSON.parse(fs.readFileSync(installedFile, "utf8"));
-        const entries = (data.plugins && data.plugins[`${plugin}@${marketplace}`]) || [];
-        allRows = entries.map((entry) => ({
-          pluginId: `${plugin}@${marketplace}`,
-          scope: entry.scope || "user",
-          projectPath: entry.projectPath || null,
-          version: entry.version || "?",
-        }));
-      } catch (err) {
-        console.error(`ERROR reading ${installedFile}: ${err.message}`);
-        process.exit(1);
-      }
-
-      if (allRows.length === 0) {
-        console.error(`ERROR: no rows found for ${plugin}@${marketplace} in ${installedFile}`);
-        process.exit(1);
-      }
-
-      // Get the newest cache version
-      let newestCache = null;
-      try {
-        const cachePath = path.join(cacheRoot, plugin);
-        const dirs = fs.readdirSync(cachePath).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
-        dirs.sort((a, b) => {
-          const pa = a.split(".").map(Number);
-          const pb = b.split(".").map(Number);
-          for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-          return 0;
-        });
-        newestCache = dirs.length ? dirs[dirs.length - 1] : null;
-      } catch (err) {
-        console.error(`ERROR reading cache at ${path.join(cacheRoot, plugin)}: ${err.message}`);
-        process.exit(1);
-      }
-
-      if (!newestCache) {
-        console.error(`ERROR: no cache versions found for ${plugin} at ${path.join(cacheRoot, plugin)}`);
-        process.exit(1);
-      }
-
-      // Check each row and collect results
-      const results = [];
-      for (const row of allRows) {
-        const label = row.scope === "user" 
-          ? `${row.scope}` 
-          : `${row.scope} @ ${row.projectPath ? path.basename(row.projectPath) : "?"}`;
-        
-        // Skip rows whose project path no longer exists on disk
-        if (row.projectPath && !fs.existsSync(row.projectPath)) {
-          results.push({
-            pluginId: row.pluginId,
-            status: "skipped",
-            label,
-            reason: `project path missing: ${row.projectPath}`,
-            version: row.version,
-          });
-          continue;
-        }
-
-        // Check if the version matches expected
-        const versionMatch = row.version === expected;
-        const cacheMatch = newestCache === expected;
-        
-        if (versionMatch && cacheMatch) {
-          results.push({
-            pluginId: row.pluginId,
-            status: "ok",
-            label,
-            version: row.version,
-          });
-        } else {
-          results.push({
-            pluginId: row.pluginId,
-            status: "mismatch",
-            label,
-            version: row.version,
-            newestCache,
-            expected,
-          });
-        }
-      }
-
-      // Output results as JSON (one per line for shell parsing)
-      for (const result of results) {
-        console.log(JSON.stringify(result));
-      }
-
-      // Exit non-zero if any mismatches (skipped is OK)
-      const hasMismatch = results.some((r) => r.status === "mismatch");
-      process.exit(hasMismatch ? 1 : 0);
-    ' "${HOME}/.claude/plugins/installed_plugins.json" "${HOME}/.claude/plugins/cache/${MARKETPLACE_NAME}" "${MARKETPLACE_NAME}" "$plugin" "$expected") || DELIVERY_FAILED=1
+    if ! node "${REPO_ROOT}/scripts/verify-delivery.mjs" \
+      "${HOME}/.claude/plugins/installed_plugins.json" \
+      "${HOME}/.claude/plugins/cache/${MARKETPLACE_NAME}" \
+      "${MARKETPLACE_NAME}" "$plugin" "$expected"; then
+      DELIVERY_FAILED=1
+    fi
   done
   
   if [ "$DELIVERY_FAILED" -eq 1 ]; then
