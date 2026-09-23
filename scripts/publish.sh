@@ -184,6 +184,7 @@ fi
 # --- Bump + commit each plugin ----------------------------------------
 
 declare -a BUMPED=()
+declare -A BUMPED_VERSION=()
 
 bump_version() {
   local current="$1"
@@ -229,6 +230,7 @@ for plugin in "${TARGETS[@]}"; do
   git add "$manifest" "$plugin/"
   git commit -m "${plugin} v${next}"
   BUMPED+=("${plugin} v${next}")
+  BUMPED_VERSION["$plugin"]="$next"
 done
 
 # Push — UNLESS we are running inside a danxbot agent worktree.
@@ -279,10 +281,72 @@ fi
 # keeps loading whatever version it cached earlier — the failure this repo
 # hit for two months. See scripts/update-plugins.sh for why it can't be left
 # to Claude Code's own auto-update here.
+#
+# DX-3057 — a failure here used to be a soft "WARN ... the publish itself
+# succeeded", which is exactly backwards: "succeeded" from a consumer's
+# point of view means the published version is actually running, not that
+# `git push` returned 0. Both this delivery step AND its own outcome are
+# now checked, and either one failing exits this script non-zero with a
+# message that says plainly the change is NOT live on this machine yet.
 if [ -z "${DANX_AGENT_WORKTREE:-}" ] && [ -x "${REPO_ROOT}/scripts/update-plugins.sh" ]; then
   info "Updating this machine's installed plugin records..."
   if ! "${REPO_ROOT}/scripts/update-plugins.sh"; then
-    err "WARN: plugin update reported failures (above). The publish itself succeeded."
+    err "Plugin delivery FAILED (above) — the bump was pushed to origin/main, but this"
+    err "machine is NOT running it yet. Fix the failure above, then re-run:"
+    err "  ${REPO_ROOT}/scripts/update-plugins.sh"
+    exit 1
+  fi
+
+  # Post-delivery check (AC3): prove delivery instead of assuming it. For
+  # each plugin just bumped, compare the version this publish JUST pushed
+  # against what THIS machine actually has: the user-scope row in
+  # installed_plugins.json, and the newest version dir materialized under
+  # the plugin's cache. update-plugins.sh exiting 0 only means every row it
+  # touched updated or was already current — it does not by itself prove
+  # the specific version we care about right now is the one that landed.
+  info "Verifying delivered versions..."
+  DELIVERY_FAILED=0
+  for plugin in "${TARGETS[@]}"; do
+    expected="${BUMPED_VERSION[$plugin]}"
+    IFS=$'\t' read -r ok_flag user_version cache_version <<<"$(node -e '
+      const fs = require("fs");
+      const path = require("path");
+      const [installedFile, cacheRoot, marketplace, plugin, expected] = process.argv.slice(1);
+      let userVersion = "?";
+      try {
+        const data = JSON.parse(fs.readFileSync(installedFile, "utf8"));
+        const rows = (data.plugins && data.plugins[`${plugin}@${marketplace}`]) || [];
+        const userRow = rows.find((r) => r.scope === "user");
+        userVersion = userRow ? userRow.version : "<none>";
+      } catch { /* leave "?" — reported as a mismatch below */ }
+      let newestCache = "?";
+      try {
+        const dirs = fs.readdirSync(path.join(cacheRoot, plugin)).filter((d) => /^\d+\.\d+\.\d+$/.test(d));
+        dirs.sort((a, b) => {
+          const pa = a.split(".").map(Number);
+          const pb = b.split(".").map(Number);
+          for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+          return 0;
+        });
+        newestCache = dirs.length ? dirs[dirs.length - 1] : "<none>";
+      } catch { /* leave "?" — reported as a mismatch below */ }
+      const ok = userVersion === expected && newestCache === expected;
+      process.stdout.write([ok, userVersion, newestCache].join("\t"));
+    ' "${HOME}/.claude/plugins/installed_plugins.json" "${HOME}/.claude/plugins/cache/${MARKETPLACE_NAME}" "${MARKETPLACE_NAME}" "$plugin" "$expected")"
+    if [ "$ok_flag" != "true" ]; then
+      err "  ${plugin}: expected v${expected} installed, but installed_plugins.json (user scope) shows '${user_version}' and the newest cache dir is '${cache_version}'."
+      DELIVERY_FAILED=1
+    else
+      ok "  ${plugin}: v${expected} confirmed installed (user scope + cache)."
+    fi
+  done
+  if [ "$DELIVERY_FAILED" -eq 1 ]; then
+    err "Plugin delivery verification FAILED — the bump was pushed to origin/main, but at"
+    err "least one plugin above is NOT running the published version on this machine."
+    err "Run '${REPO_ROOT}/scripts/update-plugins.sh' again, or"
+    err "'\$CLAUDE_CODE_EXECPATH plugin update <plugin> --scope user -y' by hand, then"
+    err "re-run publish.sh (or just this machine's delivery) to confirm."
+    exit 1
   fi
 fi
 

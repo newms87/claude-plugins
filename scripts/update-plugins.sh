@@ -109,9 +109,25 @@ log() { printf '%s\n' "$*" >> "$LOG_FILE"; }
 # Fail loud on a missing prerequisite. A silent no-op here would recreate the
 # exact class of failure this script exists to end: everything looks fine,
 # nothing is actually updated.
-
-if ! command -v claude >/dev/null 2>&1; then
-  err "The 'claude' CLI is not on PATH — cannot update plugins."
+#
+# DX-3057 — a session spawned by the Claude Code desktop app (the normal way
+# this script gets run, via `scripts/publish.sh` from inside a session) does
+# NOT put `claude` on PATH for its Bash/PowerShell tool shells. Confirmed on
+# this machine: `command -v claude` and `where claude` both fail, `claude
+# --version` is "command not found" — in a shell that has
+# CLAUDE_CODE_EXECPATH=C:\...\claude-code\2.1.280\claude.exe set and working.
+# That env var is exactly what the app itself used to launch this session's
+# claude process, so it is the correct binary to drive `plugin update` with.
+# Every consumer machine that is NOT inside a desktop-app session (a bare
+# terminal with the CLI installed the traditional way, CI, etc.) has no such
+# var and falls back to the PATH lookup exactly as before.
+if [ -n "${CLAUDE_CODE_EXECPATH:-}" ] && [ -x "${CLAUDE_CODE_EXECPATH}" ]; then
+  CLAUDE_BIN="${CLAUDE_CODE_EXECPATH}"
+elif command -v claude >/dev/null 2>&1; then
+  CLAUDE_BIN="claude"
+else
+  err "No usable 'claude' CLI found — not on PATH, and \$CLAUDE_CODE_EXECPATH is unset or not executable."
+  err "  \$CLAUDE_CODE_EXECPATH=${CLAUDE_CODE_EXECPATH:-<unset>}"
   exit 1
 fi
 
@@ -286,7 +302,7 @@ for row in "${ROWS[@]}"; do
   fi
 
   info "  checking ${label}"
-  if output="$(cd "$target_dir" && claude plugin update "$plugin" --scope "$scope" 2>&1)"; then
+  if output="$(cd "$target_dir" && "$CLAUDE_BIN" plugin update "$plugin" --scope "$scope" 2>&1)"; then
     log "  ok: ${label} :: ${output//$'\n'/ }"
     if grep -qiE 'updated from' <<<"$output"; then
       UPDATED+=("${plugin} [${where}] $(grep -oiE 'from [^ ]+ to [^ ]+' <<<"$output" | head -1)")
