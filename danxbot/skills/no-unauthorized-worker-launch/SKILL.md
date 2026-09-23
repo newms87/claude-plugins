@@ -42,11 +42,19 @@ said in a different session).
 
 The operator granted standing, cross-session authorization (2026-09-22, verbatim: *"you don't need
 my sign off to deploy. just deploy"*) to deploy committed, pushed and verified work to production
-without asking first: `make deploy TARGET=<t> COMMIT=<sha>`, `scripts/deploy-ci.sh <t> [commit]`,
-and a connected repo's own documented deploy path (e.g. its local-deploy fallback script). Deploying
-is part of finishing the work — do it, verify it live, report what you did. Asking "shall I deploy?"
-is the failure this exception exists to remove.
+without asking first. **This exception covers `gpt` (danxbot) and gpt-manager production only.**
+Deploying is part of finishing the work — do it, verify it live, report what you did. Asking "shall
+I deploy?" is the failure this exception exists to remove.
 
+- **The routine path is local, not CI (DX-3143 — GitHub Actions is blocked account-wide on billing
+  and will not be fixed by an agent).** danxbot: `make deploy TARGET=gpt COMMIT=<sha>`, from WSL, in
+  a login shell (`bash -l`), node 22 via nvm, `DANXBOT_TARGET` exported to match `TARGET=`. Check no
+  other deploy is running and no worker dispatch is in flight first. gpt-manager:
+  `scripts/deploy-local.sh [sha]`, also from WSL. `scripts/deploy-ci.sh` / GitHub Actions remain
+  documented but are not the routine route while the account is billing-blocked.
+- **`platform` is NOT deployed — by anyone, for any reason (operator decision, DX-3148,
+  2026-09-23).** This exception never covers a `platform` deploy; do not derive one from the `gpt`
+  mechanics above, and do not ask the operator to make an exception for it.
 - **The deploy mechanics still bind:** check what is dispatching first, name the exact commit, never
   work around a safety guard (a secrets-overwrite refusal, a disk budget, a failed preflight) — fix
   its cause or report it.
@@ -91,7 +99,7 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 | `make launch-all-workers` | Starts every configured worker. Worse than above. |
 | `make launch-infra` | Starts shared MySQL + dashboard. Dashboard alone is mostly safe; if the user wants ONLY the dashboard, they will say so. |
 | `make launch-dashboard-host` | Same — operator-driven only. |
-| `make deploy TARGET=<t>` | Production deploy. Operator session: covered by the standing deploy exception above. Dispatched agent: never. |
+| `make deploy TARGET=<t>` | Production deploy. Operator session: covered by the standing deploy exception above for `TARGET=gpt` only. `TARGET=platform` is never authorized, by anyone, regardless of session (DX-3148). Dispatched agent: never. |
 | `make deploy-secrets-push TARGET=<t>` | Destructive SSM write. Always operator-driven. |
 | `make deploy-destroy …` | Tears down AWS infra. Always operator-driven. |
 | `npx tsx src/index.ts` (or any direct run of the worker entrypoint) | Bypasses make but does the same thing — same prohibition. |
