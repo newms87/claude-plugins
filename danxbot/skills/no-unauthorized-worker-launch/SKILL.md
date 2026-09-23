@@ -46,12 +46,15 @@ without asking first. **This exception covers `gpt` (danxbot) and gpt-manager pr
 Deploying is part of finishing the work — do it, verify it live, report what you did. Asking "shall
 I deploy?" is the failure this exception exists to remove.
 
-- **The routine path is local, not CI (DX-3143 — GitHub Actions is blocked account-wide on billing
-  and will not be fixed by an agent).** danxbot: `make deploy TARGET=gpt COMMIT=<sha>`, from WSL, in
-  a login shell (`bash -l`), node 22 via nvm, `DANXBOT_TARGET` exported to match `TARGET=`. Check no
-  other deploy is running and no worker dispatch is in flight first. gpt-manager:
-  `scripts/deploy-local.sh [sha]`, also from WSL. `scripts/deploy-ci.sh` / GitHub Actions remain
-  documented but are not the routine route while the account is billing-blocked.
+- **CI is primary and SHOULD be used whenever it's available; local is the backup, used only when
+  Actions refuses jobs.** DX-3143 — GitHub Actions periodically refuses every job on the `newms87`
+  account when the monthly billing credits run out; the recognisable signal is a run failing in
+  about 5s with the annotation "recent account payments have failed or your spending limit needs to
+  be increased." danxbot: primary `scripts/deploy-ci.sh gpt <sha>`; backup `make deploy TARGET=gpt
+  COMMIT=<sha>`, from WSL, in a login shell (`bash -l`), node 22 via nvm, `DANXBOT_TARGET` exported
+  to match `TARGET=`, checking no other deploy is running and no worker dispatch is in flight first.
+  gpt-manager: primary its GitHub Actions workflow (`make deploy REF=<sha>`); backup
+  `scripts/deploy-local.sh [sha]`, also from WSL.
 - **`platform` is NOT deployed — by anyone, for any reason (operator decision, DX-3148,
   2026-09-23).** This exception never covers a `platform` deploy; do not derive one from the `gpt`
   mechanics above, and do not ask the operator to make an exception for it.
