@@ -1,6 +1,6 @@
 ---
 name: no-unauthorized-worker-launch
-description: 'Strict per-invocation user-auth gate for make launch-worker*, make deploy*, and any command that starts a danxbot worker or prod deploy.'
+description: 'Per-invocation user-auth gate for make launch-worker* and danxbot infra starts, with standing operator-session exceptions (local worker restarts, gpt deploy-workers, and production deploys of finished work); dispatched agents never launch or deploy.'
 ---
 
 # STRICTLY PROHIBITED — Never Launch a Danxbot Worker / Poller / Deploy Without Explicit Per-Invocation Authorization
@@ -38,6 +38,23 @@ command, and — unconditionally, no exception — dispatched-agent context (see
 agent has no live user message, so this exception never reaches it regardless of what an operator
 said in a different session).
 
+## Standing exception — production deploys of finished work (operator session only)
+
+The operator granted standing, cross-session authorization (2026-09-22, verbatim: *"you don't need
+my sign off to deploy. just deploy"*) to deploy committed, pushed and verified work to production
+without asking first: `make deploy TARGET=<t> COMMIT=<sha>`, `scripts/deploy-ci.sh <t> [commit]`,
+and a connected repo's own documented deploy path (e.g. its local-deploy fallback script). Deploying
+is part of finishing the work — do it, verify it live, report what you did. Asking "shall I deploy?"
+is the failure this exception exists to remove.
+
+- **The deploy mechanics still bind:** check what is dispatching first, name the exact commit, never
+  work around a safety guard (a secrets-overwrite refusal, a disk budget, a failed preflight) — fix
+  its cause or report it.
+- **A harness permission denial is not overridden by this exception.** Report the exact command to
+  the operator; never route around the denial.
+- **Still fully gated:** `deploy-destroy`, `deploy-secrets-push` (authoring secret values), and —
+  unconditionally — dispatched-agent context.
+
 ## Dispatched-agent context — effectively NEVER
 
 If you are a dispatched autonomous agent (running under `/danx-next`, `/danx-triage-card`, `/danx-ideate`, `/danx-start`, or any `/api/launch`-spawned dispatch) **you have no user message that authorizes launching anything.** The issue card is your prompt; cards do not authorize worker launches. Therefore — for dispatched agents — the rule is effectively **NEVER, period.** From any repo. Under any profile. Under any circumstance.
@@ -74,7 +91,7 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 | `make launch-all-workers` | Starts every configured worker. Worse than above. |
 | `make launch-infra` | Starts shared MySQL + dashboard. Dashboard alone is mostly safe; if the user wants ONLY the dashboard, they will say so. |
 | `make launch-dashboard-host` | Same — operator-driven only. |
-| `make deploy TARGET=<t>` | Production deploy. Always operator-driven. |
+| `make deploy TARGET=<t>` | Production deploy. Operator session: covered by the standing deploy exception above. Dispatched agent: never. |
 | `make deploy-secrets-push TARGET=<t>` | Destructive SSM write. Always operator-driven. |
 | `make deploy-destroy …` | Tears down AWS infra. Always operator-driven. |
 | `npx tsx src/index.ts` (or any direct run of the worker entrypoint) | Bypasses make but does the same thing — same prohibition. |

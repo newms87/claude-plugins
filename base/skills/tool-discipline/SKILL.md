@@ -46,7 +46,11 @@ Long-running (deploys, test suites, workers, dev servers) → Bash with `run_in_
 
 ## Browser automation
 
-Use `mcp__claude-in-chrome__*` only. Start: `tabs_context_mcp` → `tabs_create_mcp` → `navigate` → `computer` → `read_page`.
+**The built-in in-app browser (`mcp__Claude_Browser__*`) is the browser for every real-browser check** — UI verification, interaction states, screenshots, reading pages. It runs in its own pane the user can watch; it never throws windows onto their desktop. Use `mcp__claude-in-chrome__*` only when the user asks for their own Chrome (their sign-ins, their tabs).
+
+- **Never launch a visible (headed) browser on the user's desktop** — no headed Playwright/Puppeteer, no `start chrome`. An existing automated test suite that runs headless as part of a repo's normal gates is fine.
+- **Verify in exactly the browser the user asked for, and no other.** Never expand verification to other browsers, engines or operating systems (Firefox, Safari, WebKit, Edge, macOS) unless the user asked. A reviewer's "not verified in browser X" is not a work item — do not file it, do not dispatch it.
+- **Every sub-agent brief that touches a browser names the in-app browser tools and forbids headed launches.** If the in-app tools are not available to that agent, it reports that — it does not fall back to a visible browser.
 
 **Close what you opened.** Every tab you created with `tabs_create_mcp` MUST be closed via `tabs_close_mcp` before the session ends — clean up the moment you're done with a tab, not as an afterthought. Leaving tabs open litters the user's browser with stray windows across sessions. Rule: opened a tab → you own closing it. Reusing a pre-existing user tab (only on explicit request) → leave it; you didn't open it.
 
