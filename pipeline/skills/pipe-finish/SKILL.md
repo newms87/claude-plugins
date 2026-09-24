@@ -28,13 +28,13 @@ All output follows `base:convey` scaffold (headline → goal → diff table → 
 
 | Situation | Action |
 |---|---|
-| More phases | Invoke `/next-phase` same response |
+| More phases | Re-invoke `pipe-start` for the next phase, same response |
 | Final phase | Recurse into Mode B same response |
 | External blocker (human approval, API outage) | State blocker, stop |
 
 ### Forbidden — never ask permission for pipeline-mandated steps
 
-`/next-phase` + Mode B are pre-approved by plan approval. Violations:
+Re-invoking `pipe-start` for the next phase, and Mode B, are pre-approved by plan approval. Violations:
 - "Let me know if you want…"
 - "Say go and I'll…"
 - "…want me to run X?"
@@ -129,4 +129,4 @@ Rules: actionable + specific · priority order · include commands/URLs · max 7
 - NEVER write to `~/.claude/` except `~/.claude/rules/`
 - Action Items land as fresh `<PREFIX>-N` cards in the DB, derived `status: ToDo`
 - Knowledge dump = conversation only, no files/commits
-- NEVER call `mcp__trello__*` — use `mcp__danx-dashboard__issue_create`
+- Card-state tool invariants (no Trello, MCP-only) — see `danxbot:issue-card-workflow`; not restated here.

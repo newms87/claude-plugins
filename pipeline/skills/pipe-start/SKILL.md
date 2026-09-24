@@ -5,7 +5,7 @@ description: 'Reload critical development rules at phase boundary / before writi
 
 # Pipe-Start — Pre-Implementation Rule Reload
 
-**Invoke this skill before every implementation phase.** This is not optional. `/next-phase` and the orchestrator invoke it automatically. If you're implementing without a phased plan, invoke it once before you start writing code.
+**Invoke this skill before every implementation phase.** This is not optional. The orchestrator invokes it automatically at each phase boundary. If you're implementing without a phased plan, invoke it once before you start writing code.
 
 Read every rule below. These are the rules you are most likely to violate under pressure. Knowing about them is not enough — you must actively check each one during implementation.
 
@@ -30,10 +30,12 @@ IMPLEMENT
 PIPELINE (automatic, no pause)
   pipe-review → pipe-quality → pipe-commit → pipe-finish (mode A — post-commit report following base:convey)
 PHASE ADVANCE
-  next-phase
+  re-invoke pipe-start for the next phase
 SESSION END
   pipe-finish (mode B)
 ```
+
+**Pipeline is fully automatic once implementation starts — no pauses, no "ready for review?" questions between steps.** The user's plan approval is pre-approval for the entire chain.
 
 ### Dispatched worker (`DANXBOT_DISPATCH_ID` set)
 
@@ -59,7 +61,7 @@ Post-implementation pipeline skills are reserved for human-loop sessions; in dis
 
 ### 1. Read-Only Until Approved
 
-You are in read-only mode unless the user said "go ahead," "do it," "fix it," "make that change," or gave an explicit imperative. Questions, observations, "sounds good," and "hmm" are NOT approval. When in doubt, you do not have approval. After presenting options or a diagnosis, enter a hard stop — text only until an explicit action verb.
+Read-only until the user gives an explicit imperative ("go ahead," "do it," "fix it," "make that change"). Questions, observations, "sounds good," "hmm" are NOT approval — when in doubt, you don't have it. After presenting options or a diagnosis, hard-stop: text only until an explicit action verb.
 
 ### 2. Verify, Never Guess
 
@@ -69,47 +71,43 @@ Pipeline-specific: this pipeline's own review/investigation agents return **hypo
 
 ### 3. No Backwards Compatibility, No Legacy, No Dead Code
 
-ONE correct pattern for everything. Never add fallbacks for old formats, compatibility layers, deprecated paths, or "temporary" bridges between old and new. Broken code that fails loudly is better than "working" code with two paths. A fallback hides the real bug permanently.
+`dev:ideal-solution-mindset` principle #2. Not restated here.
 
 ### 4. Fail Loud — No Silent Fallbacks
 
-Every `??`, every default value, every `isset()` guard is suspicious. The default action is THROW, not fallback. A silent fallback is the worst kind of bug — the system appears to work while producing wrong results. Only use defaults when the value is genuinely optional (pagination page defaults to 1).
+`base:fail-loudly`. Not restated here.
 
 ### 5. TDD for Every Bug Fix
 
-Write a failing test FIRST. Run it. Verify it fails for the right reason. THEN fix the code. No exceptions — not for "obvious" fixes, not for "urgent" fixes, not for "simple" one-liners. Multiple bugs = multiple sequential TDD cycles.
+`dev:testing`. Not restated here.
 
 ### 6. Refactor First, Build Second
 
-If you see a DRY or SOLID violation, fix it BEFORE building on top of it. Building on bad code means your new code will need rewriting when the foundation is eventually fixed. Extract shared abstractions before building consumers.
+`dev:ideal-solution-mindset` #2 / `dev:code-quality`. Not restated here.
 
 ### 7. Own the Entire Codebase
 
-You are responsible for ALL code in this repo — not just your changes. "Pre-existing," "out of scope," and "I didn't write this" are not valid reasons to skip a fix. Cross-session: you ARE every previous Claude session.
+`dev:code-quality` "Own All Code". Not restated here.
 
 ### 8. Use Dedicated Tools
 
-Read/Edit/Write/Glob/Grep — never bash equivalents (cat, sed, grep, find). Linting runs automatically via hooks — never run lint manually. Import order: add usage code FIRST, then the import (linters delete unused imports between edits).
-
-### 9. Follow the Pipeline
-
-Every phase: Implement -> `/pipe-review` -> `/pipe-quality` -> `/pipe-commit` -> `/pipe-finish` (mode A — post-commit report + next-phase invocation). At session end: `/pipe-finish` (mode B — Action Items + knowledge dump). All reports follow the `base:convey` format (concept-first headline, behavior-diff table, ASCII flow, caveats, verify). Pipeline is fully automatic after implementation — no pauses, no "ready for review?" questions. The user's plan approval is pre-approval for the entire pipeline.
+`base:tool-discipline`. Not restated here.
 
 ### 10. Issue Card IS the Plan
 
-When an issue card is assigned (e.g. `<PREFIX>-N`), never use EnterPlanMode. The card (`description` + `ac[]` + child phase cards + `comments[]`) IS the plan. Read it with `mcp__danx-dashboard__issue_get({id})` before starting. Re-read after context compaction.
+`danxbot:issue-card-workflow`. Not restated here.
 
 ### 11. Complete ALL Work
 
-Never silently drop parts of a plan. Before committing, verify every acceptance criterion is satisfied. If something isn't done, say so — don't check it off. Marking incomplete work as complete is worse than not doing it.
+Never silently drop parts of a plan. Verify every acceptance criterion before committing — if something isn't done, say so, don't check it off. Marking incomplete work complete is worse than not doing it.
 
 ### 12. Never Cancel Running Processes
 
-A running backtest/hyperopt/download represents time investment. Never kill without explicit "stop it" / "kill it" from the user.
+`base:process-kill`. Not restated here.
 
 ### 13. Never Substitute Your "Better" Approach
 
-When the user specifies HOW, follow their method. If you think an alternative is better, present it and let them choose. "Equivalent results" is your hypothesis, not a fact.
+When the user specifies HOW, follow their method. Think an alternative is better? Present it and let them choose — "equivalent results" is your hypothesis, not a fact.
 
 ### 14. Makefile First (Million Repo)
 

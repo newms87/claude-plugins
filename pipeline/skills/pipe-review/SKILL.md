@@ -62,9 +62,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 
 ### Highest Priority: Fallbacks, Legacy, Backwards-Compatible, Obsolete, and Dead Code
 
-**The primary mission of code review is discovering and eliminating these categories.** When writing the revisions plan, any finding involving fallbacks, old formats, legacy paths, backwards-compatibility branches, dual-shape readers, dead code, or obsolete patterns goes at the TOP of Phase 1. These findings are the most important thing reviewers produce — they are why we run code reviews. They can NEVER be skipped, deferred, or rationalized away. Fix them first, fix them completely.
-
-**Fallback findings are PRIORITY 0 — instant-block.** A fallback merged to `main` is an emergency: one merge of `try A; on failure write half of A's effect to B` produces silent state divergence that surfaces days later as doom loops, false-positive strikes, half-applied terminal transitions, ghost re-dispatches. The DX-242 stop-fallback class burned ~$1K of operator + token budget before root-cause was traced. Reviewers (every reviewer agent, every time) MUST run the `base:fail-loudly` grep recipes against the diff and surface every match. Authors MUST delete every fallback before the review-fixes commit ships. The pipe-quality "3 valid skip reasons" allowlist does NOT apply to fallback findings — there is no valid skip. Either delete the fallback, or quote explicit per-merge user authorization in the PR body that overrides this rule for one specific finding.
+Findings in this category (forbidden list: `dev:ideal-solution-mindset` #2; not restated here) go at the TOP of Phase 1 — PRIORITY 0, instant-block, never skipped/deferred/rationalized (`/pipe-quality`'s skip allowlist does not apply — there is no valid skip). Every reviewer agent runs the `base:fail-loudly` grep recipes against the diff and surfaces every match; authors delete every fallback before the review-fixes commit ships. Only override: explicit per-merge user authorization quoted verbatim in the PR body for that one finding.
 
 ## Step 5: Create Action Items for Pattern-Worthy Findings
 

@@ -27,19 +27,7 @@ For each finding marked SKIPPED, DEFERRED, or NOT FIXED, run it through this che
 
 ### Hard Block: Fallback / Legacy / Dead / Obsolete Code Can NEVER Be Skipped
 
-**Before evaluating skip reasons, check this first.** If a finding involves ANY of the following, it is **UNFIXABLE by skip logic** — fix it immediately, no exceptions:
-
-- **Fallback patterns** — catch-and-default, try-A-then-B chains across different write surfaces (HTTP→DB→filesystem), best-effort wrappers (`try*` / `maybe*` / `safe*` / `bestX*` / `graceful*`), graceful-degradation branches, throw-downgraded-to-warn diffs, schema-version reader branching, `if (legacyShape) {…} else {…}`, swallowed-error catch blocks, `?? DEFAULT` on internal-contract input.
-- **Backwards-compatible code** — supporting old AND new formats simultaneously
-- **Legacy code** — old patterns, old field names, old APIs that should have been removed
-- **Obsolete code** — methods, branches, or formats that nothing should use anymore
-- **Dead code** — unreachable code, unused methods, no-op assertions
-
-**Fallbacks are the single most defective bug class merged to `main`.** One merged fallback wastes days of operator + token budget — doom loops, false-positive strikes, ghost re-dispatches, half-applied terminal transitions all trace to a fallback that wrote half of a logical transition. The "DX-242 stop-fallback" class burned ~$1K of budget before root cause was traced. Treat every fallback finding as instant-block. There is no "tier-4 retry exception," no "transient infra blip excuse," no "we'll come back to it" — delete the fallback, fix the upstream cause, ship the review-fixes commit clean.
-
-**These are the PRIMARY MISSION of code review.** Discovering and eliminating fallbacks / legacy / backwards-compatible / obsolete / dead code is the most important thing reviewers do. A finding in this category is the highest-priority finding possible. Skipping it — for ANY reason, including all 3 valid skip reasons below — is a critical violation. None of the 3 skip reasons apply to this category. Not "zero value" (removing dead weight is always valuable). Not "would be wrong" (removing obsolete code is always correct). Not "another agent" (you own it). Not "needs its own card" (the review-fixes commit IS the card).
-
-**If a reviewer flags a fallback, old format, legacy pattern, backwards compatibility, or dead code: stop what you're doing and fix it NOW.** The only override is explicit per-merge user authorization quoted verbatim in the PR body for that specific finding — and even that is a smell that warrants a follow-up conversation about why the codebase is being permitted to keep a fallback alive.
+**Before evaluating skip reasons, check this first.** A finding in this category — fallback, backwards-compat, legacy, obsolete, or dead code (forbidden list + red-flags: `dev:ideal-solution-mindset` #2; pattern grep: `base:fail-loudly`; not restated here) — is **PRIORITY 0: fix it immediately, no exceptions.** None of the 3 valid skip reasons below ever apply to it — not "zero value," not "would be wrong," not "another agent," not "needs its own card" (the review-fixes commit IS the card). The only override is explicit per-merge user authorization quoted verbatim in the PR body for that one finding.
 
 ### The Allowlist Gate
 
@@ -72,13 +60,10 @@ To skip a finding, you MUST choose exactly one of these reasons and explain it i
 
 ## Step 3: Challenge Test Coverage
 
-Before committing, verify these test coverage questions:
+Coverage bar is `dev:testing`'s (100% on new code — happy + error + edge paths; not restated here). This pipeline's own check on top of that bar, before committing:
 
-1. **Did I write tests for every new public method?** If not, why not?
-2. **Did I test error/edge cases, not just happy paths?** Validation errors, empty inputs, null values?
-3. **Did the test-reviewer flag missing tests?** If yes, did I write ALL of them?
-4. **Do my tests verify behavior, not implementation?** Would they still pass after a refactor?
-5. **Did I run the relevant test suites and confirm 0 failures?**
+1. **Did the test-reviewer flag missing tests?** If yes, did I write ALL of them?
+2. **Did I run the relevant test suites and confirm 0 failures?**
 
 ## Step 4: Final Gut Check
 
