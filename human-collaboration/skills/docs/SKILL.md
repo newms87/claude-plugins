@@ -39,7 +39,7 @@ Both `CLAUDE.md` and `.claude/rules/*.md` are loaded automatically with the same
 | Workspace inject path (`<ORCHESTRATOR_REPO>/src/poller/inject/workspaces/<workspace>/.claude/{rules,skills}/`) | Rules that fire INSIDE danxbot dispatched agents specifically. The poller mirrors this tree into every connected repo's workspace dir each tick. | Dispatched danxbot agents. |
 | `.claude/agents/*.md` | Instructions for specialized subagents only. | Subagents |
 
-**`<PLUGINS_REPO>` / `<ORCHESTRATOR_REPO>` are placeholders — resolve them, never hardcode them.** These repos sit at different paths on every machine and in every context (operator main session, host-mode worker, container worker), and they get moved. A doc that names one literal path is wrong everywhere except the one machine it was written on — and stops being right there the moment the operator reorganizes. Never write a resolved path back into a rule, skill, or comment.
+**`<PLUGINS_REPO>` / `<ORCHESTRATOR_REPO>` are placeholders — resolve them, never hardcode them.** They sit at different paths per machine/context and get moved; a literal path goes stale the moment the operator reorganizes. Never write a resolved path back into a rule, skill, or comment.
 
 Resolve at the moment you need it:
 
@@ -52,7 +52,7 @@ Resolve at the moment you need it:
      git -C "$d" remote get-url origin 2>/dev/null | grep -q '<repo-name>' && echo "$d"
    done
    ```
-4. **Found one? Use it. Do not clone.** A second clone of a repo already on the machine silently drifts from the checkout the operator actually edits and publishes from — edits land somewhere nobody reads. Clone only after the search comes back empty, and say so when you do.
+4. **Found one? Use it. Do not clone.** A second clone silently drifts from the checkout the operator actually edits and publishes from. Clone only after the search comes back empty, and say so when you do.
 5. **Nothing resolves?** Report that you could not locate the repo. Do not guess a path and do not report a negative finding ("the rule isn't there") from a lookup that never ran.
 
 **Decision flow:**

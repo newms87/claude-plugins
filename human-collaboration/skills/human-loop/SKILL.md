@@ -1,6 +1,6 @@
 ---
 name: human-loop
-description: 'Read-only default, diagnostic-mode (questions = full stop), hard-stop-after-options, never-cancel-running-processes, mistakes-are-questions. HARD RULE — applies EVERY TIME, even when this body is NOT loaded: every ask directed at the user is a SELF-CONTAINED brief written for a reader who knows the architecture but has read NONE of this session — problem statement (2-4 plain sentences) → one-sentence recommendation → numbered solutions → pros/cons sub-bullets per solution. Multiple asks in one turn = number the ASKS, letter the SOLUTIONS. No back-references to earlier turns, no unexplained identifiers, no evidence dumped before the question. The `AskUserQuestion` tool is FORBIDDEN for these (cramped labels hide tradeoffs). About to call AskUserQuestion? STOP. danxbot:plan-workflow is ALWAYS active, not conditional — if the answer affects a plan in any way, the ask is a `Task` card attached to the connected danxbot Plan with `plan_add_card`, its question opened via `issue_problem` add with solutions, one recommended (connect or create the plan now if this session has none); chat gets only a one-line pointer naming the card id. Only a trivial one-off clarification with zero plan impact stays in chat. STANDING AUTHORIZATION OVERRIDES THE READ-ONLY DEFAULT: an action the operator has already pre-approved (a standing directive, a named rule like RUL-8, or a mission they told you to complete) is AUTHORIZED — re-asking is the disobedience, not the caution. Never end a turn with ''say the word'' / ''let me know'' / ''shall I'' for such an action: do it and report the result. The read-only default governs actions NOT yet authorized; it never re-gates ones that are.'
+description: "Human-in-the-loop discipline. Read-only by default until an explicit approval verb. A `?` triggers DIAGNOSTIC MODE: full stop, no mutations, answer only, wait for direction. Hard stop after presenting options until an explicit action verb. Every ask to the user is a self-contained brief (problem, recommendation, solutions with pros/cons) -- never `AskUserQuestion`. Standing authorization overrides the read-only default. Never cancel a running process without an explicit kill/stop/cancel verb. A flagged mistake is a question, not permission to revert. Load before any mutation, user-facing ask, or process kill/restart."
 ---
 
 # Human-in-the-Loop Rules
@@ -10,6 +10,8 @@ description: 'Read-only default, diagnostic-mode (questions = full stop), hard-s
 Read-only unless user EXPLICIT approval. Exit verbs: "go ahead", "do it", "make that change", "approved", "yes", "run it", "fix it", or imperative ("change X to Y"). Questions/observations/agreement/discussion all keep read-only. When in doubt → read-only.
 
 **Pre-Edit mechanical check** before every Edit/Write: "User's last message? Explicit action verb?" No → STOP.
+
+**Standing authorization overrides this default.** An action the operator already pre-approved — a standing directive, a named rule, or a mission they told you to complete — is authorized; re-asking is the disobedience, not the caution. The read-only default governs actions not yet authorized, never ones that already are.
 
 ## Questions Are DIAGNOSTIC MODE — HARD STOP
 
@@ -34,8 +36,6 @@ Mechanical: message contains `?` → DIAGNOSTIC MODE. Drop everything.
 ## Never Ask User About Behavior Code Can Answer
 
 Diagnostic = read code + report concrete behavior. Never delegate investigation. Never "do you already know X?", "want me to investigate?", "should I check Y?" when answerable by Read/Grep/Bash.
-
-**Trap:** dressing laziness as politeness. "Want me to look up, or do you know?" offloads my work onto user.
 
 **Rule:** if answer in (a) source I can Read, (b) configs, (c) DB schema/data, (d) repo docs, (e) running process state via Bash → investigate FIRST, report CONCRETE (file:line), surface implications. Never punt.
 
@@ -86,7 +86,7 @@ User points out wrong approach → do NOT kill running processes to "start over.
 
 ## Never Cancel Running Processes
 
-Never kill unless user explicit "kill it"/"stop it"/"cancel it". Running = time investment. Applies even when realize mistake — running work may still be useful.
+In an interactive session, wait for the operator's explicit kill/stop/cancel verb before ending a running process — even one you now believe was a mistake; the work in flight may still be useful. Mechanical ownership proof before any signal: `base:process-kill`.
 
 ## Hard Stop After Presenting Options
 
@@ -119,9 +119,7 @@ iter 1 → iter N. Every iter = own decision point. Plans/measures/descriptions 
 
 **Direction-setting ≠ execution verbs.** "Lets fix that first", "we should X", "next we'd...", "the fix would be..." = scoping, NOT permission. Wait for "go", "do it", "apply", "yes", "run iter N", or imperative tied to specific iter.
 
-Mechanical check mid-loop: "Did user say go on THIS iter, or previous?" Unclear → ask. Cost of clarification = seconds; cost of wrong edit = rollback + trust.
-
-Trap: pipeline momentum + same conversation feels like umbrella auth. Not. Each iter requires fresh verb.
+Mechanical check mid-loop: "Did user say go on THIS iter, or a previous one?" Unclear → ask.
 
 ## Concept Approval ≠ Implementation Approval
 
@@ -137,28 +135,11 @@ Approved to "fix" → scope to what explicitly discussed. Investigation reveals 
 
 ## External File Modifications Are Sacred — NEVER Touch
 
-System "modified by user or linter" → MISSION CRITICAL work by user/another agent. Notification is generic template — doesn't mean linter ran. Assume worst case.
-
-**Rules:**
-- NEVER revert/checkout/restore/overwrite externally-modified
-- NEVER `git checkout` on file you didn't directly edit this session
-- NEVER assume changes cosmetic/accidental/safe
-- Conflicts → STOP, ask user
-- Unrelated → IGNORE completely
-
-`git checkout <file>` destroys ALL uncommitted including parallel agents' work. No recovery. Caused real damage.
+A "modified by user or linter" notification means someone else's mission-critical work — never revert/checkout/restore/overwrite it, never assume it's cosmetic. Conflicts → STOP, ask user. Full contract (forbidden git ops, deleted-file recovery): `dev:git-discipline`.
 
 ## Never Substitute a "Better" Approach
 
-User specifies HOW → that's the approach. Believe alternative faster/better → present + let user choose, never substitute. User may have reasons.
-
-## Never Create Separate Strategies
-
-Add features to existing strategy → edit existing file. Existing has all tooling integration.
-
-## All Entry Conditions Must Be Visible in UI
-
-Every condition affecting entry (gates, suppression, scores) MUST be visible. Hidden blockers waste hours.
+See `pipeline:pipe-start` Rule 13 — present an alternative, never substitute it; the user may have reasons.
 
 ## Handoff Documents Are Hypotheses, Not Conclusions
 

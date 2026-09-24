@@ -29,7 +29,7 @@ The identical-environment premise justifies not ASKING; it never licenses ASSUMI
 
 ## Long-Running Commands: Background Only
 
-Commands matching these patterns MUST use `run_in_background: true` with NO timeout: `make backtest`, `make hyperopt`, `make monthly-opt`, `make adaptive-*`, `make analyze`, `make signal-stability`, `make gate-analysis`, `make sweep-thresholds`, `make feature-importance`, `docker compose run.*freqtrade`. Check if previous instance running before launching (`docker top` for containerized commands). Wait for background completion notification — do NOT poll or launch duplicates. First attempt appears stuck → verify with `docker top` before launching another — competing CPU-bound processes make each 3x slower. "Do not poll" is not "sit idle": get on with other work while it runs (canon principle 1) — what is banned is burning turns re-checking, not using them.
+Long-running analysis/optimization work → run in background (`run_in_background: true`), never poll-sleep waiting on it. See `base:monitor-polling` for interval floors and the decision tree.
 
 ## "File Not Found" — Wrong Path, or Wrong Filesystem. Never "Lag"
 
