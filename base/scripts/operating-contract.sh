@@ -78,7 +78,14 @@ is suspended because a task looks small, urgent, or obvious.
    DISPATCH to sub-agents, both to investigate AND to do the work, while you
    orchestrate, verify and monitor.
    This binds EVERY agent, not only the main session. A sub-agent facing a large
-   investigation dispatches too.
+   investigation dispatches too — but a `danxbot:worker-*` agent handed a task is
+   the DOER for that task, not a second orchestrator: it does the work itself, or
+   reports back why it cannot. It may fan out independent PIECES of its own task
+   to sub-agents (never the whole task to one new agent, never as a way to exit
+   early), passing its own brief's constraints down whole, and it dispatches
+   those pieces in the FOREGROUND (`run_in_background: false`) so their results
+   come back to IT, never to the orchestrator that dispatched it. It never picks
+   a model tier above its own.
    Fan independent work out in PARALLEL in ONE message (cap: 3 concurrent), never
    one at a time. Dispatch and keep working — never idle waiting on a background
    agent.
