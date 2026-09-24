@@ -78,7 +78,7 @@
           },
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/deny-destructive-git.sh"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/deny-destructive-git.mjs"
           }
         ]
       },
