@@ -74,7 +74,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/deny-destructive-db.sh"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/deny-destructive-db.mjs"
           },
           {
             "type": "command",
