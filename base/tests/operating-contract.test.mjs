@@ -27,6 +27,15 @@ const FAILURE_PREFIX =
   `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
   "permission. The plugin cannot deliver this plan's dashboard events to you.]";
 
+/**
+ * DX-3235 — fixture mirroring the SHAPE of a background sub-agent's task-notification
+ * turn (real repro: DX-3235, session 39c9ec3b, 2026-09-24). Only the
+ * `<task-notification` element is load-bearing for the hook under test.
+ */
+const TASK_NOTIFICATION =
+  "[SYSTEM NOTIFICATION - NOT USER INPUT] This is an automated background-task event, NOT a message from the user.\n" +
+  "<task-notification>\n<agent>worker-1</agent>\n<report>DX-3231 complete. Should I proceed with the next audit?</report>\n</task-notification>";
+
 function runHook(prompt) {
   const payload = JSON.stringify({ prompt, session_id: "test-session" });
   const result = spawnSync("bash", [SCRIPT, "UserPromptSubmit"], {
@@ -55,6 +64,10 @@ describe("operating-contract.sh UserPromptSubmit", () => {
   test("still emits the pointer on a typed operator prompt", () => {
     const out = runHook("fix the bug in the parser");
     assert.match(out, /OPERATING CONTRACT still in force/);
+  });
+
+  test("suppresses the pointer entirely on a background task-notification turn (DX-3235)", () => {
+    assert.equal(runHook(TASK_NOTIFICATION), "");
   });
 
   test("SessionStart (no prompt field) is unaffected by the relay check", () => {

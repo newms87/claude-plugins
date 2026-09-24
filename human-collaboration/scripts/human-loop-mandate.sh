@@ -20,15 +20,28 @@ if [ -z "$PROMPT" ]; then
     exit 0
 fi
 
-# DX-3051: a question mark inside a relayed danxbot dashboard event (a card comment,
-# e.g.) is the CARD's text, not the operator's — this gate exists to catch operator
-# intent, and firing on machine-relayed card text has actually stopped a live session
-# (a comment containing "?" emitted "STOP all work"). RELAY_MARKER (danxbot's
-# plan-event-bridge.mjs) is the only available signal: Claude Code's documented
-# UserPromptSubmit hook schema carries no message-source field. Do not delete this as
-# dead code — it is load-bearing for every relayed event, not just an edge case.
+# DX-3051 + DX-3235: a question mark inside a relayed danxbot dashboard event (a
+# card comment, e.g.) or inside a background sub-agent's task-notification report
+# is the CARD's or the AGENT's text, not the operator's — this gate exists to catch
+# operator intent, and firing on either kind of machine-authored text has actually
+# stopped a live session (a comment containing "?" emitted "STOP all work"; so did a
+# task-notification report asking "should I ...?"). RELAY_MARKER (danxbot's
+# plan-event-bridge.mjs) and TASK_NOTIFICATION_MARKER (the structural
+# `<task-notification` element the harness's own notification turns carry — not the
+# prose wrapper line, which could be reworded) are the only available signals:
+# Claude Code's documented UserPromptSubmit hook schema (`prompt: str`, checked
+# 2026-09-24 against https://code.claude.com/docs/en/hooks.md and the Agent SDK
+# hook-input types) carries no message-source field. This is the ONLY consumer of
+# this guard in this plugin, so it stays inline rather than a single-consumer
+# "shared" file (see base/scripts/lib/prompt-guard.sh for the two-consumer case).
+# Do not delete this as dead code — it is load-bearing for every relayed event and
+# every task notification, not just an edge case.
 RELAY_MARKER='[danxbot-relayed-event]'
+TASK_NOTIFICATION_MARKER='<task-notification'
 if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    exit 0
+fi
+if printf '%s' "$PROMPT" | grep -qF -- "$TASK_NOTIFICATION_MARKER"; then
     exit 0
 fi
 

@@ -44,18 +44,19 @@ EVENT="${1:-SessionStart}"
 INPUT="$(cat 2>/dev/null || true)"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
-    # DX-3051: a relayed danxbot dashboard event (a card comment/title acted on in the
-    # dashboard) is not new operator intent — the session already holds this contract
-    # from SessionStart, so re-asserting even the short pointer on a machine-relayed
-    # turn is pure per-event tax with nothing new to say. RELAY_MARKER (danxbot's
-    # plan-event-bridge.mjs) is the only available signal: Claude Code's documented
-    # UserPromptSubmit hook schema carries no message-source field (checked 2026-09-21,
-    # https://code.claude.com/docs/en/hooks.md). node, not jq, per this file's own
-    # rationale above — jq is not on the hook runtime PATH. Do not delete this as dead
-    # code; it fires on every relayed event, not just an edge case.
-    PROMPT="$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
-    RELAY_MARKER='[danxbot-relayed-event]'
-    if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    # DX-3051 + DX-3235: a relayed danxbot dashboard event, or a background
+    # sub-agent's task-notification report, is not new operator intent — the
+    # session already holds this contract from SessionStart, so re-asserting
+    # even the short pointer on either kind of machine-authored turn is pure
+    # per-event tax with nothing new to say. Shared with craft-mandate.sh
+    # (this plugin's only other UserPromptSubmit consumer of this guard) via
+    # lib/prompt-guard.sh — see that file's header for why this is NOT
+    # shared across plugin boundaries. Do not delete this as dead code; it
+    # fires on every relayed event and every task notification, not just an
+    # edge case.
+    source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/prompt-guard.sh"
+    PROMPT="$(extract_user_prompt "$INPUT")"
+    if is_machine_authored_prompt "$PROMPT"; then
         exit 0
     fi
 

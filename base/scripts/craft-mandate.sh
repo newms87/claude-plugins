@@ -21,18 +21,19 @@ EVENT="${1:-SessionStart}"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
     INPUT="$(cat 2>/dev/null || true)"
-    # DX-3051: a relayed danxbot dashboard event (a card comment/title acted on in the
-    # dashboard) is not new operator intent — this mandate is already in context from
-    # SessionStart, so re-asserting it on a machine-relayed turn is pure per-event tax
-    # with nothing new to say. RELAY_MARKER (danxbot's plan-event-bridge.mjs) is the
-    # only available signal: Claude Code's documented UserPromptSubmit hook schema
-    # carries no message-source field (checked 2026-09-21,
-    # https://code.claude.com/docs/en/hooks.md). This does NOT touch the full-vs-pointer
-    # cadence question (DX-3008) — it only suppresses output entirely on a relayed turn,
-    # whatever this branch would otherwise emit. Do not delete this as dead code.
-    PROMPT="$(printf '%s' "$INPUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)?.prompt??""))}catch{process.stdout.write("")}})' 2>/dev/null || true)"
-    RELAY_MARKER='[danxbot-relayed-event]'
-    if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
+    # DX-3051 + DX-3235: a relayed danxbot dashboard event, or a background
+    # sub-agent's task-notification report, is not new operator intent — this
+    # mandate is already in context from SessionStart, so re-asserting it on
+    # either kind of machine-authored turn is pure per-event tax with nothing
+    # new to say. Shared with operating-contract.sh (this plugin's only other
+    # UserPromptSubmit consumer of this guard) via lib/prompt-guard.sh — see
+    # that file's header for why this is NOT shared across plugin boundaries.
+    # This does NOT touch the full-vs-pointer cadence question (DX-3008) — it
+    # only suppresses output entirely on a machine-authored turn, whatever
+    # this branch would otherwise emit. Do not delete this as dead code.
+    source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/prompt-guard.sh"
+    PROMPT="$(extract_user_prompt "$INPUT")"
+    if is_machine_authored_prompt "$PROMPT"; then
         exit 0
     fi
 fi

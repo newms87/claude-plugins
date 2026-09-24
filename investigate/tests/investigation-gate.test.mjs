@@ -1,5 +1,5 @@
-// investigation-gate.sh — diagnostic-trigger gate, and its DX-3051 relay suppression.
-// Run with `npm test` (node --test, no dependencies).
+// investigation-gate.sh — diagnostic-trigger gate, and its DX-3051 relay + DX-3235
+// task-notification suppression. Run with `npm test` (node --test, no dependencies).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -35,6 +35,24 @@ const FAILURE_PREFIX =
   `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
   "permission. The plugin cannot deliver this plan's dashboard events to you.]";
 
+/**
+ * DX-3235 — fixture mirroring the SHAPE of a background sub-agent's task-notification
+ * turn: a literal `[SYSTEM NOTIFICATION - NOT USER INPUT]` prose line wrapping a
+ * `<task-notification>` element, per the real repro quoted on DX-3235 (session
+ * 39c9ec3b, 2026-09-24). Only the `<task-notification` element is load-bearing for the
+ * hook under test — the wrapper prose is copied here purely to make the fixture
+ * realistic, and is NOT what the hook matches on (prose can be reworded; the element is
+ * structural). `TASK_NOTIFICATION_BODY` is reused byte-for-byte as the POSITIVE
+ * CONTROL below, so the control differs from the notification fixture only in the
+ * wrapper — never in content.
+ */
+const TASK_NOTIFICATION_MARKER = "<task-notification";
+const TASK_NOTIFICATION_BODY = "Should I proceed with the audit? The rename established why this failed.";
+const TASK_NOTIFICATION_PREFIX =
+  "[SYSTEM NOTIFICATION - NOT USER INPUT] This is an automated background-task event, NOT a message from the user.\n" +
+  `${TASK_NOTIFICATION_MARKER}>\n<agent>worker-1</agent>\n<report>`;
+const TASK_NOTIFICATION_SUFFIX = "</report>\n</task-notification>";
+
 function runHook(prompt) {
   const payload = JSON.stringify({ prompt, session_id: "test-session" });
   const result = spawnSync("bash", [SCRIPT], {
@@ -68,5 +86,18 @@ describe("investigation-gate.sh", () => {
 
   test("stays silent on a typed operator prompt with no trigger word", () => {
     assert.equal(runHook("fix the bug in the parser"), "");
+  });
+
+  test("stays silent on a background task-notification report containing a trigger word (DX-3235 repro)", () => {
+    const notification = TASK_NOTIFICATION_PREFIX + TASK_NOTIFICATION_BODY + TASK_NOTIFICATION_SUFFIX;
+    assert.equal(runHook(notification), "");
+  });
+
+  test("still fires on the SAME text typed as a genuine operator prompt (DX-3235 positive control)", () => {
+    // Positive control: identical body to the notification fixture above, differing
+    // ONLY in the absence of the task-notification wrapper — proves the gate reads the
+    // wrapper, not the body text, to decide.
+    const out = runHook(TASK_NOTIFICATION_BODY);
+    assert.match(out, /INVESTIGATION TRIGGER DETECTED in user prompt/);
   });
 });
