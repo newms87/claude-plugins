@@ -28,23 +28,23 @@ fi
 # machine-authored text is reproduced (a title containing "audit" emitted the full
 # investigation gate; so did a task-notification report using "why"/"audit").
 # RELAY_MARKER (danxbot's plan-event-bridge.mjs) and TASK_NOTIFICATION_MARKER (the
-# structural `<task-notification` element the harness's own notification turns
-# carry — not the prose wrapper line, which could be reworded) are the only
+# whole line reading exactly `<task-notification>`, which opens every real
+# notification turn's text; whole-line so an inline mention still fires) are the only
 # available signals: Claude Code's documented UserPromptSubmit hook schema
 # (`prompt: str`, checked 2026-09-24 against https://code.claude.com/docs/en/hooks.md
 # and the Agent SDK hook-input types) carries no message-source field. PROMPT is
-# already lowercased above, and `<task-notification` is already all-lowercase, so
+# already lowercased above, and `<task-notification>` is already all-lowercase, so
 # the marker check below matches unchanged. This is the ONLY consumer of this guard
 # in this plugin, so it stays inline rather than a single-consumer "shared" file
 # (see base/scripts/lib/prompt-guard.sh for the two-consumer case). Do not delete
 # this as dead code — it is load-bearing for every relayed event and every task
 # notification.
 RELAY_MARKER='[danxbot-relayed-event]'
-TASK_NOTIFICATION_MARKER='<task-notification'
+TASK_NOTIFICATION_MARKER='<task-notification>'
 if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
     exit 0
 fi
-if printf '%s' "$PROMPT" | grep -qF -- "$TASK_NOTIFICATION_MARKER"; then
+if printf '%s' "$PROMPT" | grep -qxF -- "$TASK_NOTIFICATION_MARKER"; then
     exit 0
 fi
 

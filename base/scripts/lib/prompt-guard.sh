@@ -30,15 +30,15 @@
 #     plan-event-bridge.mjs.
 #   - TASK_NOTIFICATION_MARKER (DX-3235): a background sub-agent's completion
 #     report, delivered as a turn by the harness's own task-notification
-#     mechanism. The structural `<task-notification` element is the
-#     discriminator, NOT the prose wrapper line ("[SYSTEM NOTIFICATION - NOT
-#     USER INPUT]") — prose can be reworded without changing the element a
-#     real notification actually carries; matching the element is also
-#     immune to an operator's own prompt merely CONTAINING that sentence as
-#     quoted text.
+#     mechanism. Matched as a WHOLE LINE reading exactly `<task-notification>`:
+#     a real notification turn's text opens with that tag on its own line
+#     (read from a session transcript, 2026-09-24). Whole-line, not substring,
+#     so an operator prompt that mentions the tag inline still fires the gates;
+#     not a strict prefix, because whether the hook's `prompt` carries a prose
+#     preamble before the tag is unverified.
 
 RELAY_MARKER='[danxbot-relayed-event]'
-TASK_NOTIFICATION_MARKER='<task-notification'
+TASK_NOTIFICATION_MARKER='<task-notification>'
 
 # node, NOT jq — jq is absent from the hook runtime PATH on the operator's
 # Windows machine (and in WSL); node ships with Claude Code. `|| true` plus
@@ -54,7 +54,7 @@ is_machine_authored_prompt() {
     if printf '%s' "$prompt" | grep -qF -- "$RELAY_MARKER"; then
         return 0
     fi
-    if printf '%s' "$prompt" | grep -qF -- "$TASK_NOTIFICATION_MARKER"; then
+    if printf '%s' "$prompt" | grep -qxF -- "$TASK_NOTIFICATION_MARKER"; then
         return 0
     fi
     return 1

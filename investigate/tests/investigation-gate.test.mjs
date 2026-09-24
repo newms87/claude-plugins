@@ -100,4 +100,18 @@ describe("investigation-gate.sh", () => {
     const out = runHook(TASK_NOTIFICATION_BODY);
     assert.match(out, /INVESTIGATION TRIGGER DETECTED in user prompt/);
   });
+
+  test("stays silent on the real notification shape: tag alone on the first line, no preamble", () => {
+    // Shape read from a real notification turn in a session transcript (2026-09-24).
+    const REAL_NOTIFICATION =
+      "<task-notification>\n<task-id>a261be8150bf23a9a</task-id>\n<status>completed</status>\n<result>" +
+      TASK_NOTIFICATION_BODY +
+      "</result>\n</task-notification>";
+    assert.equal(runHook(REAL_NOTIFICATION), "");
+  });
+
+  test("still fires when an operator prompt mentions the tag inline (whole-line match, not substring)", () => {
+    const out = runHook("why does the hook treat <task-notification> as machine text? audit it");
+    assert.match(out, /INVESTIGATION TRIGGER DETECTED/);
+  });
 });
