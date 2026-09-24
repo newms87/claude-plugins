@@ -57,8 +57,9 @@
 //    FORM: git reset --hard origin/main
 //    ALLOWED-FORM: git reset origin/main
 //    ALLOWED-FORM: git reset --soft HEAD~1
-//  - clean with -f/-x/-d (clean -n / --dry-run is allowed)
+//  - clean with -f/-x/-d, or the long `--force` (clean -n / --dry-run is allowed)
 //    FORM: git clean -fd
+//    FORM: git clean --force
 //    ALLOWED-FORM: git clean -n
 //    ALLOWED-FORM: git clean --dry-run -fd
 //  - stash               (every form: push/save/create hide work an agent then
@@ -114,11 +115,20 @@ function deniedForm(rest) {
   }
 
   if (sub === "clean") {
-    // Only the FIRST argument, deliberately: `git clean --dry-run -fd` is a
-    // documented ALLOWED-FORM, because the leading `--dry-run` wins. Scanning
-    // every argument would deny it and contradict that contract.
+    // Short flag clusters are matched on the FIRST argument only, deliberately:
+    // `git clean --dry-run -fd` is a documented ALLOWED-FORM, because the
+    // leading `--dry-run` wins. Scanning every argument would deny it and
+    // contradict that contract.
     const first = argText[0] ?? "";
-    return /^-[a-z]*[fxd]$/.test(first) ? `git clean ${first}` : null;
+    if (/^-[a-z]*[fxd]$/.test(first)) return `git clean ${first}`;
+    // DX-3227 — the long form, which BOTH this hook's bash predecessor and its
+    // first ES-module version let through: the old regex needed `-[a-z]*[fxd]`
+    // immediately after `clean `, and in `--force` the leading `-` is followed
+    // by another `-`, so the character class never matched. Purely additive —
+    // every previously-denied form is still denied by the check above, and
+    // `--dry-run -fd` still passes because it carries no `--force`.
+    if (argText.includes("--force")) return "git clean --force";
+    return null;
   }
 
   if (sub === "stash") {
