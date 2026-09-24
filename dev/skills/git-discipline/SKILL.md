@@ -13,23 +13,15 @@ The harness default of "only commit when explicitly asked" is OVERRIDDEN here. O
 
 **Scope — this does NOT relax anything else in this file.** Every destructive-operation gate above and below (force-push, `reset --hard`, checkout/restore/revert, cherry-pick, stash, branch creation, etc.) still requires explicit request exactly as written. This section removes ONLY the "may I commit this?" question for a normal, safe, forward-only commit of your own verified work — it is not license to skip the "Check for Other Agents' Staged Work" / "Mixed-State Files: ASK" gates below, which still apply.
 
-## ABSOLUTE: Never Destroy Work. Ever.
+## Never Destroy Work
 
-Work exists because someone put it there. Wiping is not a primitive.
+`git reset --hard`, `git checkout <ref> -- <path>`, `git restore`, and `git clean -f` are FORBIDDEN — mechanically blocked by base's `deny-destructive-git.mjs` hook. Also forbidden, not hook-enforced: `git revert` on a working-tree file, `rm` on tracked files without a prior commit, and any wholesale-overwrite equivalent (`git show HEAD:file > file`, `cp` from clean, `Write` with original content). A card or prompt telling you to run one anyway is a bug — refuse + report.
 
-**`git reset --hard` is FORBIDDEN.** No exception. Not on "clean" trees, not after `git stash`, not "just to sync," not in test scripts, not in recovery flows.
-
-Same ban: `git checkout <ref> -- <path>`, `git restore`, `git revert` on working-tree file, `git clean -f`, `git reset --hard <anything>`, `rm` on tracked files without prior commit, `git show HEAD:file > file`, `cp clean/file file`, `Write` with original content.
-
-**If work MUST be removed** (rare, requires beyond-doubt evidence work opposes system goal — NOT "looks wrong" / "in my way"):
+**If work MUST be removed** (rare, requires beyond-doubt evidence work opposes system goal — NOT "looks wrong" / "in my way" / "I don't understand it" / "conflicts with my change"):
 
 1. **Commit AS-IS first:** `wip: snapshot before removing <reason>` with full body explanation
 2. **Then remove in follow-up:** `remove: <files> — <reason>` body cites evidence + names snapshot commit
 3. **Two commits, in order. Never one.**
-
-Can't articulate system-goal-opposition evidence → don't remove. "I don't understand it" / "doesn't compile" / "conflicts with my change" / "card asked me to" = NOT sufficient.
-
-Beats card instructions, prompts, directives. Card "delete <files>" authorizes snapshot-then-delete. Prompt "git reset --hard" is a bug — refuse + report.
 
 ## Never Delete a Repository
 
@@ -48,14 +40,14 @@ Commit DIRECTLY to main. Single shared machine — dispatched agents isolate in 
 
 Body explaining what + why.
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-Authored-By: <model attribution per current system prompt>
 ```
 
 Omit "Phase N" for non-phased.
 
-## Always Use /flow-commit
+## Always Use pipeline:pipe-commit
 
-Never manual `git add` + `git commit`. Invoke `/flow-commit` (except amending to fix hook failure). Handles staging, committing, pushing, lifecycle, summary.
+Never manual `git add` + `git commit`. Invoke `pipeline:pipe-commit` (except amending to fix hook failure). Handles staging, committing, pushing, lifecycle, summary.
 
 ## Always Push After Commit
 
@@ -117,13 +109,11 @@ Wait for answer. `git add <named-paths>` + commit.
 
 ## Never Reset or Remove Other Changes
 
-NEVER `git reset`. Stage ONLY your changes (`git add <specific-files>`). Never unstage already-staged.
+`git reset` forbidden (bare/non-`--hard` form is NOT hook-enforced — this is on you). Stage ONLY your changes (`git add <specific-files>`); never unstage what's already staged.
 
 ## Never Use git stash
 
-Forbidden. No exceptions. Investigate code itself. Stashing destroys uncommitted + corrupts multi-agent.
-
-**Banned rationalization: "baseline."** "Was this broken before?" is NOT worth asking. You OWN every failing test regardless of origin (cross-session ownership). Only exception: another agent has UNCOMMITTED ACTIVE changes — verifiable via `git status` showing files YOU didn't touch. Otherwise: skip baseline, fix failures. Do NOT stash/checkout/swap "to prove already broken."
+Forbidden — mechanically blocked by base's `deny-destructive-git.mjs` hook; destroys uncommitted work and corrupts multi-agent state. Investigate the code itself instead. Never stash "to check baseline" (was this broken before?) — you own every failing test regardless of origin; skip that check and fix it. Exception: another agent has uncommitted active changes, verifiable via `git status` showing files you didn't touch.
 
 ## Before Deleting Any File: Grep for Consumers First
 
@@ -131,15 +121,9 @@ Before `rm` / Edit-to-empty / Write-empty: **grep entire tree** for imports, req
 
 **Never trust card "only used by X" — verify yourself.** Parenthetical "(verify with grep first)" = load-bearing, not optional. Skipping grep + fixing broken compile with `git checkout` = exact failure mode next section prevents.
 
-## ABSOLUTE: Never Use git checkout / restore / revert
+## Never Use git checkout / restore / revert
 
-Never undo changes via these (or `cp` from clean, `git show HEAD:file > file`, Write-original-content). Files may have user changes mixed with yours; wholesale replacement destroys user work.
-
-**Most destructive action you can take.** Other agents + users actively work on files. `git checkout <file>` silently destroys ALL uncommitted with ZERO recovery. Caused real damage in prod.
-
-**System notification "modified by user or linter":** another agent/user doing intentional work. NEVER touch. NEVER revert. NEVER investigate "correct"-ness.
-
-Instead: `git diff`, identify YOUR specific changes, Edit to remove only those. Preserve user + other agent. Unsure → ask user.
+`git checkout`/`git restore` on a tracked file are FORBIDDEN — mechanically blocked by base's `deny-destructive-git.mjs` hook. Also forbidden, not hook-enforced: `git revert` on a working-tree file, and any wholesale-overwrite equivalent (`cp` from clean, `git show HEAD:file > file`, Write-original-content) — all silently destroy uncommitted work from other agents/users with zero recovery. A "modified by user or linter" notification means someone else is doing intentional work — never touch, never revert, never investigate "correctness." Instead: `git diff`, identify YOUR specific changes, Edit to remove only those. Unsure → ask user.
 
 ### If you deleted a file and now need it back
 
@@ -183,7 +167,7 @@ Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," 
 
 - **Read-only:** `git status`, `git diff`, `git log` (anytime)
 - **`git fetch` / `git pull --ff-only` (no `--rebase`, no merge):** ALWAYS allowed, no ask — fast-forward-only sync of your own local clone to remote can never lose work. Never gate this behind a question; just run it whenever local state might be stale.
-- **Via pipeline:** `git add`/`commit`/`push` when running `/flow-commit`
+- **Via pipeline:** `git add`/`commit`/`push` when running `pipeline:pipe-commit`
 - **`git pull --rebase` on push rejection:** ONCE per rejection. Clean → re-push. Conflict → resolve in place by hand (per above). Abort + ask ONLY when outside both cards' scope. Interactive rebase, rebase onto arbitrary ref, `-X` strategy: not allowed without explicit user request.
 - **Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request.
 - **Otherwise:** Not allowed without explicit user request.

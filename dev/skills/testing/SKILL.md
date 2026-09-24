@@ -81,15 +81,3 @@ Tests = contract between intent and behavior. Skipped steps = test bugs.
 | **Subagent running tests** | Dispatching a test-reviewer agent with Bash permission to re-run | Parallel test runs corrupt each other; parent runs tests |
 | **Mock that tests the mock** | Asserting on `fn.mock.calls[0][0].mock.calls[0]` | Over-specified; refactor will break the test without breaking behavior |
 | **Wall-clock assertion** | `expect(result.timestamp).toBe(Date.now())` without time freeze | Nondeterministic by construction; fix with injected clock |
-
----
-
-## Why This Skill Is Mandatory
-
-The agent that wrote this skill recently:
-
-- Ran a full test suite three times in a row, each time piping stdout through a different grep because the first bare invocation lost the output. The third run finally redirected to a file — by which point the pre-existing flake had self-resolved and the "evidence" was just a clean green.
-- Looked at a passing run's stderr (tests exercising error paths deliberately log errors) and searched for `FAIL`, which matched log noise, not failures. Conclusion was wrong in both directions.
-- Did all of this with a rule file open that explicitly said "Always Dump Test Output to File — Re-running to get different output is FORBIDDEN."
-
-A descriptive rule did not prevent the bad behavior. A mandatory pre-run checklist would have. This skill is that checklist. Invoke it every time you touch a test — no exceptions, no minimum size, no "just one." The 30 seconds the skill takes saves every minute the re-run would have cost.

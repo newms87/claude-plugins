@@ -106,12 +106,3 @@ Multiple bugs → one block per bug, numbered. A "side effect" of a bug uses the
 | **Stop at first finding** | First `grep` hit becomes the answer, no producer trace | Multiple producers may exist; first one isn't always the writer |
 | **Restart-to-fix** | Restarting queue/Horizon/server when something is "stuck" without reading the error | Restarts hide errors; the log already had the answer |
 | **"Pre-existing, not mine"** | Test fails, deflect because it predates the change | You own the entire codebase. Always. |
-
-## Why This Skill Is Mandatory
-
-The agent that wrote this skill recently:
-- Deployed a production hotfix that silenced a TypeError by returning `null` instead of investigating which DB row had bad data and how it got there.
-- Wrote a unit test that proved the silent-fallback behavior, calling that "verified."
-- Shipped to production thinking the bug was "fixed."
-
-Every step felt locally rational. The checklist exists because that pattern is what local rationality produces under deadline pressure. No amount of "I'll be careful next time" prevents it. The todo list does.
