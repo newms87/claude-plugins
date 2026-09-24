@@ -78,7 +78,7 @@ Columns: `plugin · skill · LOC · domain · current trigger surface · propose
 | danxbot | no-false-blockers | 212 | 3 false-blocker patterns | frontmatter only (audience:worker) | danxbot | 200 | keep | extends danx-next Step 10 |
 | danxbot | no-unauthorized-worker-launch | 136 | strict launch auth gate | frontmatter only | danxbot | 140 | keep | |
 | danxbot | prod-access | 104 | production reach paths | frontmatter only | danxbot | 110 | keep | |
-| danxbot | requires-human | 208 | requires_human field discipline | frontmatter only (audience:worker) | danxbot | 200 | keep | |
+| danxbot | requires-human | 208 | requires_human field discipline | frontmatter only (audience:worker) | danxbot | 200 | **deleted (DX-2779/DX-2830)** | whitelist/blacklist moved to issue-blocker Field Selection; escalation via issue_problem only |
 | danxbot | settings-deep | 105 | settings.json deep contract | frontmatter only | danxbot | 110 | keep | |
 | danxbot | slack-agent | 71 | slack-worker MCP discipline | frontmatter only (audience:worker) | danxbot | 80 | keep | |
 | danxbot | unblock | 126 | blocker report contract | frontmatter + base SessionStart hook | danxbot | 130 | keep | hook reference moves from base to danxbot's own hook |
