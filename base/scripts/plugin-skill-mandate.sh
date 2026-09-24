@@ -1,37 +1,19 @@
 #!/usr/bin/env bash
 # Plugin skill load mandate — ships with the `base` plugin.
 #
-# Fires on SessionStart and UserPromptSubmit. Injects an unambiguous
+# Fires on SessionStart only (hooks.json). Injects an unambiguous
 # mandate forcing the agent to invoke the matching skill via the Skill
 # tool BEFORE the first mutating action of any task whose triggers
 # match an installed plugin's domain.
 #
-# Background: skill descriptions in the available-skills list are
-# necessary but insufficient. Past sessions have skipped skills because
-# the trigger was paraphrased, the task "felt small," or the agent
-# thought it knew the rule already. Every one of those was a workflow
-# violation. This hook makes the load mandate explicit and unbypassable
-# at the prompt-injection layer.
-#
-# Argv: $1 = "SessionStart" or "UserPromptSubmit" (selects the hook
-# event name in the JSON envelope so the harness routes the
-# additionalContext correctly).
+# Argv: $1 = "SessionStart".
 
 set -euo pipefail
-
-EVENT="${1:-SessionStart}"
-
-# Drain stdin (UserPromptSubmit hooks receive the prompt JSON; we don't
-# need to inspect it for this universal mandate, but we must not block
-# the pipe).
-if [ "$EVENT" = "UserPromptSubmit" ]; then
-    cat >/dev/null
-fi
 
 read -r -d '' MANDATE <<'EOF' || true
 PLUGIN SKILL LOAD MANDATE — installed plugin skills are LOAD-FIRST. BEFORE the first mutating tool call (Edit/Write/MCP mutate/git commit/push) of any task matching a trigger below, invoke the matching skill via the Skill tool. Read-only orientation (Read/Glob/Grep/ls) allowed first.
 
-⚠ TRUNCATION CLAUSE — skill TEXT in context is NOT a loaded skill. The ONLY thing that counts as loaded is an actual `Skill(<name>)` call YOU made in THIS context window. If you cannot point to that call, the skill is NOT loaded — no matter how much of its body you can see. Specifically: any skill body carrying a truncation/compaction marker (`[... skill content truncated for compaction]`, `[truncated]`, `…`, an abridged summary, or a body that simply survived a compaction) is a FRAGMENT. Compaction preserves fragments that read convincingly like the real thing — headers, rule names, the shape of a checklist — while dropping the gates, the ordering constraints, and the exact mechanical checks that are the entire point. A summary of a gate is not the gate. Reading a gate's NAME is not running it. Mechanical check before the first mutating action: "Did I call Skill(X) in this context window?" NO → call it now, even if X's text is already on screen. "It's already in my context" / "I can see the rule right there" / "re-loading wastes tokens" are the exact rationalizations this clause blocks — a truncated body is precisely when re-loading is cheapest relative to the violation it prevents.
+⚠ TRUNCATION CLAUSE — skill TEXT in context, however complete it looks, is NOT a loaded skill; only a `Skill(<name>)` call made in THIS window counts. Full rationale + the mechanical check: the post-compaction skill-reload gate (fires on every `compact`).
 
 Hard MANDATORY triggers — match any one, load the skill immediately. Only installed plugins apply:
 

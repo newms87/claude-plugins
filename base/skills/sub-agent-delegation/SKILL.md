@@ -46,7 +46,7 @@ When a task decomposes into INDEPENDENT sub-tasks — multiple reviews of the sa
 
 **Hard cap: 5 concurrent sub-agents (5 parallel items).** More than 5 independent items → batch them: run 5, collect results, then run the next set. The cap is for INDEPENDENT work ONLY — never parallelize genuinely dependent steps (step B needs step A's output).
 
-**The cap is a CEILING, not permission to sit below it.** Operator, 2026-09-19, finding two agents running with unblocked cards open: *"Why are you not running more agents in parallel?"* — and, on the stale number this file used to carry: *"hard cap is 5 on this machine"*. Running under the cap while independent work waits is the same waste as serializing it. The only legitimate reasons to be below the cap are that the remaining work is genuinely dependent, genuinely waiting on a human, or would collide — and if it is collision, say which files, because an unexplained gap reads as forgetting.
+**The cap is a CEILING, not permission to sit below it.** Running under the cap while independent work waits is the same waste as serializing it. The only legitimate reasons to be below the cap are that the remaining work is genuinely dependent, genuinely waiting on a human, or would collide — and if it is collision, say which files, because an unexplained gap reads as forgetting.
 
 **A file collision is a reason to SEQUENCE two specific agents, never a reason to idle a slot.** The right response to "these two would both edit `Foo.tsx`" is to dispatch one of them *plus something else*, not to run one and wait. Partition by file and keep the slot full.
 
@@ -79,7 +79,7 @@ An `Agent()` spawn that has delivered its final report and shows as "completed" 
 
 A background `Agent()` spawn is a real process the harness tracks independently of whether you've consumed its output. Receiving the completion notification and reading its returned text does **NOT** guarantee the underlying task object is closed — a spawn can keep showing as a live background task (visible in the operator's `/exit` confirmation dialog, invisible to you in normal conversation and in `TaskList`, which only lists your own `TaskCreate` todos, never `Agent()` spawns) long after you believe you've "finished with it."
 
-**Observed failure (2026-07, danxbot session):** delegated 5 independent fix items to sub-agents mid-session, read their results, narrated "reviewed both agents' diffs before committing," and moved on. Those 5 spawns were still alive as background tasks at session `/exit` — an hour+ later — with zero indication anywhere in the ongoing conversation. Only the operator's own exit-confirmation screen (which enumerates literally every live background task tied to the session) surfaced them. Asked directly, the agent's first instinct was to deny they were its own and blame a separate session — they were its own, from earlier in the same conversation, mid-compaction.
+**Observed failure:** several dispatched sub-agents stayed alive as background tasks well after their results were read and folded into the work, invisible anywhere in the ongoing conversation until the operator's own exit-confirmation screen surfaced them — and, asked directly, the agent's first instinct was to deny they were its own.
 
 **Rule:** after a dispatched `Agent()` call's result is consumed (read, synthesized, acted on), treat the spawn as still theoretically live until you have explicit confirmation it terminated. If the harness exposes no direct "is this task still running" check, say so honestly rather than assuming completion — "I read its output" is evidence the agent *produced* a result at some point, not evidence the process *exited*. When in doubt or when an operator reports something you don't recognize (background tasks, unexpected state), the correct first move is to actually check available tooling (`TaskList`, any task-status tool) before asserting "that's not mine" — confident denial without checking is worse than "let me verify."
 
@@ -90,7 +90,7 @@ A background `Agent()` spawn is a real process the harness tracks independently 
 - **State an explicit time-box in every dispatch prompt itself**, not just in your own head: "If this exceeds roughly N minutes, stop and report whatever partial progress/findings you have rather than continuing silently." N scales with the task (a targeted fix: ~15-20 min; a broad audit or full-suite-adjacent job: budget roughly half of what you'd tolerate waiting, per the same logic as budgeting a full test-suite wait). A dispatch with no stated ceiling is a dispatch that can run until the platform's own multi-hour failure mode kicks in.
 - **Never self-background inside a dispatched agent's own work** (`&`, `nohup`, `disown`, piping a long command to `tail -f` and treating the pipe's return as completion). This is invisible to the harness — no completion notification can ever fire for it — and is the single most common cause of a *silent, permanent* stall rather than a merely slow one. This is `tool-discipline`'s rule too; restate it in dispatch briefs for agents that might not have that skill loaded, especially anything that runs a long build, test suite, or server.
 - **Never block-wait on multiple agents at once** (e.g. calling a blocking task-output read with `block: true` across several dispatches in sequence or in one call). This is a documented way to freeze the entire session, not just the wait — fire-and-forget instead, and let completion notifications arrive on their own schedule.
-- **Overdue silence is itself the signal to act, not a reason to keep waiting.** If a dispatch has clearly run well past the time-box you gave it with no notification, don't let it keep running "just in case it's almost done" — resume it with a direct status-check message (does it need to report partial progress now?), or stop it outright and re-dispatch with a narrower scope. Observed on this plan (2026-09-17): a sub-agent reported "waiting for its own nested reviews to complete" and then went idle without them — recoverable in minutes once nudged directly, but only because it was caught quickly rather than left to run unmonitored; the same pattern left unattended is exactly how the multi-hour community reports happened.
+- **Overdue silence is itself the signal to act, not a reason to keep waiting.** If a dispatch has clearly run well past the time-box you gave it with no notification, don't let it keep running "just in case it's almost done" — resume it with a direct status-check message (does it need to report partial progress now?), or stop it outright and re-dispatch with a narrower scope. A sub-agent that claims to be "waiting on its own nested work" and then goes idle is recoverable only if caught quickly and nudged directly — left unmonitored, this is exactly how a multi-hour stall happens.
 - **For genuinely large fan-outs (dozens of agents, not a handful),** reach for the `Workflow` tool instead of nested ad hoc `Agent()` dispatches — it runs the orchestration as a script outside the conversation's own context and turn loop, which sidesteps this whole class of conversational stall rather than mitigating it after the fact.
 
 ## Never background a full test suite as routine verification — targeted tests only
@@ -107,17 +107,10 @@ this section exists to prevent) or blocks on it and blows the time-box entirely.
   something outside the obviously-touched files, or a final pre-merge sanity pass on a large
   card — never as the default "let's just run everything to be safe" instinct.
 - **A backgrounded full-suite run is a live liability, not a safety net, once its own dispatch
-  ends.** Observed on this plan (2026-09-17): a sub-agent backgrounded a full `npm test` run
-  inside its own worktree, then finished and reported back to the orchestrator before that run
-  completed. The orchestrator (correctly, by its own worktree-cleanup checklist) later removed
-  that now-merged worktree — out from under the still-running background test process, which
-  then crashed on every subsequent poll (`MODULE_NOT_FOUND` against a `node_modules` path that no
-  longer existed) while the harness's own task panel kept showing it as "Running" for 1h40m+ with
-  no way to tell, from the panel alone, that it was already dead. Nobody was waiting on it, it
-  was consuming a background-task slot for nothing, and it looked like an active multi-hour hang
-  to anyone glancing at the task list — the exact community-reported failure class this skill's
-  time-box section already documents, self-inflicted by the orchestrator's own dispatch choice
-  rather than a platform bug this time.
+  ends.** A sub-agent that backgrounds a test run inside its own worktree and reports done before
+  the run finishes leaves a process the orchestrator can later kill out from under (e.g. by
+  removing that worktree once merged) — it then fails on every poll while the task panel still
+  shows it as "Running," indistinguishable from a genuine multi-hour hang.
 - **Before ending your own turn, you own every background task you started** — a
   `run_in_background` call you never awaited or reported on is not "someone else's problem" once
   your turn ends; either wait for it (inside your time-box) and report its real result, or state

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # convey mandate — ships with the `base` plugin.
 #
-# Fires on SessionStart and UserPromptSubmit. Injects a brief reminder
-# of the `convey` skill into every session so concept-first, scaffolded
+# Fires on SessionStart only (hooks.json). Injects a brief reminder of
+# the `convey` skill into every session so concept-first, scaffolded
 # reports / comments / hand-offs / commit messages / Slack replies are
 # the default for every information-transfer output the agent produces.
 #
@@ -11,15 +11,9 @@
 # remembers to apply the scaffold + load the full skill when the
 # response will be more than a one-liner.
 #
-# Argv: $1 = "SessionStart" or "UserPromptSubmit".
+# Argv: $1 = "SessionStart".
 
 set -euo pipefail
-
-EVENT="${1:-SessionStart}"
-
-if [ "$EVENT" = "UserPromptSubmit" ]; then
-    cat >/dev/null
-fi
 
 read -r -d '' MANDATE <<'EOF' || true
 CONVEY — default for every report/commit/PR/comment/Slack/hand-off/investigation. Full skill: base:convey.

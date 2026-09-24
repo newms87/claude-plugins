@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
 # tool-discipline mandate — ships with the `base` plugin.
 #
-# Fires on SessionStart AND UserPromptSubmit. Injects the high-frequency
-# tool-choice rules into every session AND every turn so they survive
-# context compression + stay top-of-context for the action-time decision
+# Fires on SessionStart only (hooks.json). Injects the high-frequency
+# tool-choice rules into every session so they survive context
+# compression and stay top-of-context for the action-time decision
 # (Bash invocation, MCP call shape, file op tool selection).
 #
 # Deep contract lives at base/skills/tool-discipline/SKILL.md. This hook
 # surfaces the mechanical pre-write checks that get violated most.
 #
-# Argv: $1 = "SessionStart" or "UserPromptSubmit".
+# Argv: $1 = "SessionStart".
 
 set -euo pipefail
-
-EVENT="${1:-SessionStart}"
-
-if [ "$EVENT" = "UserPromptSubmit" ]; then
-    cat >/dev/null
-fi
 
 read -r -d '' MANDATE <<'EOF' || true
 TOOL DISCIPLINE — always-on. Full skill: base:tool-discipline.
