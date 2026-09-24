@@ -57,9 +57,15 @@ I deploy?" is the failure this exception exists to remove.
   gpt-manager: primary its GitHub Actions workflow (`make deploy REF=<sha>`); backup
   `scripts/deploy-local.sh [sha]`, also from WSL — gpt-manager's own deploy mechanism is
   unaffected by this change.
-- **`platform` is NOT deployed — by anyone, for any reason (operator decision, DX-3148,
-  2026-09-23).** This exception never covers a `platform` deploy; do not derive one from the `gpt`
-  mechanics above, and do not ask the operator to make an exception for it.
+- **Each machine deploys only the target(s) its own `deploy-machine.json` names (DX-3232,
+  2026-09-24) — there is no global target ban.** DX-3148's "`platform` is not deployed by anyone"
+  was a gpt-machine-specific fact written as if universal; it broke the Flytedesk machine, whose
+  only valid target IS `platform`. `deploy/launch.ts` reads that per-machine config (outside every
+  git tree — default `~/.config/danxbot/deploy-machine.json`) before any deploy work and refuses
+  loudly for any target not in it. This exception covers a machine's own configured target(s) —
+  it does not grant one machine authority over a target another machine is configured for; do not
+  derive a cross-machine deploy authorization from the `gpt` mechanics above, and do not ask the
+  operator to bypass the config-gate refusal.
 - **The deploy mechanics still bind:** check what is dispatching first, name the exact commit, never
   work around a safety guard (a secrets-overwrite refusal, a disk budget, a failed preflight) — fix
   its cause or report it.
@@ -104,7 +110,7 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 | `make launch-all-workers` | Starts every configured worker. Worse than above. |
 | `make launch-infra` | Starts shared MySQL + dashboard. Dashboard alone is mostly safe; if the user wants ONLY the dashboard, they will say so. |
 | `make launch-dashboard-host` | Same — operator-driven only. |
-| `make deploy TARGET=<t>` | Production deploy. Operator session: covered by the standing deploy exception above for `TARGET=gpt` only. `TARGET=platform` is never authorized, by anyone, regardless of session (DX-3148). Dispatched agent: never. |
+| `make deploy TARGET=<t>` | Production deploy. Operator session: covered by the standing deploy exception above for this machine's own configured target(s) only (`deploy-machine.json`, DX-3232) — `deploy/launch.ts` itself refuses loudly for any other target, regardless of session. Dispatched agent: never. |
 | `make deploy-secrets-push TARGET=<t>` | Destructive SSM write. Always operator-driven. |
 | `make deploy-destroy …` | Tears down AWS infra. Always operator-driven. |
 | `npx tsx src/index.ts` (or any direct run of the worker entrypoint) | Bypasses make but does the same thing — same prohibition. |
