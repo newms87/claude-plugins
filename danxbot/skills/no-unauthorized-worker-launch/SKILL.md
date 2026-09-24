@@ -46,15 +46,17 @@ without asking first. **This exception covers `gpt` (danxbot) and gpt-manager pr
 Deploying is part of finishing the work — do it, verify it live, report what you did. Asking "shall
 I deploy?" is the failure this exception exists to remove.
 
-- **CI is primary and SHOULD be used whenever it's available; local is the backup, used only when
-  Actions refuses jobs.** DX-3143 — GitHub Actions periodically refuses every job on the `newms87`
-  account when the monthly billing credits run out; the recognisable signal is a run failing in
-  about 5s with the annotation "recent account payments have failed or your spending limit needs to
-  be increased." danxbot: primary `scripts/deploy-ci.sh gpt <sha>`; backup `make deploy TARGET=gpt
-  COMMIT=<sha>`, from WSL, in a login shell (`bash -l`), node 22 via nvm, `DANXBOT_TARGET` exported
-  to match `TARGET=`, checking no other deploy is running and no worker dispatch is in flight first.
+- **danxbot deploys are always local now (DX-3230, 2026-09-24) — GitHub Actions is not a deploy
+  path any more.** `make deploy TARGET=gpt COMMIT=<sha>` runs from ANY danxbot tree, with or
+  without a real `.git`, stale or dirty — it always hands off to the dedicated deploy directory
+  (`~/projects/newms87/danxbot-deploy` by default, separate from the mutagen-synced dev tree),
+  which pins the exact named commit and runs the deploy from there, so the invoking tree's own
+  state never matters. Run it from a login shell (`bash -l`), node 22 via nvm, `DANXBOT_TARGET`
+  exported to match `TARGET=`, checking no other deploy is running and no worker dispatch is in
+  flight first. Full mechanism → `.claude/rules/production-deploy.md` in the danxbot repo.
   gpt-manager: primary its GitHub Actions workflow (`make deploy REF=<sha>`); backup
-  `scripts/deploy-local.sh [sha]`, also from WSL.
+  `scripts/deploy-local.sh [sha]`, also from WSL — gpt-manager's own deploy mechanism is
+  unaffected by this change.
 - **`platform` is NOT deployed — by anyone, for any reason (operator decision, DX-3148,
   2026-09-23).** This exception never covers a `platform` deploy; do not derive one from the `gpt`
   mechanics above, and do not ask the operator to make an exception for it.
