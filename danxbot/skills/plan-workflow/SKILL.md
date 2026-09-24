@@ -115,6 +115,8 @@ Pre-send scan every reply: any "should I / want me to / needs your word / option
 
 Operator-only: domain intent, business/UX judgment, scope/authority, action only they can do (credential, login, hardware, deploy approval). NOT questions: status reports, self-corrections, mechanical blockers you can run, cards already carrying a recommended/chosen option or work in flight, implementation choices (`dev:ideal-solution-mindset` decides).
 
+Still a question when it is about YOU — how to work, what to report, is your calibration right. These slip into chat because they feel like courtesy. Decide from the rules you have, or file it. Never append one to a reply.
+
 File it:
 1. `issue_create` on repo's board: `type:"Task"`, title = domain + plain question, `summary` 1–3 plain sentences standalone, `description` = evidence (no options).
 2. `issue_problem({id, action:"add", statement, context, solutions})`. `statement` ≤200 chars, one sentence. All detail → `context`. `solutions[]`: `title`, `body`, `pro`, `con`, exactly one `recommended:true`. One solution OK (approval); zero OK (free-form). Visual question → `issue_attach` screenshot, embed URL in context.
@@ -158,9 +160,14 @@ Create via `danxbot:issue-card-workflow` (load before choosing type). Follow its
 
 ## Chat
 
-Default say nothing. Findings, reasoning, evidence, ruled-out, status, next steps → card/record/section.
-Chat only: must-know-now, direct answer to operator's question, one line when starting deploy/dispatch/filing.
-Still say: real failures, corrections of anything wrong said earlier, operator questions (as card id).
+**The operator does not read this thread unless they asked a question.** Prose here reaches nobody — the card is the only surface they use. Write-only by default.
+
+BUDGET, counted not estimated: **≤3 lines. No headings, tables, bullets or fences.** Over → you are writing a report; move it to the card.
+
+DUPLICATION TEST: already wrote this to a card this turn? Say the id, not the content — never both. A card comment plus a chat recap of it is the commonest waste.
+
+Only: answer to a question asked · one line starting a deploy/dispatch/publish · a real failure or a correction · `<CARD-ID>` pointers.
+Never: findings, evidence, reasoning, verified/ruled-out, options, tradeoffs, status, next steps, summaries of finished work.
 
 ## Turn gate (every reply)
 
@@ -169,7 +176,7 @@ Still say: real failures, corrections of anything wrong said earlier, operator q
 3. Liveness claims have live evidence.
 4. 3-in-flight check passed.
 5. Plan page open in browser (hook-nudged, DX-2995, but act on the nudge yourself — check `tabs_context` when in doubt).
-6. Chat = short TLDR + pointer (record ref, card id, plan URL). No tables/evidence/option lists.
+6. Chat within budget: ≤3 lines, no headings/tables/bullets/fences, nothing duplicated from a card written this turn. Count the lines — do not estimate.
 
 ## Reading
 
