@@ -123,20 +123,13 @@ this section exists to prevent) or blocks on it and blows the time-box entirely.
   your turn ends; either wait for it (inside your time-box) and report its real result, or state
   explicitly in your final report that it is still running and unconsumed, so the orchestrator
   knows to treat it as live cleanup work rather than assuming it quietly finished on its own.
-- **A `run_in_background` Bash command you started yourself notifies you directly, once, when it
-  ends** — stopping to wait for it costs exactly one extra turn. Waiting on a *child sub-agent's*
-  background work is a different, unreliable shape: that child's own completion notification can
-  land on whichever session dispatched it, not necessarily on you — measured directly (a
-  dispatched sub-agent's background-task notification arrived in the parent's session instead of
-  the dispatching sub-agent's). Do not stop your own turn to wait on a child agent's background
-  work on the assumption you will be woken when it's done; either poll it explicitly at a sane
-  interval, or structure the work so the child reports back through its own final response
-  instead.
-- **If something else wakes you before the work you're waiting on is actually done, your report
-  must state what you have established, not just that you are still waiting.** A bare "still
-  waiting" repeated across wakes gives the orchestrator nothing to act on and reads identically to
-  a hung agent; name what changed since the last report (new output, elapsed time, files touched)
-  or say plainly that nothing new is known yet.
+- **Your own `run_in_background` Bash command notifies you once when it ends** — waiting on it
+  costs one turn. **A background sub-agent you dispatch does not:** its completion notice goes to
+  the root session, so a sub-agent that stops to wait for it is never woken. When you need a
+  child agent's result, dispatch it with `run_in_background: false`.
+- **Every wake-up report states what is now established**, not just "still waiting": new output,
+  elapsed time, files touched — or "nothing new since the last report". A bare "still waiting"
+  reads identically to a hung agent.
 - **The orchestrator's own worktree-cleanup step must check for exactly this** before removing a
   card's worktree: a background task still running against that path turns a routine cleanup
   into the same crash-and-orphan failure. A quick real check (is anything still writing to that
