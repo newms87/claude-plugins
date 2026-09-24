@@ -277,6 +277,7 @@ declare -a UPDATED=()
 declare -a CURRENT=()
 declare -a FAILED=()
 declare -a SKIPPED=()
+declare -a DEAD_PROJECTS=()
 
 for row in "${ROWS[@]}"; do
   IFS=$'\t' read -r plugin scope project version <<<"$row"
@@ -286,7 +287,24 @@ for row in "${ROWS[@]}"; do
   if [ "$project" != "-" ]; then
     if [ ! -d "$project" ]; then
       # The project directory is gone; its record can never resolve again.
-      SKIPPED+=("${plugin} [${scope}] — project path missing: ${project}")
+      # DX-3228 — this used to be a permanent, silent-forever SKIP: the row
+      # stayed in installed_plugins.json and printed the same warning on
+      # every future run (observed: 5 rows for one deleted ad-hoc worktree,
+      # naming all 5 plugins, on every publish for a day). Ad-hoc worktrees
+      # under `.claude/worktrees/<n>` are created and removed constantly
+      # (see danxbot's `.claude/rules/adhoc-worktree-cleanup.md`), and every
+      # one that ever received a plugin install leaves a row exactly like
+      # this behind — so the warning was guaranteed to recur forever, not a
+      # one-off. The removal side (whichever tool deleted the worktree) has
+      # no reason to know Claude Code plugin registrations exist at all, and
+      # coordinating every worktree-owning repo's cleanup tool with this
+      # machine-global file would multiply the fix by however many repos
+      # create worktrees. This script already discovers every dead row on
+      # every run, machine-wide, regardless of which repo or tool created
+      # it — so it is pruned here (Step 3 below) instead of warned about
+      # indefinitely. Recorded so the pass that finds it can still say so.
+      SKIPPED+=("${plugin} [${scope}] — project path missing, pruning: ${project}")
+      DEAD_PROJECTS+=("${project}")
       continue
     fi
     target_dir="$project"
@@ -314,6 +332,88 @@ for row in "${ROWS[@]}"; do
     FAILED+=("${plugin} [${where}] — ${output//$'\n'/ }")
   fi
 done
+
+# --- Step 3: prune dead project-scope rows -------------------------------
+#
+# DX-3228 — a row whose projectPath no longer exists (SKIPPED above) can
+# never resolve again, ever, so leaving it in installed_plugins.json just
+# means the same SKIPPED warning fires on every future run forever. Prune
+# it instead. Runs after the update loop, not interleaved with it, so a
+# single rewrite of installed_plugins.json covers every dead row found this
+# pass rather than racing N separate read-modify-writes.
+#
+# Re-derives "dead" from a fresh fs check inside the node/python step below
+# (never from the bash DEAD_PROJECTS array's string contents) — the array
+# above exists only to decide WHETHER to bother invoking this step at all,
+# not as the source of truth for WHICH rows to drop, since that keeps this
+# step correct even if it is ever called on a stale/edited copy of the
+# file. Dry runs prune nothing, matching every other write in this script.
+if [ "$DRY_RUN" -eq 0 ] && [ ${#DEAD_PROJECTS[@]} -gt 0 ]; then
+  read -r -d '' PRUNE_JS <<'PRUNE_JS_EOF' || true
+const fs = require("fs");
+const file = process.argv[1];
+const data = JSON.parse(fs.readFileSync(file, "utf8"));
+let pruned = 0;
+for (const entries of Object.values(data.plugins || {})) {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const p = entries[i].projectPath;
+    if (p && !fs.existsSync(p)) {
+      entries.splice(i, 1);
+      pruned++;
+    }
+  }
+}
+if (pruned > 0) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+}
+process.stdout.write(String(pruned));
+PRUNE_JS_EOF
+
+  read -r -d '' PRUNE_PY <<'PRUNE_PY_EOF' || true
+import json, os, sys
+
+file = sys.argv[1]
+with open(file) as fh:
+    data = json.load(fh)
+
+pruned = 0
+for entries in data.get("plugins", {}).values():
+    kept = []
+    for entry in entries:
+        p = entry.get("projectPath")
+        if p and not os.path.exists(p):
+            pruned += 1
+            continue
+        kept.append(entry)
+    entries[:] = kept
+
+if pruned > 0:
+    with open(file, "w") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+
+sys.stdout.write(str(pruned))
+PRUNE_PY_EOF
+
+  if node -e '' >/dev/null 2>&1; then
+    pruned_count="$(node -e "$PRUNE_JS" "$INSTALLED_FILE")"
+  elif python3 -c '' >/dev/null 2>&1; then
+    pruned_count="$(python3 -c "$PRUNE_PY" "$INSTALLED_FILE")"
+  else
+    pruned_count=""
+  fi
+
+  if [[ "$pruned_count" =~ ^[0-9]+$ ]] && [ "$pruned_count" -gt 0 ]; then
+    log "  pruned ${pruned_count} dead row(s) from ${INSTALLED_FILE}"
+    ok "Pruned ${pruned_count} dead row(s) (project path no longer exists) from installed_plugins.json."
+  elif [ -z "$pruned_count" ]; then
+    # Same "neither interpreter available" case as row extraction above —
+    # not fatal here (the update sweep itself already succeeded), but the
+    # dead rows survive to warn again next run rather than being silently
+    # assumed gone.
+    info "  WARN: could not prune dead rows — neither 'node' nor 'python3' available."
+  fi
+fi
 
 # --- Summary ------------------------------------------------------------
 
