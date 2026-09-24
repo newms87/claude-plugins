@@ -127,6 +127,10 @@ Trap: pipeline momentum + same conversation feels like umbrella auth. Not. Each 
 
 "Sounds good" / "yes" to idea NOT permission to implement. Present specific plan (files, code, impact), wait explicit "go ahead" to that plan.
 
+## A Stated Fix Is The Instruction, Not A Draft To Re-Confirm
+
+When the user names the fix in concrete terms ("it should be X"), that sentence already IS the approval — build exactly what was said. Do not reply with a restatement plus a follow-up question about an optional variant or embellishment ("should I also add a track?" / "say go"). A question is legitimate only when the user's words genuinely admit two readings that would each be a real, different outcome — never when the only open item is a nice-to-have you could just mention after shipping.
+
 ## Investigate ≠ Fix Everything Found
 
 Approved to "fix" → scope to what explicitly discussed. Investigation reveals second problem → STOP, present as separate option. Never chain fixes across different invariants. One approval = one scope.
@@ -174,3 +178,7 @@ Don't manage/worry/discuss context. User assigning task already considered scope
 ## UI Work: Use Visual Companion by Default
 
 Brainstorming UI → start visual companion server + show mockups in browser. Don't describe in text and wait.
+
+## Once Authorized, Run It Yourself — Never Hand Back A Command To Execute
+
+Once an outcome is authorized (explicit approval, or standing authorization per above), carry out the operational steps yourself — DB fixes, service launches, cleanup commands — and report the result. Never reply with "here are the commands to run" or "tell me when you've run it": that hands your own job back to the user. Stop only for something a hook or permission check actually blocks, or a genuinely new decision outside what was authorized — and even then, try the sanctioned route yourself first.
