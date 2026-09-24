@@ -9,7 +9,7 @@ If the environment you're running in is broken in a way that is NOT specific
 to the card you're working on, you MUST signal this to the worker so the
 poller halts. Without this signal the poller re-dispatches you (and every
 future agent) into the same broken box, burning tokens on work that cannot
-succeed. Production has seen this burn ~$1K in a single day.
+succeed.
 
 ## When to use `status: "critical_failure"`
 
@@ -67,23 +67,16 @@ playwright tools not loaded — tools list shows only builtins; expected
 
 ## What happens next
 
-1. Worker writes `<repo>/.danxbot/CRITICAL_FAILURE` flag with your summary.
-2. Next poller tick (~60s) reads the flag, logs "halted", refuses to dispatch
-   further agents.
+1. The worker raises a `board_halts` DB row (`raiseHalt`) with your summary — the sole halt home, not an on-disk file; it survives a container recreate.
+2. The poller reads it and refuses to dispatch further agents on that board.
 3. Dashboard Agents tab shows a red banner per-repo with your reason.
-4. A human operator investigates, fixes the underlying env issue, and clears
-   the flag via the dashboard button or `rm <repo>/.danxbot/CRITICAL_FAILURE`.
-5. Poller resumes on the next tick after clearing.
+4. A human operator investigates, fixes the underlying env issue, and clears the halt via the dashboard button (`liftHalt`) — there is no file to `rm`.
+5. Poller resumes once cleared.
 
-## Why this exists
-
-Without the critical_failure signal, a broken box burns tokens forever. The
-poller has no way to distinguish "this card needs a human" (card-specific)
-from "every card in this environment is doomed" (environment-specific). Your
-explicit signal is the fast path. There is a backup — the worker checks
-whether you moved the card out of ToDo and writes the flag itself if you
-didn't — but that only fires AFTER a full dispatch runs. Prefer the explicit
-signal so you don't burn a full run's tokens before the halt kicks in.
+There is a backup — the worker checks whether you moved the card out of ToDo
+and halts itself if you didn't — but that only fires AFTER a full dispatch
+runs. Prefer the explicit signal so you don't burn a full run's tokens
+before the halt kicks in.
 
 ## Failing to signal is a rule violation
 

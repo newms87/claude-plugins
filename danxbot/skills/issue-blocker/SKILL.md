@@ -24,21 +24,15 @@ resolve it rather than escalate. When a blocker truly needs a human,
 escalate by opening a problem (see "After all 8 items pass").
 
 Most "blockers" are not real blockers — they are rationalizations of
-avoidable work. Run this
-checklist first. EVERY item must pass. If even one fails, you are NOT
-authorized to stamp `blocked: {at, reason}` — return to in-session work,
-Action Item creation, or AC rewrite per the path the failed item names.
-
-## Why this gate exists
-
-Production has burned hundreds of dollars on cards parked in Blocked for
-"reasons" that were programmatically resolvable: pre-existing flaky
-tests an agent could file as Action Items, "manual UI smoke" ACs an
-agent could replace with component tests, post-terminal-save state an
-agent could verify via a unit test on the derivation function,
-uncommitted diffs an agent should have ignored. Every one of those
-re-dispatches the next agent into the same trap. The cost of one false
-Blocked move > the cost of running this 8-item checklist.
+avoidable work: pre-existing flaky tests an agent could file as Action
+Items, "manual UI smoke" ACs an agent could replace with component
+tests, post-terminal-save state an agent could verify via a unit test,
+uncommitted diffs an agent should have ignored. Run this checklist
+first. EVERY item must pass. If even one fails, you are NOT authorized
+to stamp `blocked: {at, reason}` — return to in-session work, Action
+Item creation, or AC rewrite per the path the failed item names. The
+cost of one false Blocked move exceeds the cost of running this 8-item
+checklist.
 
 ## Field selection — `blocked` vs an open problem vs `waiting_on` vs `conflict_on[]`
 

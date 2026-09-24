@@ -118,9 +118,9 @@ Error mapping:
 
 ## Multi-block assistant turns — one API response, multiple JSONL lines, ONE usage block
 
-Empirically verified against real Claude Code captures (gpt-manager job `830cbd99`, danxbot smoke `2e60f7ce`): when an assistant turn returns more than one content block (text + tool_use, thinking + text + tool_use, etc.), Claude Code writes ONE JSONL entry per content block, but stamps the IDENTICAL response-level `message.usage` on every entry. All entries share the same `message.id`. The API charged the response ONCE; the JSONL just splits the rendering.
+When an assistant turn returns more than one content block (text + tool_use, thinking + text + tool_use, etc.), Claude Code writes ONE JSONL entry per content block, but stamps the IDENTICAL response-level `message.usage` on every entry (verified against real captures). All entries share the same `message.id`. The API charged the response ONCE; the JSONL just splits the rendering.
 
-Any code that accumulates `usage` across JSONL entries MUST dedupe by `message.id` — without it, multi-block turns count 2-5× their real cost. This bit production once (commit `d11b63d`): the dashboard reported `200,956` total tokens against a real API charge of `100,478`. The producers in this codebase that sum usage across entries are:
+Any code that accumulates `usage` across JSONL entries MUST dedupe by `message.id` — without it, multi-block turns count 2-5× their real cost (bit production once, commit `d11b63d`). The producers in this codebase that sum usage across entries are:
 
 - `src/agent/launcher.ts` — `job.usage` accumulator in the watcher subscriber. Closure-local `seenUsageMessageIds: Set<string>`; skips entries whose `messageId` was already accumulated.
 - `src/dashboard/jsonl-reader.ts` — `parseJsonlContent` aggregates `usage` blocks. Same per-call Set, applied BEFORE pushing blocks so timeline display + totals both stay consistent.
@@ -137,7 +137,7 @@ Three different claude-auth misconfigurations all surface as the SAME symptom �
 2. **Expired OAuth token** — `claudeAiOauth.expiresAt` is in the past (snapshot dir that never rotated, prod redeploy needed). claude attempts a refresh, the refresh fails in `-p` mode, exits 0 silent.
 3. **Mismatched UID on the bind source** — host file owned by user A, container claude runs as `danxbot` (UID 1000); `chmod` on the symlink target succeeds but writes still fail.
 
-Diagnostic recipe (matches the verification block on PHevzRil):
+Diagnostic recipe:
 
 ```
 # 1. Symlink chain reaches a fresh, writable file:
@@ -167,7 +167,7 @@ Fallback context is auto-injected by `dispatch()` (`src/dispatch/core.ts`) from 
 
 - Scan `<repo>/.danxbot/dispatch-stops/`.
 - Per entry: `getDispatchById` → skip-if-terminal → `autoSyncTrackedIssue` → `updateDispatch` → `unlinkSync`.
-- `critical_failure` branch: `writeFlag(<repo>/.danxbot/CRITICAL_FAILURE)` + row → failed (auto-sync skipped).
+- `critical_failure` branch: `raiseHalt` (writes a `board_halts` row) + row → failed (auto-sync skipped).
 - Per-entry failures recorded as `stop-replay`-source system errors; file STAYS on disk for the next boot to retry.
 - Malformed JSON / shape errors DISCARD the file (permanently broken file would otherwise loop every boot).
 
@@ -232,10 +232,10 @@ Detection — `src/agent/api-error-detector.ts#matchesSynthetic`:
 1. **Skip if non-running** — detector may fire after stall / cancel / inactivity already terminated the job.
 2. **Increment counter** — `job.recoverCount + 1`, persisted via `tracker.recordRecoverCount`.
 3. **Branch on cap:**
-   - `count > MAX_RECOVERS (= 3)` → `writeFlag(<repo>/.danxbot/CRITICAL_FAILURE)` + `job.stop("api_error_failed", ...)`. Poller halts on next tick.
+   - `count > MAX_RECOVERS (= 3)` → `raiseHalt` (writes a `board_halts` row) + `job.stop("api_error_failed", ...)`. Poller halts.
    - `count ≤ MAX_RECOVERS` → `job.stop("api_error_recover", ...)` (row collapses to `status: "recovered"`) + `POST /api/resume` so a fresh dispatch picks up `--resume <sessionUuid>` with `parent_recover_id`.
 
-`/api/resume` failures (network, non-2xx) are logged but do NOT escalate to CRITICAL_FAILURE — transient resume errors are recoverable on the next poller tick; persisting a halt for them defeats the feature.
+`/api/resume` failures (network, non-2xx) are logged but do NOT raise a halt — transient resume errors are recoverable on the next poller tick; persisting a halt for them defeats the feature.
 
 Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`). Chain queryable via `parent_recover_id`. Dashboard's Recovers column surfaces `recover_count` + a `↳` glyph next to dispatch IDs with non-null `parent_recover_id`.
 
@@ -248,13 +248,13 @@ Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`)
 - `src/worker/dispatch.ts#handleResume` — threads `recover_count` + `parent_recover_id` from POST body onto the new dispatch row.
 - `src/dashboard/dispatches.ts` — surfaces `recoverCount` + `parentRecoverId` on `Dispatch`; `dispatches-routes.ts` validates `?status=recovered`.
 - `dashboard/src/components/DispatchList.vue` — Recovers column badge + parent linkage indicator.
-- `src/__tests__/integration/api-error-recover.test.ts` — end-to-end pin: synthetic JSONL → detector → recover handler → `/api/resume` POST + chain stamping + cap-exhausted CRITICAL_FAILURE.
+- `src/__tests__/integration/api-error-recover.test.ts` — end-to-end pin: synthetic JSONL → detector → recover handler → `/api/resume` POST + chain stamping + cap-exhausted `board_halts` raise.
 
 ### Tuning
 
 `MAX_RECOVERS = 3` is hardcoded in `attach-monitoring-stack.ts`. Changing it requires updating unit + integration tests in the same commit. 3 × ~5s window is enough to ride out the API stutter the feature was built for; more would burn tokens during sustained outages before falling through to operator intervention.
 
-## Launching a worker — two live footguns (DX-1763 / DX-1801, live-verified 2026-07-08)
+## Launching a worker — two live footguns (DX-1763 / DX-1801)
 
 Both bite AFTER authorization is granted (see `no-unauthorized-worker-launch`) — they're about getting the launch command itself right, not about whether you're allowed to run it.
 
@@ -277,7 +277,7 @@ This bit BOTH the host-mode path (`scripts/worker-env.sh`, fixed in DX-1763 with
 
 ### 2. Host-mode worker refuses to boot when launched from inside a Claude Code session
 
-`src/worker-boot.ts` preflights for `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_CODE_CHILD_SESSION` in its own process env and throws `NestedClaudePreflightError` if any are present — i.e., if the host-mode worker itself was spawned via a Claude Code session's Bash tool (nested). This is intentional (DX-1801): every `claude` process a nested worker spawns is ALSO a nested Claude Code session, and Claude Code's nested-session handling silently drops JSONL transcript persistence — tokens/tool-calls/shipped-logs all read zero with no visible error, which is exactly the failure DX-1801 root-caused after chasing a phantom log-shipping bug for hours.
+`src/worker-boot.ts` preflights for `CLAUDECODE` / `CLAUDE_CODE_ENTRYPOINT` / `CLAUDE_CODE_SESSION_ID` / `CLAUDE_CODE_CHILD_SESSION` in its own process env and throws `NestedClaudePreflightError` if any are present — i.e., if the host-mode worker itself was spawned via a Claude Code session's Bash tool (nested). This is intentional (DX-1801): every `claude` process a nested worker spawns is ALSO a nested Claude Code session, and Claude Code's nested-session handling silently drops JSONL transcript persistence — tokens/tool-calls/shipped-logs all read zero with no visible error.
 
 **Consequence: an agent (including this one) can never launch `make launch-worker-host` on its own behalf** — the Bash tool that would run it is itself inside a Claude Code session, guaranteeing the preflight trips. The operator must run the host-mode launch command from a plain terminal / shell outside any Claude Code session. An agent that needs a host-mode worker running should hand the operator the exact command (Make command-line `VAR=` form, per above) and wait — this is a hard mechanical wall, not a permissions question, so it applies even with full launch authorization granted.
 

@@ -236,9 +236,8 @@ connected repo's `tools.md` has the exact recipe for that repo.
 
 ## This is the ONLY path to the user
 
-There is no direct `chat.postMessage`. There is no Bash-to-curl escape
-hatch. There is no "reply in stdout and danxbot will forward it." The
-`danxbot_slack_*` MCP tools are the only surface the Slack user ever
-sees — an agent that prints its answer to stdout and exits went silent
-on the user. (Querying the DB is via the `prod_db_*` tools or, for the
-local sandbox, plain Bash — those parts work outside the Slack tools.)
+No direct `chat.postMessage`, no Bash-to-curl escape hatch, no "reply in
+stdout and danxbot will forward it" — the `danxbot_slack_*` MCP tools
+are the only surface the Slack user ever sees. (Querying the DB is via
+the `prod_db_*` tools or, for the local sandbox, plain Bash — those
+parts work outside the Slack tools.)

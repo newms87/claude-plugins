@@ -5,7 +5,7 @@ description: '<repo>/.danxbot/settings.json schema, ownership matrix, writer-mer
 
 # Per-Repo Settings File Deep Contract
 
-Always-on reminder: `.claude/rules/settings-file.md` carries the load-bearing 5-line invariant (`isFeatureEnabled` hot path + ownership tripwire + CRITICAL_FAILURE distinction). This skill carries the schema, ownership matrix, writer-merge invariants, and migration details — needed when actually editing the code.
+Always-on reminder: `.claude/rules/settings-file.md` carries the load-bearing 5-line invariant (`isFeatureEnabled` hot path + ownership tripwire + `board_halts` distinction). This skill carries the schema, ownership matrix, writer-merge invariants, and migration details — needed when actually editing the code.
 
 ## TodoWrite checklist (mandatory on first invoke)
 
@@ -22,7 +22,7 @@ Always-on reminder: `.claude/rules/settings-file.md` carries the load-bearing 5-
 
 Lock file `<repo>/.danxbot/.settings.lock` serializes concurrent writes via `fs.open("wx")` + 30s stale-steal. Both gitignored.
 
-> **Sibling tripwire — NOT this file:** `<repo>/.danxbot/CRITICAL_FAILURE` is a separate poller-halt flag with an unrelated schema, writer, and lifecycle. Operator toggles here = three-valued runtime overrides; the flag = present-or-absent halt signal cleared by a human. Do not conflate. Full contract: `.claude/rules/agent-dispatch.md` "Critical failure flag — poller halt".
+> **Sibling tripwire — NOT this file:** a critical-failure halt is a separate `board_halts` DB row, not a file, with an unrelated schema, writer, and lifecycle. Operator toggles here = three-valued runtime overrides; the halt = present-or-absent signal cleared by a human via the dashboard. Do not conflate. Full contract: `.claude/rules/agent-dispatch.md` "Critical failure halt — poller halt".
 
 ## Ownership
 

@@ -26,8 +26,6 @@ Precedence: 1 > 2 > 3 > 4 > 5 > 6 > 7. First matching rule wins. **Agents NEVER 
 
 **Mechanical check before saying "N In Progress is healthy" or before diagnosing why:** for EACH In Progress card, read `dispatch_id` / `started_at` / `dispatch_kind`, AND cross-reference the real dispatch-tracking table's running/queued rows against the worker's actual concurrent-dispatch capacity. A count of In Progress cards that exceeds worker slots, or that doesn't reconcile 1:1 against live dispatch rows, means some fraction is stranded — the aggregate number alone cannot tell you which fraction. Same discipline applies to an agent-profile "broken" flag / banner: clearing it is a fresh start, not a diagnosis — check the profile's strike history (which card, which failure reason) before assuming the same failure won't immediately re-trip it.
 
-This corrects a real mistake: declaring "8 In Progress on one board + 2 on another = 10, all healthy, nothing stuck" from the counts alone, when only 1 card had a real live dispatch behind it — the other 9 were a mix of container rollups and stranded cards that looked identical in the aggregate.
-
 ## Status on Creation — ALWAYS start in Review
 
 **Every newly created card MUST start with `status: "Review"`** — without exception. Review is the holding pen for un-audited cards. The per-card triage agent is the only mover from `Review` → `ToDo` (stamps `ready_at`).
@@ -53,7 +51,7 @@ This applies to:
 
 The triage block on each card is owned by the **per-card triage agent** dispatched by poller. There is no `triage.expires_at`/TTL column any more (dropped, DX-2820) — the automatic trigger, `getTriageEligibleCardId` (`src/dashboard/dispatcher-deps.ts`, DX-1886), picks ONE eligible `Review` card per board per tick (not blocked, no open problem, no active dispatch, `triage_enabled: true`, sorted by `priority` DESC / `COALESCE(triage_ice_total, 0)` DESC / numeric id ASC) and dispatches `/danx-triage-card <PREFIX>-N`. One card per dispatch — bulk-orchestrator retired.
 
-**Auto-triage is EXPLICIT opt-in per card (`triage_enabled`, default `false`).** The automatic dispatcher's eligibility query only ever selects cards with `triage_enabled: true` — a card created without an explicit `triage_enabled: true` sits in Review untouched by automatic triage forever (operator directive 2026-08-09, reverting DX-1928's true-default; auto-created cards must never silently enter the dispatch pipeline). Every `issue_create` passes the flag explicitly — see the "Auto-Triage Opt-In" section in SKILL.md. Operator-directed triage (`/danx-triage-card`, `POST /api/triage`, direct `issue_triage`) is NOT gated by this flag.
+**Auto-triage is EXPLICIT opt-in per card (`triage_enabled`, default `false`).** The automatic dispatcher's eligibility query only ever selects cards with `triage_enabled: true` — a card created without an explicit `triage_enabled: true` sits in Review untouched by automatic triage forever. Every `issue_create` passes the flag explicitly — see the "Auto-Triage Opt-In" section in SKILL.md. Operator-directed triage (`/danx-triage-card`, `POST /api/triage`, direct `issue_triage`) is NOT gated by this flag.
 
 **Automatic-trigger eligibility vs manual triage paths, by status.** `reassess_hint` and `triage_expires_at` are both dropped columns (`src/issues/view-types.ts:23,148`; DX-2820) — nothing stamps or reads either any more. There is no per-status TTL/cadence left; `triage_ice_total` survives only as a sort tie-break (below), never a schedule.
 

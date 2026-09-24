@@ -11,8 +11,6 @@ Process every card with `status_derived: ToDo` using the workflow from `/danx-ne
 
 Before processing ANY card, call `mcp__danx-dashboard__issue_get({id})`. If `status_derived` is terminal (`Done` / `Cancelled`) AND every AC item is checked AND retro is filled — the prior session already finished that card. Call `danxbot_complete({status: "complete", summary: "Prior session already completed; verified terminal state on resume."})` and stop. **Do not redo work.** Do not flip status. Do not re-save. The full per-card contract lives in the `danx-next` skill's Step 1.1 — load it via the Skill tool when in doubt.
 
-This guards against the May-7 incident: an orphan-resumed agent that re-runs `/danx-start` from scratch against a card whose prior session already shipped the work creates duplicate retro comments and duplicate `danxbot_complete` calls. The self-check is a 30-second read that costs zero tokens of redo.
-
 ## /loop and ScheduleWakeup — FORBIDDEN in a dispatch
 
 **A scheduled wakeup can NEVER fire in a dispatch. Arming one ends the
@@ -28,12 +26,6 @@ a wakeup. `ScheduleWakeup` will still answer:
 result and exits 0, and nothing wakes you. The worker records
 `exited without danxbot_complete — abandoned`, the card stays claimed, and
 every token you spent is wasted.
-
-This is measured, not theoretical: 6 of 6 abandoned dispatches audited on
-2026-09-05 ended exactly this way, tens of millions of tokens between them.
-Each agent was following this section as it was previously written — it
-used to ALLOW "monitoring a long-running test", which is the single
-instruction that killed them. That is why the allowance is gone.
 
 **FORBIDDEN — no exceptions, this card's AC included:**
 

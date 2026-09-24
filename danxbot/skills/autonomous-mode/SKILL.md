@@ -69,14 +69,7 @@ Pick exactly one of the following. Do not pause first.
 
 That's the entire menu. There is no fourth option that involves waiting.
 
-## Why this exists
-
-This rule exists because production has burned tokens on dispatched agents
-freezing in plan-mode confirmations and AskUserQuestion prompts the
-operator never sees. Those dispatches sit until the inactivity timeout
-kills them, then redispatch on the next tick, then freeze again. The
-no-interactive-prompt rule is the load-bearing assumption that keeps
-autonomous dispatch from melting the budget.
+## Still tempted to ask?
 
 If you find yourself thinking "but the right thing to do is ask the
 operator first" — re-read this file. The answer is not "ask." The answer

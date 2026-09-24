@@ -7,7 +7,7 @@ description: 'Networking model, runtime envs, deployment vs local, issue-tracker
 
 Danxbot is an autonomous orchestrator. Source repo: `<DANXBOT_REPO>` (sibling of every connected repo on the operator's dev box). It spawns Claude Code CLI subprocesses to do work in a connected repo (the operator's app/library codebases — examples: `gpt-manager`, `platform`), polls issue trackers, exposes an HTTP dispatch API.
 
-This plugin is the single source of truth for every danxbot discipline rule + skill — operator's main session and dispatched workers all read the same body via `danxbot@newms-plugins` (was previously dual-housed in the poller inject pipeline; epic DX-269 retired the inject side so plugin edits propagate everywhere with `autoUpdate: true`).
+This plugin is the single source of truth for every danxbot discipline rule + skill — operator's main session and dispatched workers all read the same body via `danxbot@newms-plugins` (`autoUpdate: true` propagates every edit).
 
 Reading this skill avoids three recurring mistakes:
 
@@ -141,8 +141,6 @@ curl -sS -X POST https://<your-danxbot-deployment>/api/launch \
 - Full route table: `/api/launch`, `/api/resume`, `/api/status/:id`, `/api/cancel/:id`, `/api/stop/:id`. See `danxbot/.claude/rules/agent-dispatch.md#external-entry`.
 
 Laravel apps (Machine A) call this endpoint to start an agent on Machine B. That HTTP call IS the boundary. Anything fancier (FS sharing, cross-host kills, `/proc` walks across the boundary) is wrong.
-
-## MCP Server Ownership
 
 ## MCP Server Ownership
 

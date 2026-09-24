@@ -13,35 +13,6 @@ You are about to reset, refresh, drop, wipe, or roll back a database.
 equivalent and have it succeed. There is exactly ONE sanctioned reset
 path. Use it. Do not invent a workaround.
 
-## Why this skill exists
-
-On 2026-05-15 an autonomous agent (harry) ran `php artisan
-migrate:fresh` against an unsoped worktree whose `.env` symlinked to
-the primary repo's `.env`. `DB_DATABASE` resolved to the primary
-development database. `migrate:fresh` dropped every table in primary.
-Months of historical data lost. The repo-wide fix landed in three
-phases under epic DX-570:
-
-1. **Phase 1 (DX-571)** — per-worktree Postgres database + role.
-   The worktree role has zero privilege on primary; even an unscoped
-   `migrate:fresh` from inside a worktree can ONLY ever destroy that
-   worktree's own DB.
-2. **Phase 2 (DX-572)** — per-consumer-repo `safe-reset-db.sh` template
-   that the worker provisions into every worktree at
-   `<worktree>/.danxbot/safe-reset-db.sh`. The script reads the
-   worktree's own `.env`, defensively refuses to operate on primary,
-   then runs the consumer-repo-appropriate reset.
-3. **Phase 3 (this skill)** — closes the loop. The deny hook blocks
-   destructive commands; this skill tells the blocked agent where the
-   sanctioned alternative lives so the agent doesn't sit and invent
-   workarounds that the hook will also block.
-
-Phase 1 makes the destructive command merely "blow up the worktree DB"
-instead of "blow up primary." Phase 2 ships the sanctioned tool.
-**Phase 3 (this skill) is the only thing standing between an agent and
-30 minutes of invented-workaround attempts that all fail the deny
-hook.** Use the skill.
-
 ## The Hard Rule
 
 **Agents NEVER invent their own destructive DB command, even on the
@@ -75,7 +46,7 @@ override, no `--force` flag, no "skip the safety check" flag. The
 target is always the worktree's own DB, derived from
 `<worktree>/.env`. The script:
 
-1. Reads `<worktree>/.env` (already worktree-scoped after DX-571).
+1. Reads `<worktree>/.env` (already worktree-scoped).
 2. Hard-fails if its derived `DB_DATABASE` matches the primary repo's
    primary DB name (defense-in-depth — even though Phase 1's role
    REVOKE makes the operation impossible, the script refuses to even
@@ -99,7 +70,7 @@ Before invoking the script, confirm:
    the consumer repo has no reset recipe — STOP and report. Do NOT
    create one yourself; the script lives in the consumer repo and
    the worker provisions it into your worktree. A missing script
-   means either Phase 2 (DX-572) provisioning failed OR the
+   means either provisioning failed OR the
    consumer repo never authored a template (non-DB repos, future
    consumer repos onboarding later).
 3. **Your worktree's `.env` carries a worktree-specific DB name.**
@@ -115,9 +86,7 @@ If all three checks pass, invoke the script.
 
 The script exits non-zero on any failure. **Do NOT chase the failure
 with manual `psql` / `docker exec` / `php artisan` workarounds.** The
-deny hook will block every direct destructive command you try; even
-if it didn't, you would be reproducing the SG-162 incident class
-exactly.
+deny hook will block every direct destructive command you try.
 
 Read the script's stderr verbatim. Then:
 
@@ -146,7 +115,7 @@ Read the script's stderr verbatim. Then:
 
 | Forbidden | Why |
 |---|---|
-| `chmod +x <worktree>/.danxbot/safe-reset-db.sh` | The worker provisions the script chmod-ed +x already (DX-572). If it isn't, that's a Phase 2 provisioning bug — file an issue, do NOT silently fix it. |
+| `chmod +x <worktree>/.danxbot/safe-reset-db.sh` | The worker provisions the script chmod-ed +x already. If it isn't, that's a provisioning bug — file an issue, do NOT silently fix it. |
 | Editing the script (`Edit <worktree>/.danxbot/safe-reset-db.sh ...`) | The script is consumer-repo-authored and lives at `<repo>/.danxbot/safe-reset-db.sh` in the consumer repo. Edits to the worktree copy are blown away on the next provisioner run AND bypass the consumer repo's review gate. File an issue against the consumer repo if the script's behavior needs to change. |
 | Copying the script's body into your own Bash command | Same outcome as editing — bypasses the script's guard rails AND the deny hook. The hook only knows about command shapes; bypassing the script means re-implementing the safety check, which you will get wrong. |
 | Calling `php artisan migrate:fresh` / `db:wipe` directly | Blocked by `base/scripts/deny-destructive-db.sh`. You will sit in a deny-retry loop. |
@@ -154,7 +123,7 @@ Read the script's stderr verbatim. Then:
 | Calling `psql -c 'DROP DATABASE ...'` / `mysql -e 'DROP DATABASE ...'` | Same hook pattern, same block. |
 | `TRUNCATE` loops over `information_schema.tables` | Reinventing `db:wipe` by another route. The hook may not catch it, but you are now operating without the script's defense-in-depth check that the target DB is NOT primary. SG-162 in slow motion. |
 | Recreating the Docker volume to "reset" the DB | Bypasses every guard. Destroys whatever else lives in that volume. |
-| Asking the operator to disable the deny hook | The hook exists because of SG-162. Disabling it re-opens the failure mode. The answer is always "run the sanctioned script." |
+| Asking the operator to disable the deny hook | The hook exists to prevent exactly this class of destructive mistake. Disabling it re-opens the failure mode. The answer is always "run the sanctioned script." |
 | Inventing a new "safe reset" script in your worktree | Phase 2 already shipped one. Find it or report it missing. |
 
 The script is the contract. The agent calls it. The agent does not

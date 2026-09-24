@@ -117,16 +117,7 @@ never auto-cleared).
 domains, no shared state, can ship in any order). Default = sequential.
 If you skip, explain in a comment on the epic.
 
-### `waiting_on.by[]` is the IMMEDIATE blocker only — never list transitive blockers
-
-Phase 3's `by[]` lists `["<phase-2-id>"]` (Phase 2). It does NOT list Phase 1, even
-though Phase 1 must ship before Phase 2 can ship. The chain Phase 3 → Phase
-2 → Phase 1 is computed automatically by the poller + dashboard from each
-card's direct blocker; restating the upstream chain in `by[]` is redundant
-data that drifts the moment the chain is reorganized.
-
-Same rule applies outside epics: when card A is waiting on card B which is
-waiting on card C, A's `waiting_on.by[]` is `["B"]` only — NOT `["B", "C"]`.
+`waiting_on.by[]` is the IMMEDIATE blocker only (Phase 3 → `["<phase-2-id>"]`, never `["<phase-2-id>", "<phase-1-id>"]`) — see `issue-card-workflow`'s `waiting_on` field entry for the full rule.
 
 ---
 

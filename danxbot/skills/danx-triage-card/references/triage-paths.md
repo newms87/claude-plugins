@@ -78,4 +78,4 @@ As with Blocked, this is a mechanical re-check of dependency state, not a value 
 | Out of scope | — | none | `{status: "complete", summary: "out of scope: <reason>"}` |
 | Dispatch itself failed (unreadable card, MCP error, no decision reached) | — | — | `{status: "failed"}` (real ≥30-char reason) |
 
-`danxbot_complete` is ALWAYS `status: "complete"` on a successful triage run, regardless of outcome — DX-835 already moves the card via the MCP call(s) above; `danxbot_complete` only reports whether the dispatch itself succeeded. Using `"ready"`/`"cancelled"`/`"archive"` here (pre-DX-835 contract) makes the worker stamp the DISPATCH row `failed`, poisoning the auto-triage breaker's failure count for a run that actually succeeded (DX-1810).
+`danxbot_complete` is ALWAYS `status: "complete"` on a successful triage run, regardless of outcome — the card's fate is already moved via the MCP call(s) above; `danxbot_complete` only reports whether the dispatch itself succeeded. Never use `"ready"`/`"cancelled"`/`"archive"` here — that stamps the DISPATCH row `failed` even though the triage succeeded.

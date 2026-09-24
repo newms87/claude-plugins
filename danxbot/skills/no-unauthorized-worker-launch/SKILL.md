@@ -191,11 +191,3 @@ When in doubt: ask the user before launching (operator session) or document on t
    - If the card cannot proceed without operator action, set `status: "Blocked"` and populate `blocked: {reason, timestamp}` per `danx-next/SKILL.md` Step 10.
    - If the card can complete its other work without the operator action, finish the rest, document the operator-required step in the retro / a comment, and let the orchestrator close the card normally.
 4. **Save and exit.** The poller stops dispatching the card; the operator takes the launch action; the next dispatch picks up from there.
-
-## Why this rule exists
-
-A previous agent session (DX-150 follow-up, 2026-05-08) launched `make launch-worker-host REPO=danxbot` without operator authorization. The poller picked up cards from ToDo, derived parent statuses, reset "In Progress" cards with no dispatch stamp back to ToDo, and spawned a dispatched agent against `DX-203` — all unauthorized work in a session where the user had explicitly told the agent to "test that locally and run the test yourself. Do NOT deploy."
-
-This rule is the load-bearing assumption that prevents that class of incident. It is non-negotiable. Skills and pipelines do not override it; prior-session authorizations do not carry forward; "I'm sure it's fine" is not a substitute for an explicit user request in the current turn.
-
-For dispatched autonomous agents, the rule is even simpler: the prompt comes from an issue card; cards do not authorize launches; therefore launches are never authorized inside a dispatch.

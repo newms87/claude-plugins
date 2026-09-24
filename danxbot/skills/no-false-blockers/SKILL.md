@@ -40,17 +40,13 @@ a file / module your card does not modify.
    `<PREFIX>-N` into `retro.action_item_ids[]`. Check the AC off (your
    card's tests pass) and proceed.
 
-**STRICTLY FORBIDDEN — do not run any of these against working-tree
-state you did not personally write in this dispatch:**
-
-- `git stash` / `git stash push <path>` / `git stash pop`
-- `git checkout -- <path>` / `git checkout HEAD <path>`
-- `git restore <path>` / `git restore --staged <path>`
-- `git reset <path>` / `git reset --hard`
-- `git clean` (any flags)
-- Any "verify failure pre-existed my changes" investigation. There is
-  ZERO value in the answer. The suite either passes for YOUR changes
-  (option 2) or it does not (option 1 / 3).
+**STRICTLY FORBIDDEN against working-tree state you did not personally
+write in this dispatch.** The general destructive-op list — `git
+stash`, `git checkout --`/`restore`, `git reset --hard`, `git clean` —
+is `dev:git-discipline`'s; see that skill for the full ban. Additionally
+forbidden here: any "verify failure pre-existed my changes"
+investigation. There is ZERO value in the answer — the suite either
+passes for YOUR changes (option 2) or it does not (option 1 / 3).
 
 ### Pre-action gate — destructive working-tree op
 

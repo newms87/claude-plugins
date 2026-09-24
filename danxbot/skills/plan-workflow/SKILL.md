@@ -1,6 +1,6 @@
 ---
 name: plan-workflow
-description: 'THE planning workflow for any task with a human in the loop beyond a quick cleanup — multi-step plan or build; ANY question whose answer affects a plan; monitoring over time; resuming or handing off unfinished work; operator pastes a plan link. The danxbot Plan is the ONLY planning record: goals/rules/caveats = plan records, design = architecture sections, work + operator questions = cards attached to the plan. No plan files, no `~/.claude/plans/*.md`, no repo `.md` specs, no HTML pages, no chat summaries. Operator question = `Task` card + open problem with solutions, never chat, never AskUserQuestion. Keep 3 cards in flight on own sub-agents; never ask permission to dispatch. Load before connecting to, creating, or writing a plan.'
+description: 'THE planning workflow for any task with a human in the loop beyond a quick cleanup — multi-step plan or build; ANY question whose answer affects a plan; monitoring over time; resuming or handing off unfinished work; operator pastes a plan link. Load before connecting to, creating, or writing a plan.'
 ---
 
 # Plan Workflow
@@ -112,6 +112,8 @@ Pass hash from immediately prior read. Stale refusal carries current value → m
 ## Operator questions
 
 Pre-send scan every reply: any "should I / want me to / needs your word / options list / question to operator"? Real question → card. Not real → decide it yourself and proceed.
+
+Never `AskUserQuestion` — a real operator question always goes to a card (file it, below), never a tool prompt.
 
 Operator-only: domain intent, business/UX judgment, scope/authority, action only they can do (credential, login, hardware, deploy approval). NOT questions: status reports, self-corrections, mechanical blockers you can run, cards already carrying a recommended/chosen option or work in flight, implementation choices (`dev:ideal-solution-mindset` decides).
 

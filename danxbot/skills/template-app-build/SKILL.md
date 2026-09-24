@@ -114,19 +114,3 @@ succeeds, and the app silently renders the old behaviour with no error anywhere.
 - **`save_template_app` fails repeatedly with the same error.** Three failed
   `save_template_app` calls in a row for the same id → call
   `danxbot_complete` with `status: "failed"` and the last error verbatim.
-
-## Rollout
-
-Single source of truth: this plugin skill, at
-`danxbot/skills/template-app-build/SKILL.md` inside the marketplace plugins
-repo (there is no in-tree copy — the plugin is the only home). That repo's
-location on disk differs per machine and per context; resolve it rather than
-assuming a path — `~/.claude/plugins/known_marketplaces.json` carries the
-marketplace `source.url` and an `installLocation` checkout of the same repo,
-and an existing working checkout of that URL should be reused rather than
-re-cloned.
-Publish via `./scripts/publish.sh patch danxbot`; the marketplace consumer
-settings (every dispatched clean-room's `.claude/settings.json` enables
-`danxbot@newms-plugins` with `autoUpdate: true`) pull the new revision
-automatically. `/reload-plugins` in any active session picks it up
-immediately.

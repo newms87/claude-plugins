@@ -16,7 +16,7 @@ git rev-list HEAD..origin/main --count
 
   **Rebase conflict:** worktree carried in-flight work the worker's `validate()` didn't flag. Add comment titled `## Operator action required` describing conflicting paths + pre-recovery dispatch, then follow Step 10 (Escalate).
 
-This step is read-only — if `git status` shows uncommitted changes BEFORE you do anything, worker mis-routed (should have caught dirty state). Same comment + Step 10 (Escalate).
+This step is read-only — if `git status` shows uncommitted changes BEFORE you do anything, the worker mis-routed. Same comment + Step 10 (Escalate).
 
 ## Step 1 — Read the Issue and Set Effort Level
 
@@ -26,7 +26,7 @@ Query the DB via `mcp__danx-dashboard__issue_get({id})` to fetch the card. The w
 
 **Resume detection:** if the card's `status_derived` is `In Progress` (i.e. `dispatch != null` AND no terminal trigger) AND prior session state exists (checked ACs, comments from earlier, `retro.commits[]`), treat as resumption → proceed to Step 1.1. Trust `status_derived`.
 
-`issue_get` returns `{ok: false}` / card not found → signal `critical_failure` per `danx-halt-flag.md` — poller is broken.
+`issue_get` returns `{ok: false}` / card not found → signal `critical_failure` per `danxbot:halt-flag` skill — poller is broken.
 
 ## Step 1.1 — Validate, Never Trust Prior State
 
@@ -146,7 +146,7 @@ Append each result as a new comment via `issue_comment({id, action: 'add', text:
 
 If critical issues found, fix, re-run failed gate, add a `## Review Fixes` comment summarizing fixes.
 
-**Parallelize independent reviews + fixes — hard cap 5 (DX-1363, raised from 3 on 2026-09-19).** Independent reviews of the same diff have zero ordering dependency: dispatch the reviewer sub-agents in ONE message (multiple `Agent`/`Task` calls in a single response), not one at a time. The same applies to a card's required POST code-trio gates (`code-test-quality` / `code-architecture` / `code-quality`) — see the clean-room CLAUDE.md "Code trio" section: batch the reviewer sub-agents (≤5), collect all findings, fix ONCE. When the fixes themselves split into independent, non-overlapping changes, fan THOSE out to parallel sub-agents too (≤5). Cap is 5 concurrent; >5 → batch. Guardrails: non-overlapping files only; the parent runs the test suite ONCE after edits (never parallel test runs); `base:sub-agent-delegation` synthesis discipline still applies.
+**Parallelize independent reviews + fixes — hard cap 5 (DX-1363).** Independent reviews of the same diff have zero ordering dependency: dispatch the reviewer sub-agents in ONE message (multiple `Agent`/`Task` calls in a single response), not one at a time. The same applies to a card's required POST code-trio gates (`code-test-quality` / `code-architecture` / `code-quality`) — see the clean-room CLAUDE.md "Code trio" section: batch the reviewer sub-agents (≤5), collect all findings, fix ONCE. When the fixes themselves split into independent, non-overlapping changes, fan THOSE out to parallel sub-agents too (≤5). Cap is 5 concurrent; >5 → batch. Guardrails: non-overlapping files only; the parent runs the test suite ONCE after edits (never parallel test runs); `base:sub-agent-delegation` synthesis discipline still applies.
 
 ## Step 6 — Check Off Acceptance Criteria
 
@@ -316,17 +316,13 @@ Use Step 10 ONLY when blocker is genuinely one of (route in parentheses):
 - **Genuine human design decision** (ambiguous spec, missing requirement, conflicting direction). Specifically: answer changes goal / implementation plan in way ONLY human decides (→ Escalate).
 - **Architectural ambiguity** — multiple valid implementations, different tradeoffs, human call (→ Escalate; each implementation is a solution, one recommended).
 - **Card cannot be completed as described** without important change to goal / implementation plan (→ Escalate).
-- **Card-specific tool / environment failure** that a later dispatch can re-check (→ Blocked hold; use `critical_failure` for environment-wide — `danx-halt-flag.md`).
+- **Card-specific tool / environment failure** that a later dispatch can re-check (→ Blocked hold; use `critical_failure` for environment-wide — `danxbot:halt-flag` skill).
 
 **`agents.<name>.broken` is strikes-only (DX-758).** Worker no longer stamps `broken` from git env detection. ONLY path to `broken` is N consecutive `danxbot_complete({status: "failed"})` strikes from `src/agent/strikes.ts`. One legit block doesn't "burn" agent; only pattern of false blocks does. Dashboard's "Clear broken" still clears.
 
 **NOT Step 10 cases — these are Step 10b or in-session work:**
 - Waiting on another card / phase / Action Item to ship first → **Waiting On** (Step 10b). No human needed; poller auto-unblocks.
-- Stale config in editable file → fix in-session.
-- Bug in readable/editable function (in any bind-mounted repo) → fix in-session.
-- Test failure pointing at defect in same repo → fix in-session.
-- Missing file you can write → fix in-session.
-- Anything where next agent would open same files + make same edits you could make now → fix in-session.
+- Anything fixable in-session (stale config, a readable/editable bug, a same-repo test failure, a missing file you can write, anything the next agent would just redo) → apply Step 1.5, fix it now.
 
 One more time: **"Does a human *action or decision* resolve this, or am I just waiting on other work?"** Human → Escalate. If waiting, use Step 10b. If 10–30 minutes to fix, cancel the move, do it.
 
@@ -400,7 +396,7 @@ Skip to Step 11.
 
 ## Step 11 — Signal Completion
 
-`danxbot_complete` is agent's terminal signal. Worker treats as proof full pipeline ran. **Do not call until every prereq below holds.** Calling with prereqs unmet is **workflow violation** — worker writes the dispatch row completed, the card derives terminal, work appears shipped without ever landing main. DX-203 + DX-210 burned the budget.
+`danxbot_complete` is agent's terminal signal. Worker treats as proof full pipeline ran. **Do not call until every prereq below holds.** Calling with prereqs unmet is **workflow violation** — worker writes the dispatch row completed, the card derives terminal, work appears shipped without ever landing main (DX-203, DX-210).
 
 ### Pre-call gate (mechanical, every status: complete)
 
@@ -443,18 +439,11 @@ If either fails, three options:
 | `complete` | worker stamps `completed_at` + clears `dispatch` | `Done` | Work shipped on `origin/main`; every AC checked; retro filled. |
 | `failed` | worker stamps `blocked: {at, reason: summary}` (summary ≥ 30 chars; shorter → silent cancel + strike) | gated `Blocked` dispatch | Card is held on a blocker nobody can resolve in this dispatch (Step 10 Hold). Blocked never reaches the operator: when a human must decide or act (ambiguous spec only the operator can settle, missing credentials, external blocker), escalate first (Step 10 Escalate) and end `complete` instead. Load `issue-blocker` skill first — its gate is authority. |
 | `cancelled` | worker stamps `cancelled_at` + clears `dispatch` | `Cancelled` | Card abandoned — work won't ship. Use sparingly; prefer `failed` when card might still be picked by human. |
-| `critical_failure` | writes per-repo `CRITICAL_FAILURE` flag (halts poller) | unchanged | Environment broken (MCP not loading, Bash unavailable, Claude auth missing). See `danx-halt-flag.md`. |
+| `critical_failure` | raises a `board_halts` DB row (halts poller) | unchanged | Environment broken (MCP not loading, Bash unavailable, Claude auth missing). See `danxbot:halt-flag` skill. |
 
 **Other statuses NOT for work agents.** `ready` / `archive` / `review` exist for flesh-out + triage agents — calling from `/danx-next` work dispatch is workflow violation (resets lifecycle triggers, card returns to pre-work state).
 
 DX-770 hard-cut pre-existing `completed` / `agent_blocked` aliases. MCP tool rejects with typed error naming canonical name (`complete` / `failed`). Every caller MUST use canonical name.
-
-### Allowed final states
-
-- `status: "complete"` — finished; worker stamps `completed_at`, renders `## Retro`, card derives `Done`. `summary` MUST contain commit sha (or `"docs-only — no commit"` if explicitly docs-only).
-- `status: "failed"` — card held on a blocker unresolvable in this dispatch; worker stamps `blocked: {at, reason: summary}` (a hold — it does not reach the operator; a human-needed card escalates via `issue_problem` and ends `complete`). `summary` MUST be ≥ 30 chars (shorter → silent downgrade to cancel + strike).
-- `status: "cancelled"` — abandoned; worker stamps `cancelled_at`. `summary` describes abandonment reason.
-- `status: "critical_failure"` — environment-level blocker (see `danx-halt-flag.md`). `summary` describes env issue for operator. No card stamp; poller halts via per-repo `CRITICAL_FAILURE` flag.
 
 ### What worker does on signal
 
