@@ -35,6 +35,23 @@ This file writes the **hyphen** form throughout because the dispatched-worker pa
 
 **Mechanical rule: do not copy a prefix out of this file on faith.** Read the actual tool name from your own loaded tool list (or `ToolSearch` `select:...`) once, at the start, and use that spelling for every call in the session. The part after the prefix — `issue_create`, `issue_transition`, … — is identical in both.
 
+## MCP server disconnected ≠ board unreachable — fall back to plain HTTP
+
+The `danx-dashboard` / `danx_dashboard` MCP server fails to connect fairly often (`CONNECTION_CLOSED`). That is **not** a loss of board access — the dashboard exposes a plain HTTP API that does everything the MCP tools do (`src/issues/routes.ts` + `src/issues/write/*.ts`). Never stop or tell the operator the board is unreachable on an MCP connection error alone; drive the board over HTTP instead.
+
+- Base URL: the target dashboard's own origin, e.g. `https://<dashboard-host>/api/`.
+- Bearer token: the per-target dashboard token file, e.g. `~/.config/danxbot/dashboard-token[-<target>]` (see `.claude/rules/dashboard.md` "Agent API access" in the danxbot repo for the local-dev convention).
+
+Shapes that cost real time to discover and are easy to get wrong from first principles:
+
+- Creating an issue **requires `gate_decisions`** — one `{gate, enabled, note}` per board-optional gate, each with a non-empty note (see "Quality-Gate Decisions" above).
+- Comments use `{text: ...}`, **not** `{body: ...}`.
+- `PATCH issues/<id>/edit` with `ac` needs **both** `check_item_id` and `title` on every item, and the full list — partial lists drop items.
+- An edit touching `title` additionally requires the `content_hash` you last read.
+- Adding a problem refuses `context` on create: POST `{statement, solutions}` first, then attach context with a follow-up `PATCH issues/<id>/problems/<problem_id>` carrying `base_hash`.
+- `POST plans/<id>/cards` with `{card_id}` attaches a card to a plan.
+- Non-ASCII in a title sent via `curl -d` from a POSIX shell can get mangled — send it from a small script (Node/Python) instead when the title has non-ASCII characters.
+
 ## DX-835 — two-step termination is MANDATORY
 
 Card lifecycle (`completed_at` / `blocked_at` / `cancelled_at`) is the AGENT's explicit responsibility, written via `mcp__danx-dashboard__issue_transition`. `mcp__danxbot__danxbot_complete` finalizes the dispatch row ONLY; it does NOT move cards. Every issue-bound terminal flow is two calls in order:
