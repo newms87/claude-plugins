@@ -109,7 +109,7 @@ Last thing user sees. Build by walking these sources:
 
 1. Documentation from Undocumented Knowledge — ALWAYS first (knowledge dies with session)
 2. Incomplete phases on active card — next unchecked `phases[]`/`ac[]` item
-3. Cards spawned this session — list `ISS-N` ids
+3. Cards spawned this session — list `<PREFIX>-N` ids
 4. Blockers needing human (restart, approve, browser test, business decision)
 5. New cards to spawn (observed problems user should decide on)
 

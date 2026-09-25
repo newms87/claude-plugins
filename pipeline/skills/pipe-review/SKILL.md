@@ -21,7 +21,7 @@ Review code from **your current session's work**:
 
 ## Step 2: Run Reviewer Agents in Parallel
 
-Launch available review agents simultaneously in a SINGLE message with multiple Task tool calls:
+Dispatch per `base:sub-agent-delegation`'s batch rule (one message, not serialized); not restated here.
 
 All three agents are MANDATORY. They have distinct, non-overlapping roles — do not skip any.
 
@@ -60,13 +60,11 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 - Work through each phase sequentially
 - Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/pipe-quality` for the 3 valid skip reasons); record the disposition in the card comment, not a file
 
-### Highest Priority: Fallbacks, Legacy, Backwards-Compatible, Obsolete, and Dead Code
-
-Findings in this category (forbidden list: `dev:ideal-solution-mindset` #2; not restated here) go at the TOP of Phase 1 — PRIORITY 0, instant-block, never skipped/deferred/rationalized (`/pipe-quality`'s skip allowlist does not apply — there is no valid skip). Every reviewer agent runs the `base:fail-loudly` grep recipes against the diff and surfaces every match; authors delete every fallback before the review-fixes commit ships. Only override: explicit per-merge user authorization quoted verbatim in the PR body for that one finding.
+**Fallback/legacy/dead-code findings** (`dev:ideal-solution-mindset` #2; not restated here) go to the TOP of Phase 1, PRIORITY 0, never skippable — see `/pipe-quality`'s Hard Block. Every reviewer runs the `base:fail-loudly` grep recipes against the diff and surfaces every match; authors delete every fallback before the review-fixes commit ships.
 
 ## Step 5: Create Action Items for Pattern-Worthy Findings
 
-If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx-dashboard__issue_create` (or append to the active card's `retro.action_items[]`). Don't defer to session end.
+If any finding reveals a pattern that could prevent future mistakes (a missing rule, a skill gap, a documentation hole), create an issue card in **Action Items** immediately via `mcp__danx-dashboard__issue_create` (or push its id into the active card's `retro.action_item_ids[]` via `issue_retro`). Don't defer to session end.
 
 ## Step 6: Run `/pipe-quality`
 
@@ -77,6 +75,3 @@ If any finding reveals a pattern that could prevent future mistakes (a missing r
 ## Rules
 
 - **You are the author — agents are the reviewers.** Never skip this step because you're confident in your code.
-- **Fix every finding in the review-fixes commit.** All findings ship as a separate `/pipe-commit` AFTER this skill runs. No deferring, no "flagging for later" — the review-fixes commit closes the cycle.
-- **Always record findings + plan on the card before fixing.** Never fix ad-hoc without the recorded plan — the card comment ensures nothing gets lost and gives the next agent + human a clear record. No `/tmp` revisions file.
-- **Always run `/pipe-quality` after fixing.** This is what catches rationalizations and skipped findings.

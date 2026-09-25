@@ -41,7 +41,7 @@ SESSION END
 
 ```
 PLAN SOURCE
-  Dispatch prompt names the ISS-N → danxbot:danx-next skill owns flow
+  Dispatch prompt names the <PREFIX>-N → danxbot:danx-next skill owns flow
 PRE-IMPL
   pipe-start (this skill — load rules, NOTHING ELSE)
 IMPLEMENT
@@ -61,7 +61,7 @@ Post-implementation pipeline skills are reserved for human-loop sessions; in dis
 
 ### 1. Read-Only Until Approved
 
-Read-only until the user gives an explicit imperative ("go ahead," "do it," "fix it," "make that change"). Questions, observations, "sounds good," "hmm" are NOT approval — when in doubt, you don't have it. After presenting options or a diagnosis, hard-stop: text only until an explicit action verb.
+**Human-loop sessions only — dispatched workers follow `danxbot:autonomous-mode` instead** (never pause; decide unilaterally or escalate via an open problem). Read-only until the user gives an explicit imperative ("go ahead," "do it," "fix it," "make that change"). Questions, observations, "sounds good," "hmm" are NOT approval — when in doubt, you don't have it. After presenting options or a diagnosis, hard-stop: text only until an explicit action verb.
 
 ### 2. Verify, Never Guess
 
@@ -93,25 +93,21 @@ Pipeline-specific: this pipeline's own review/investigation agents return **hypo
 
 `base:tool-discipline`. Not restated here.
 
-### 10. Issue Card IS the Plan
+### 9. Issue Card IS the Plan
 
 `danxbot:issue-card-workflow`. Not restated here.
 
-### 11. Complete ALL Work
+### 10. Complete ALL Work
 
 Never silently drop parts of a plan. Verify every acceptance criterion before committing — if something isn't done, say so, don't check it off. Marking incomplete work complete is worse than not doing it.
 
-### 12. Never Cancel Running Processes
+### 11. Never Cancel Running Processes
 
 `base:process-kill`. Not restated here.
 
-### 13. Never Substitute Your "Better" Approach
+### 12. Never Substitute Your "Better" Approach
 
 When the user specifies HOW, follow their method. Think an alternative is better? Present it and let them choose — "equivalent results" is your hypothesis, not a fact.
-
-### 14. Makefile First (Million Repo)
-
-Check `make help` before doing ANYTHING in the million repo. If a Makefile target exists, use it. Never write ad-hoc scripts, inline Python, or manual docker exec when a target exists.
 
 ---
 

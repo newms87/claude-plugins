@@ -25,9 +25,7 @@ Go through each reviewer agent's output (test-reviewer, code-reviewer, architect
 
 For each finding marked SKIPPED, DEFERRED, or NOT FIXED, run it through this checklist:
 
-### Hard Block: Fallback / Legacy / Dead / Obsolete Code Can NEVER Be Skipped
-
-**Before evaluating skip reasons, check this first.** A finding in this category — fallback, backwards-compat, legacy, obsolete, or dead code (forbidden list + red-flags: `dev:ideal-solution-mindset` #2; pattern grep: `base:fail-loudly`; not restated here) — is **PRIORITY 0: fix it immediately, no exceptions.** None of the 3 valid skip reasons below ever apply to it — not "zero value," not "would be wrong," not "another agent," not "needs its own card" (the review-fixes commit IS the card). The only override is explicit per-merge user authorization quoted verbatim in the PR body for that one finding.
+**Hard Block, check first:** a fallback/legacy/dead/obsolete-code finding (`dev:ideal-solution-mindset` #2; pattern grep: `base:fail-loudly`; not restated here) is PRIORITY 0 — fix immediately, none of the 3 valid skip reasons below ever apply. Only override: explicit per-merge user authorization quoted verbatim in the PR body.
 
 ### The Allowlist Gate
 
@@ -85,4 +83,3 @@ Before proceeding to `/pipe-commit`, answer honestly:
 - **This step is NOT optional.** Skipping it is a pipeline violation.
 - **Be honest with yourself.** The whole point is catching your own rationalizations.
 - **The table in Step 1 is required output.** Show it so the user can see your decision-making.
-- **Speed is not a factor.** Taking 2 extra minutes to fix a finding is always cheaper than shipping a skip.
