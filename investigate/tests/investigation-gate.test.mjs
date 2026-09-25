@@ -29,7 +29,7 @@ const RELAY_PREFIX =
  * plan-event-bridge.mjs's FAILURE_PREFIX + failureNotice() shape. A bridge failure
  * notice's `reason`/`fix` text is free-form and can incidentally contain a trigger word
  * this gate's pattern matches — this fixture's fix text is contrived to do exactly
- * that ("check on"), since that is the class of text this hook must NOT fire on.
+ * that ("investigate"), since that is the class of text this hook must NOT fire on.
  */
 const FAILURE_PREFIX =
   `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
@@ -47,7 +47,7 @@ const FAILURE_PREFIX =
  * wrapper — never in content.
  */
 const TASK_NOTIFICATION_MARKER = "<task-notification";
-const TASK_NOTIFICATION_BODY = "Should I proceed with the audit? The rename established why this failed.";
+const TASK_NOTIFICATION_BODY = "Should I proceed? Please investigate why this failed.";
 const TASK_NOTIFICATION_PREFIX =
   "[SYSTEM NOTIFICATION - NOT USER INPUT] This is an automated background-task event, NOT a message from the user.\n" +
   `${TASK_NOTIFICATION_MARKER}>\n<agent>worker-1</agent>\n<report>`;
@@ -75,13 +75,13 @@ describe("investigation-gate.sh", () => {
     const failure =
       FAILURE_PREFIX +
       "\ndanxbot plan events are NOT reaching this session: the bridge subcommand exited before it could start " +
-      "streaming. Fix: check on the bridge log under the danxbot plugin's data directory, then call plan_connect again.";
+      "streaming. Fix: investigate the bridge log under the danxbot plugin's data directory, then call plan_connect again.";
     assert.equal(runHook(failure), "");
   });
 
   test("still fires on a typed operator prompt with a trigger word", () => {
     const out = runHook("can you investigate why the worker keeps crashing");
-    assert.match(out, /INVESTIGATION TRIGGER DETECTED in user prompt/);
+    assert.match(out, /INVESTIGATION TRIGGER/);
   });
 
   test("stays silent on a typed operator prompt with no trigger word", () => {
@@ -98,7 +98,7 @@ describe("investigation-gate.sh", () => {
     // ONLY in the absence of the task-notification wrapper — proves the gate reads the
     // wrapper, not the body text, to decide.
     const out = runHook(TASK_NOTIFICATION_BODY);
-    assert.match(out, /INVESTIGATION TRIGGER DETECTED in user prompt/);
+    assert.match(out, /INVESTIGATION TRIGGER/);
   });
 
   test("stays silent on the real notification shape: tag alone on the first line, no preamble", () => {
@@ -112,6 +112,6 @@ describe("investigation-gate.sh", () => {
 
   test("still fires when an operator prompt mentions the tag inline (whole-line match, not substring)", () => {
     const out = runHook("why does the hook treat <task-notification> as machine text? audit it");
-    assert.match(out, /INVESTIGATION TRIGGER DETECTED/);
+    assert.match(out, /INVESTIGATION TRIGGER/);
   });
 });

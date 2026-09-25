@@ -1,6 +1,6 @@
 ---
 name: investigate
-description: 'Read-only diagnostic skill — hypothesis → evidence → findings → options. You do not fix. User picks next step.'
+description: 'Read-only diagnostic skill — hypothesis → evidence → findings → options. You do not fix.'
 ---
 
 # Investigate
@@ -9,7 +9,6 @@ Read-only diagnostic. Hypothesis → evidence → findings → options. **You do
 
 ## When to invoke
 
-- User says "investigate," "look into," "why," "how does," "what's happening"
 - About to make factual claim about runtime (timing, causality, process state, config) without direct evidence
 - Task-completion exit codes tell you the wrapper finished, NOT whether the underlying process is healthy. Always verify with live probes (ps, curl, docker ps, systemctl status) before asserting state.
 - **Source-of-truth gate (mechanical).** Before claiming row/record X *causes* behavior Y, identify the EXACT field/table the CONSUMING code reads (grep the decision-point query), and verify your evidence comes from THAT field — not a sibling surface that merely looks authoritative. A stale/leftover row is causal ONLY if the decision code actually reads it. A `status='running'` row ≠ a live process (check the pid); a row in table A ≠ what a probe that queries table B counts. Revising a hypothesis? Re-confirm the new evidence is from the field the code reads before re-asserting.
@@ -91,10 +90,6 @@ Required sections in order:
 - "Investigate further" as filler — include ONLY when (a) root cause uncertain + specific next probe named, (b) hidden coupling not mapped, (c) elsewhere-invariant risks regression
 - Path/symbol leads, or code in fix options — see `base:convey`
 
-### 6a. Solution Quality Bar
-
-Same bar as `dev:debugging` §6.5 (mechanism not symptom, textbook, class not instance; Tier 1-4 ordering, forbidden list). Delta: investigate's fix options are behavior-only — never code, diffs, or signatures (read-only skill, never applies a fix).
-
 ### 7. STOP
 
 After report, do nothing. No "while we're here." Wait for user to pick.
@@ -123,33 +118,3 @@ User picks code-change option → switch to `debugging` skill.
 | Decide between architectural options | `investigate` first, escalate if user picks |
 
 Both same session: investigate → user picks → debug. Don't merge.
-
-## Report skeleton
-
-```
-## <plain-English question>
-
-**Problem.** <user-visible, no code names>
-
-**Steps to reproduce.**
-1. <observable>
-2. <observable>
-
-**Expected.** <one sentence>
-**Actual.** <user-visible symptom>
-
-**Root cause (plain English).** <mechanism as if to non-coder; symbols in parens after>
-
-**Evidence (footnotes).**
-- `path:42` — <what>
-- `docker logs <x>` — <observation>
-
-**Hypothesis check.** Expected X; evidence Y. Delta: <sentence>.
-
-**Fix options (plain English — no code).**
-1. <behavior change>
-2. <behavior change>
-<!-- "Investigate further — <named uncertainty>" ONLY if uncertain. NEVER "do nothing". -->
-```
-
-Doesn't fit → investigation incomplete. Iterate.
