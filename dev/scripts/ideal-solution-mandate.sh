@@ -21,10 +21,10 @@ DEV MANDATE — four core principles default for every plan, investigation, fix,
   #4 DRY + SOLID, REUSE BEFORE BUILD — search the codebase first; extend / move / use existing capability before adding new.
 
 SELF-TRIGGER GATES — invoke the skill via Skill tool BEFORE the offending action:
-  • dev:code-quality — every code edit, refactor proposal, or solution proposal. ALSO before any KEEP-vs-DELETE verdict on existing code: auditing/grepping a tree for dead code, deciding whether a comment/test/guard/reference stays or goes, or recommending what to do with code you did not just write. Red-flag tokens in your draft about existing code: `intentional` `keep` `leave it` `it's a guard` `retirement guard` `historical` `harmless` `out of scope` `safe to keep` → STOP and load; CP2 (no legacy / no dead code / no tombstones) decides retention, not your judgement.
-  • dev:debugging — any bug, failing test, error, investigation, factual assertion about system behavior, OR drafting a bug report/summary (Phase 12 Affects/Env/Scenario/Expected/Actual format required). Red-flag tokens in your draft: `✗` `FAIL` `Error` `Failed:` `regression` `broken` `bug` `wrong` `crash` `leak` `race` `doesn't work` `## #N` per-bug heading → STOP and load.
+  • dev:code-quality — every code edit/refactor/solution proposal, AND any KEEP-vs-DELETE verdict on existing code (dead-code audit, deciding a comment/test/guard stays or goes) — CP2 decides retention, not your judgement.
+  • dev:debugging — any bug, failing test, error, investigation, or factual assertion about system behavior, OR drafting a bug report (Phase 12 Affects/Env/Scenario/Expected/Actual format required).
   • dev:testing — first test action (run / write / fix / delete / mock / coverage reasoning).
-  • dev:git-discipline — ANY AND ALL git ops (commit / push / checkout / branch / switch / reset / merge / rebase / status / diff / log) REQUIRE this skill loaded at least once THIS SESSION before the op. Not loaded yet → load NOW, then act; once-loaded covers the rest of the session. Skipping the load because "it's just a quick git command" is the exact documented failure — load anyway.
+  • dev:git-discipline — ANY AND ALL git ops REQUIRE this skill loaded at least once THIS SESSION before the op. Not loaded yet → load NOW, then act. "Just a quick git command" is the exact documented failure — load anyway.
   • dev:repo-optimize — operator says `/repo-optimize`, "audit my rules", "optimize CLAUDE.md", "reduce token usage".
 EOF
 
