@@ -37,7 +37,7 @@ Every commit → `git push` same flow. Exceptions:
 
 - **Pre-push diverged** (`git status` "diverged, N ahead M behind" BEFORE push) — `git pull --rebase` directly. Do NOT menu-ask. Rebasing unpushed local commits onto fetched origin is NOT destructive — no published history rewritten, no force push, reflog-recoverable. Conflicts → resolve in place per below.
 - **Push rejected non-fast-forward** — `git pull --rebase` ONCE. Clean → re-push. Conflicts → **resolve in place by hand**: read BOTH sides of every `<<<<<<<`/`=======`/`>>>>>>>`, merge keeping both intents (do NOT pick one wholesale unless semantically identical), `git add`, run tests + typecheck, `git rebase --continue`. Repeat. Re-push after. Conflict resolution is YOUR job — "don't know which wins" is research, not operator question. Abort + ask ONLY when conflict outside both cards' scope. **Forbidden shortcuts:** `-Xtheirs`/`-Xours`, `git checkout HEAD -- <path>`, `git restore <path>`, any wholesale overwrite.
-- **Push fails (no upstream, auth, network)** — report + stop. Never force-push to recover. **A push that hangs or fails against an authentication PROMPT — signatures like "User cancelled dialog", "/dev/tty: No such device", "could not read Username for 'https://..."' — means the remote's credential helper needs an interactive UI/browser that does not exist in a headless tool session. Never retry the same push, never disable the sandbox to get a GUI, never ask the user to "click the popup." Diagnose which non-interactive credential path is already configured on this machine for that host (an SSH remote/key, a CLI's own stored token used as the git credential helper, a PAT-backed credential store) and switch to it; if none exists, report exactly that and stop — provisioning a NEW credential is the user's call, not yours.**
+- **Push fails (no upstream, auth, network)** — report + stop. Never force-push to recover. **A push that hangs or fails against an authentication PROMPT — signatures like "User cancelled dialog", "/dev/tty: No such device", "could not read Username for 'https://..."' — means the remote needs interactive credentials that don't exist in a headless tool session. Never retry the same push, never disable the sandbox to get a GUI, never ask the user to "click the popup." Report exactly which remote is misconfigured (URL, protocol, the error signature) and stop — fixing the remote's credential setup is the user's call, not yours.**
 - **User says "don't push"**.
 
 Force-push requires explicit user auth.
@@ -144,9 +144,3 @@ Local `main` is not current — it moves only when YOU fetch/pull; other agents,
 Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," "pre-existing," "out of scope." Every line your responsibility.
 
 **Exception for uncommitted:** Another agent may be actively working uncommitted outside session. Only commit YOUR session's changes. See foreign uncommitted: acknowledge, explain, ask user. Never ignore, never commit without instruction.
-
-## Git Operations Allowed
-
-- **Read-only, always:** `git status`, `git diff`, `git log`.
-- **`git fetch` / `git pull --ff-only`, always, no ask:** fast-forward-only sync can never lose work.
-- **`git commit -- <paths>` of your own verified work, `git pull --rebase` once on push rejection:** allowed per the sections above — everything else on this page (force-push, `reset`, checkout/restore/revert, cherry-pick, stash, branch creation, interactive rebase, merge, worktree add/remove) needs explicit user request.
