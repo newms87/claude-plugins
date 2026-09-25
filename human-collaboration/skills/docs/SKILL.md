@@ -93,9 +93,3 @@ Mechanical pre-write check — answer YES to all FOUR before saving:
 4. **Lead with the principle, not the trigger.** The failure that produced this edit is one instance of a class — write the class. The repo-specific trigger goes in the COMMIT MESSAGE, not the skill body.
 
 If any answer is NO → rewrite or relocate. Domain-specific rules belong in the plugin that owns the domain (e.g. `danxbot:*`), or in the project's own `.claude/rules/`, never in a base/dev/pipeline/human-collaboration plugin.
-
-## Step 4: Verify and Report
-
-1. Read the file you're updating first
-2. Make the edit
-3. Show the user what was added/changed

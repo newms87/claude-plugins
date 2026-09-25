@@ -1,6 +1,6 @@
 ---
 name: host-environment
-description: 'Host-machine shell discipline: local-vs-prod dev stack, HMR-immediate, file-not-found diagnosis, docker-just-start, never-edit-node_modules.'
+description: 'Host-machine shell discipline: local-vs-prod dev stack, HMR-immediate, file-not-found diagnosis, docker-just-start.'
 ---
 
 # Environment Rules
@@ -19,10 +19,6 @@ See `human-collaboration:human-loop` — Never Ask User About Behavior Code Can 
 
 That premise justifies not ASKING; it never licenses ASSUMING which tree / host / container you actually read from. When that is load-bearing to a claim, name it and check it.
 
-## Long-Running Commands: Background Only
-
-Long-running analysis/optimization work → run in background (`run_in_background: true`), never poll-sleep waiting on it. See `base:monitor-polling` for interval floors and the decision tree.
-
 ## "File Not Found" — Wrong Path, or Wrong Filesystem. Never "Lag"
 
 A container volume-mounted from the host shares one filesystem: host file = container file, no "host version" vs "container version". There, `file not found` is a wrong path essentially every time — run `pwd`, fix the path, move on. Never search the filesystem for a path you already know, never try container paths when host paths fail, never hypothesize about partial clones.
@@ -34,7 +30,3 @@ The one real exception is a repo that exists **twice** on genuinely different fi
 ## Docker Containers: Just Start Them
 
 Stopped container ≠ broken infrastructure. `docker compose up -d` and continue. Never install dependencies on host, run project scripts on host, try alternatives that bypass container.
-
-## Never Edit node_modules
-
-Reading `node_modules/` OK for understanding dependencies. Editing NEVER OK.

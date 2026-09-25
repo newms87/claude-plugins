@@ -101,24 +101,9 @@ Three distinct traps, same underlying question — does this utterance actually 
 
 Approved to "fix" → scope to what explicitly discussed. Investigation reveals second problem → STOP, present as separate option. Never chain fixes across different invariants. One approval = one scope.
 
-## External File Modifications Are Sacred — NEVER Touch
-
-A "modified by user or linter" notification means someone else's mission-critical work — never revert/checkout/restore/overwrite it, never assume it's cosmetic. Conflicts → STOP, ask user. Full contract (forbidden git ops, deleted-file recovery): `dev:git-discipline`.
-
 ## Never Substitute a "Better" Approach
 
-See `pipeline:pipe-start` Rule 13 — present an alternative, never substitute it; the user may have reasons.
-
-## Handoff Documents Are Hypotheses, Not Conclusions
-
-Handoff "Fix X" / "previous agent determined Y" / "canonical card has design space worked out" → verify, don't trust as fact.
-
-- **Bundled symptoms may have independent causes.** "Two failures, same root cause" = CLAIM. Verify each independently.
-- **Verification steps = starting points, not checkboxes.** Passing proves step passed, not fix complete. Probe independently when touching multiple layers.
-- **"Canonical card has design worked out" = info, not authorization.** Read card AND surrounding code AND consumers.
-- **Diagnosis partial/wrong → surface loudly.** File separate Action Items card. Distinguish what fixed from what remains.
-
-Trust only what you re-verified yourself.
+See `pipeline:pipe-start` Rule 12 — present an alternative, never substitute it; the user may have reasons.
 
 ## Context Management Is Not Your Concern
 
