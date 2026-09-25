@@ -58,7 +58,7 @@ describe("plan-workflow-autoload.sh UserPromptSubmit", () => {
 
   test("still emits the pointer on a typed operator prompt", () => {
     const out = runHook("fix the bug in the parser");
-    assert.match(out, /danxbot:plan-workflow was auto-loaded in full/);
+    assert.match(out, /danxbot:plan-workflow SHOULD have been auto-loaded in full/);
   });
 
   test("suppresses the pointer entirely on a background task-notification turn (DX-3235)", () => {

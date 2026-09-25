@@ -34,13 +34,13 @@ Full working invocation:
 cd <DANXBOT_REPO> && source "${NVM_DIR:-$HOME/.nvm}/nvm.sh" && nvm use 22 && export DANXBOT_TARGET=<t> && make deploy TARGET=<t>
 ```
 
-### Worker swap during deploy can abort on a drain-wait timeout — this is a known gap, not a bug to re-diagnose
+### Worker swap during deploy does NOT wait for in-flight dispatches — DX-2134 landed
 
-`deploy/steps/drain.ts` blocks the worker container swap behind a full in-flight-dispatch drain, capped at 15 minutes; on timeout it aborts the whole deploy and requires a literal interactive TTY confirmation (`--yes` is deliberately excluded from bypassing this specific step). If you hit `Drain wait timed out for <worker> with N dispatch(es) still in-flight`, that is expected current behavior, not a new failure to investigate — either wait for the in-flight dispatch(es) to finish naturally and re-run `make deploy` (image build is cached, it finishes in under a minute the second time), or check whether DX-2134 (redesign this to swap immediately and trust the container's existing `stop_grace_period` graceful-shutdown/autosave-resume path instead of blocking) has landed yet.
+`deploy/steps/drain.ts` does not block the worker swap. It fires a best-effort, non-blocking "draining" marker for observability and returns immediately — the swap proceeds right away and trusts the container's `stop_grace_period` (120s) plus the SIGTERM-autosave path to drain the old container safely in the background while the new one is already serving. There is no drain-wait timeout, no abort, and no interactive TTY confirmation on this step. If in-flight dispatches matter for a given deploy, check what's dispatching *before* running `make deploy` — the step itself will not wait or warn.
 
 ### A deploy can succeed on the dashboard but leave the worker on the OLD image
 
-The dashboard and worker are separate EC2 instances, redeployed as separate steps in the same `make deploy` run. If the `drain` step times out (see above), the deploy aborts BEFORE the `workers` step runs — the dashboard is already on the new image, the worker is not. Check the deploy summary's per-step status (`✓`/`✗`/`⏭`) rather than assuming "deploy ran" means "both instances are updated."
+The dashboard and worker are separate EC2 instances, redeployed as separate steps in the same `make deploy` run. Any step failing aborts the run before later steps execute — if `workers` never runs, the dashboard is already on the new image and the worker is not. Check the deploy summary's per-step status (`✓`/`✗`/`⏭`) rather than assuming "deploy ran" means "both instances are updated."
 
 ### After a worker container swap, the fix may not be live even though the deploy succeeded — check for a stale materialize cache
 
@@ -59,9 +59,9 @@ The dashboard proxies auth-gated requests to the right worker on `danxbot-net`. 
 | Route | Method | Notes |
 |-------|--------|-------|
 | `/api/launch` | POST | Body `{board, profile, task, api_token, overlay?, ...}` (DX-1715 — `profile` is the dispatch-identity selector, required; `board` is the `<repo>:<slug>` scope key, required) |
-| `/api/status/:jobId?repo=<name>` | GET | Returns `{job_id, status, summary, started_at, completed_at, elapsed_seconds, input_tokens, ...}` |
-| `/api/cancel/:jobId?repo=<name>` | POST | |
-| `/api/stop/:jobId?repo=<name>` | POST | External stop (not the in-agent MCP callback) |
+| `/api/status/:jobId` | GET | Returns `{job_id, status, summary, started_at, completed_at, elapsed_seconds, input_tokens, ...}`. No `repo=`/`board=` param — the dashboard resolves the owning worker from `jobId` alone via the `JobRouteRegistry` (DX-723), stamped at launch time. |
+| `/api/cancel/:jobId` | POST | Same job-scoped resolution — no `repo=`/`board=`. |
+| `/api/stop/:jobId` | POST | External stop (not the in-agent MCP callback); same resolution. |
 
 All require `Authorization: Bearer <token>`. Token in SSM:
 
@@ -72,7 +72,7 @@ DANXBOT_DISPATCH_TOKEN=$(aws --profile <TARGET> ssm get-parameter \
   --query Parameter.Value --output text)
 
 curl -sS -H "Authorization: Bearer $DANXBOT_DISPATCH_TOKEN" \
-  "https://<your-danxbot-deployment>/api/status/<jobId>?repo=<connected-repo>"
+  "https://<your-danxbot-deployment>/api/status/<jobId>"
 ```
 
 Right tool for: "why did job X time out / what was its summary / how long did it run".
@@ -105,7 +105,7 @@ ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
 make deploy-ssh TARGET=<TARGET>
 ```
 
-From inside the instance, the entire worker container is reachable: `docker exec danxbot-worker-<connected-repo> ...` for `psql` queries against the dispatches DB, file reads on `~/.claude/projects/...` (claude session JSONLs), or any diagnostic shell.
+From inside the instance, the entire worker container is reachable: `docker exec danxbot-worker-<target> ...` (DX-1734 — one machine-level container per target, named after the target, not the connected repo) for `psql` queries against the dispatches DB, file reads on `~/.claude/projects/...` (claude session JSONLs), or any diagnostic shell.
 
 ### 4. SSM + Terraform state for infra questions
 
@@ -122,7 +122,7 @@ aws --profile <TARGET> ssm get-parameters-by-path --path /danxbot-<TARGET>/ --re
 
 **"Is worker X alive?"** → `make deploy-status TARGET=<target>` (health probe).
 
-**"What's in the dispatches DB?"** → SSH + `docker exec danxbot-postgres psql ...` (never delete rows — read-only queries only unless the user explicitly asks).
+**"What's in the dispatches DB?"** → SSH + `docker exec danxbot-postgres-db psql ...` (never delete rows — read-only queries only unless the user explicitly asks).
 
 ## Forbidden
 

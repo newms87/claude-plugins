@@ -9,48 +9,19 @@ Launch the ideator agent to brainstorm features and generate draft cards. Use `m
 
 ## Scope
 
-Current repo only.
-
-| Invocation | Scope |
-|------------|-------|
-| `/danx-ideate` | Current repo |
+Current repo only — `/danx-ideate` takes no arguments.
 
 ## /loop and ScheduleWakeup — narrow contract
 
 Ideation is a single-shot dispatch (explore → score → draft → complete).
-You have NO legitimate reason to arm `/loop` or `ScheduleWakeup` in this
-skill. The contract below applies anyway because every dispatched-agent
-skill shares it (ISS-135 / ISS-136).
+Full FORBIDDEN list + RULE: `danx-start`'s "/loop and ScheduleWakeup —
+FORBIDDEN in a dispatch" section.
 
-**ALLOWED:**
-
-- Polling an async pipeline whose result IS part of this card's AC (e.g.
-  dispatch a build, `/loop` every 5 min until it finishes, then verify the
-  artifact and proceed).
-- Monitoring a long-running test whose pass/fail is the AC under test.
-- Watching for the next state of an external system you triggered AS PART
-  OF THIS CARD's WORK.
-
-**FORBIDDEN:**
-
-- Waiting for a human to reply (use `status: Blocked` instead — the
-  operator opens the card, answers, moves it back).
-- Waiting for the next card to land (the poller dispatches; you exit when
-  this card is done).
-- "Let me check on this in N minutes" for anything outside this card's
-  scope.
-- Arming `/loop` and then calling `danxbot_complete` in the same dispatch.
-  Loop owns completion timing — if you call complete, disarm the loop
-  first. **If a loop is somehow already armed, disarm it
-  (`ScheduleWakeup({stop: true})`) and complete anyway** — never end the
-  turn without completing. A dispatch is `claude -p` with stdin ignored, so
-  a wakeup can never fire: leaving one armed and ending the turn abandons
-  the card and wastes the whole dispatch.
-
-**RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
-during this dispatch must be disarmed (or have already fired and exited).
-Active loop + complete signal = workflow violation; the next resume will
-re-fire the loop after the dispatch is logically over.
+**ALLOWED — polling an async pipeline whose result IS part of this card's
+AC** (e.g. dispatch a build, `/loop` every 5 min until it finishes, then
+verify the artifact and proceed; monitoring a long-running test whose
+pass/fail is the AC under test; watching for the next state of an external
+system you triggered AS PART OF THIS CARD's WORK).
 
 ## Steps
 
@@ -64,7 +35,7 @@ re-fire the loop after the dispatch is logically over.
    - Checks for duplicates via `issue_list({filter: {type: 'Feature'}})` (search by title / keywords).
    - Generates 3-5 prioritized feature drafts.
    - For each draft, calls `issue_create({type: 'Feature'|'Bug', title: "...", description: "...", ac: [...], triage_enabled: true})` with the draft content.
-     - `triage_enabled: true` is EXPLICIT and intentional here: ideator drafts exist to be evaluated by the automatic triage pipeline. The server default is `false` (explicit-only — nothing is auto-triaged without opting in), so omitting it would strand every draft in Review untriaged.
+     - `triage_enabled: true` is explicit and intentional — ideator drafts exist to be evaluated by the automatic triage pipeline; the server default is `false` (see `issue-card-workflow`'s "Auto-Triage Opt-In").
      - Do NOT set `id` (server assigns the next `<PREFIX>-N`).
      - Do NOT set `parent_id`, `children`, `dispatch`, `status`, `triage`, `comments`, `retro` — server sets defaults.
    - Captures the returned `id` from each successful creation.

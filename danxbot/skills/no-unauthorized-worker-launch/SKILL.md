@@ -11,11 +11,11 @@ description: 'Per-invocation user-auth gate for make launch-worker* and danxbot 
 
 **This is NOT a Docker/container rule.** Ordinary local containers — Docker Desktop itself, a project's own dev stack (postgres, redis, laravel.test, spa, dashboard, etc.), anything not named `danxbot-worker-*` or part of danxbot's own infra — are unrestricted dev tooling. Start, stop, or restart them freely, any time, no approval needed.
 
-A worker pickup is destructive. As soon as a danxbot worker boots it polls the connected repo's ToDo, claims cards, spawns dispatched agents, writes the v2 DB, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
+A worker pickup is destructive. As soon as a danxbot worker boots it polls every board it serves for ToDo cards, claims them, spawns dispatched agents, writes the v2 DB, and burns tokens on every card it can grab. There is no dry-run mode. "I'll just check if it boots" is already a production incident — once the poller is up, it has already worked through part of the queue.
 
 ## Standing exception — `make deploy-workers TARGET=gpt` (operator session only)
 
-The operator granted standing, cross-session authorization (2026-07-29) to relaunch the production machine-level worker on the `gpt` deploy target (covers the `danxbot` and `gpt-manager` boards) whenever it's found not running, without asking first. **This is the one command exempted from the per-invocation-authorization requirement above.** When `docker ps` on the `gpt` production instance shows no `danxbot-worker-gpt` container, run `make deploy-workers TARGET=gpt` directly and report what you did — do not stop and ask.
+The operator granted standing, cross-session authorization (2026-07-29) to relaunch the production machine-level worker on the `gpt` deploy target (covers the `danxbot` and `gpt-manager` boards) whenever it's found not running, without asking first. **This is the one command exempted from the per-invocation-authorization requirement above.** When `docker ps` on the `gpt` production instance shows no `danxbot-worker-gpt` container, run `make deploy-workers TARGET=gpt COMMIT=<sha>` directly and report what you did — do not stop and ask. `COMMIT=` is required (DX-3230's commit-pinning applies here too — name the commit currently expected to be live, e.g. the tip of `origin/main` or whatever the last successful `deploy` used); the target reuses the already-pushed `:latest` image, it does not rebuild.
 
 This exception is scoped narrowly: exactly `make deploy-workers TARGET=gpt`, in an operator session. It does NOT extend to any REMOTE target, to `deploy`/`deploy-destroy`/`deploy-secrets-push`, or to dispatched-agent context — those all remain fully gated per the rule below.
 
@@ -31,9 +31,9 @@ in use`, `port is already allocated`). Run these directly in an operator session
 ask — report what you did afterward. This mirrors the `deploy-workers TARGET=gpt` exception above,
 scoped to the LOCAL target instead of a remote/production one.
 
-**Still fully gated even under this exception:** any `*-remote` variant (`launch-worker-remote`,
-`launch-worker-host-remote` — these launch against a REMOTE dashboard, never local), `launch-all-workers`,
-`launch-infra`, `launch-dashboard-host`, every `deploy*`/`deploy-destroy`/`deploy-secrets-push`
+**Still fully gated even under this exception:** a `TARGET=` whose resolved `mode` is `deploy` (DX-1822 —
+local-vs-remote is the target's own `mode` field, not a separate command; this exception covers the LOCAL
+target only), `launch-infra`, `launch-dashboard-host`, every `deploy*`/`deploy-destroy`/`deploy-secrets-push`
 command, and — unconditionally, no exception — dispatched-agent context (see below: a dispatched
 agent has no live user message, so this exception never reaches it regardless of what an operator
 said in a different session).
@@ -103,18 +103,15 @@ When this skill is invoked, write these as TodoWrite items and tick them off in 
 
 | Command | Why forbidden |
 |---|---|
-| `make launch-worker BOARD=<board-name>` | Starts a docker worker → poller dispatches ToDo cards |
-| `make launch-worker-host BOARD=<board-name>` | Starts a host worker → poller dispatches ToDo cards in interactive terminals |
-| `make launch-worker-remote TARGET=<t> BOARD=<board-name>` | DX-1802 — docker worker pointed at a REMOTE dashboard (pulls SSM secrets itself). Same prohibition as `launch-worker` — remote target makes an unauthorized launch WORSE, not safer. |
-| `make launch-worker-host-remote TARGET=<t> BOARD=<board-name>` | DX-1802 — host worker pointed at a REMOTE dashboard. Same prohibition as `launch-worker-host`, PLUS this one still trips `NestedClaudePreflightError` if run from inside a Claude Code session (see `dispatch-deep` skill) — an agent can never self-launch it regardless of authorization. |
-| `make launch-all-workers` | Starts every configured worker. Worse than above. |
+| `make launch-worker [TARGET=<t>] [WORKER_ID=<id>] [BOARDS=<comma-separated>]` | Starts the machine-level docker worker → poller dispatches ToDo cards on every board the target serves. Local-vs-remote is the target's own `mode` field (DX-1822) — there is no separate `-remote` command any more (`launch-worker-remote` is retired); a `TARGET=` whose `mode: deploy` still means an unauthorized launch reaches a REMOTE dashboard, which is worse, not safer. |
+| `make launch-worker-host [TARGET=<t>] [WORKER_ID=<id>] [BOARDS=<comma-separated>]` | Same, host-mode (interactive terminals). Same DX-1822 note applies (`launch-worker-host-remote` is retired too) — PLUS it still trips `NestedClaudePreflightError` if run from inside a Claude Code session (see `dispatch-deep` skill), so an agent can never self-launch it regardless of authorization. |
 | `make launch-infra` | Starts shared MySQL + dashboard. Dashboard alone is mostly safe; if the user wants ONLY the dashboard, they will say so. |
 | `make launch-dashboard-host` | Same — operator-driven only. |
 | `make deploy TARGET=<t>` | Production deploy. Operator session: covered by the standing deploy exception above for this machine's own configured target(s) only (`deploy-machine.json`, DX-3232) — `deploy/launch.ts` itself refuses loudly for any other target, regardless of session. Dispatched agent: never. |
 | `make deploy-secrets-push TARGET=<t>` | Destructive SSM write. Always operator-driven. |
 | `make deploy-destroy …` | Tears down AWS infra. Always operator-driven. |
 | `npx tsx src/index.ts` (or any direct run of the worker entrypoint) | Bypasses make but does the same thing — same prohibition. |
-| `docker compose up …` against `<danxbot>/docker-compose.yml` / `docker-compose.prod.yml` | Same as the make targets above. |
+| `docker compose up …` against `docker-compose.worker.yml` (local worker) or `docker-compose.prod.yml` (the deployed box) | Same as the make targets above — these are the actual worker compose files (`docker-compose.yml` alone only holds infra: MySQL + dashboard). |
 | `docker start danxbot-worker-*` / `docker restart danxbot-worker-*` | Same — restarts an already-configured poller. |
 | Any equivalent shell incantation that ends in a running poller/worker | Same prohibition by construction. |
 
@@ -133,7 +130,7 @@ The forbidden list is specifically **launching workers + deploys**, NOT verifica
 
 Read-only diagnostics also remain unrestricted:
 
-- `make logs BOARD=<board-name>` (tail of an already-running worker)
+- `make logs WORKER=1 [WORKER_ID=<id>]` (tail of an already-running worker)
 - `make deploy-status TARGET=<t>` / `make deploy-logs TARGET=<t>`
 - `docker ps`, `docker logs <container>`, `docker inspect <container>`
 - Reading files under `<repo>/.danxbot/` (issues, settings, env)
@@ -145,7 +142,7 @@ Anything that would *create* a polling process is the prohibited class.
 
 ## Launch mechanism — canonical path only
 
-When authorization to launch IS granted, the launch shape is ALSO constrained — the only allowed mechanism for a foreground-style worker target (`make launch-worker-host`, `make launch-worker`, `make launch-dashboard-host`, `npx tsx src/index.ts`) is a single Bash tool call with `run_in_background: true`. That gives operator the documented kill primitive (`make stop-worker BOARD=<board-name>`), the documented log path (`make logs BOARD=<board-name>`), and a single tracked PID the agent can re-probe via `pgrep`.
+When authorization to launch IS granted, the launch shape is ALSO constrained — the only allowed mechanism for a foreground-style worker target (`make launch-worker-host`, `make launch-worker`, `make launch-dashboard-host`, `npx tsx src/index.ts`) is a single Bash tool call with `run_in_background: true`. That gives operator the documented kill primitive (`make stop-worker [TARGET=<t>] [WORKER_ID=<id>]`), the documented log path (`make logs WORKER=1 [WORKER_ID=<id>]`), and a single tracked PID the agent can re-probe via `pgrep`.
 
 **FORBIDDEN exotic wrappers, even with launch authorization:** `systemd-run --user …`, `nohup … &`, `setsid …`, `disown`, `screen -dm …`, `tmux new-session -d …`, any wrapper that detaches the worker from the documented lifecycle. These reduce operator visibility (logs land in `journalctl --user` / `nohup.out` / a tmux pane the operator does not know exists), break `make stop-worker`, and split the kill primitive. If the bg-task notification appears to terminate the worker early, the response is INVESTIGATE (`investigate` skill → check `journalctl`, `pgrep`, the worker's own shutdown log for signal source) — NOT bypass the lifecycle. The bash bg task is intended to host long-lived workers; exotic-wrap is a workaround, not a fix.
 
@@ -155,10 +152,10 @@ If investigation confirms the bash bg task genuinely cannot host the worker, ASK
 
 The CURRENT user message in THIS session must directly request the specific worker launch / restart / deploy. Examples that DO authorize:
 
-- "launch the danxbot worker for `<repo>`"
-- "restart the `<repo>` worker"
+- "launch the danxbot worker"
+- "restart the worker"
 - "deploy danxbot to `<TARGET>`"
-- "run `make launch-worker BOARD=<board-name>`"
+- "run `make launch-worker TARGET=<t>`"
 
 Examples that do NOT authorize a worker launch:
 
@@ -186,8 +183,6 @@ When in doubt: ask the user before launching (operator session) or document on t
 **Dispatched agent:**
 
 1. **Stop.** Do not run any launch / deploy / restart command.
-2. **Document on the card.** Add a `comments[]` entry titled `## Operator action required` describing exactly what command the operator would need to run, why, and what the expected effect is.
-3. **Set status if appropriate.**
-   - If the card cannot proceed without operator action, set `status: "Blocked"` and populate `blocked: {reason, timestamp}` per `danx-next/SKILL.md` Step 10.
-   - If the card can complete its other work without the operator action, finish the rest, document the operator-required step in the retro / a comment, and let the orchestrator close the card normally.
-4. **Save and exit.** The poller stops dispatching the card; the operator takes the launch action; the next dispatch picks up from there.
+2. **Escalate via an open problem, not a comment or `blocked` alone.** Per `issue-blocker/SKILL.md`'s field-selection table, an operator-only action the agent cannot run (launch, restart, re-deploy) is an *external action* → `issue_problem({id, action: 'add', statement, solutions})`, never `blocked` — a blocked card and a `comments[]` note both never reach the operator. Name the exact command in the recommended solution's `body`: what to run, why, and the expected effect.
+3. **Finish what you can.** If the card's other work can complete without the operator action, do it and let the orchestrator close the card normally — the open problem surfaces to the operator regardless of card status. Only ALSO set `blocked: {at, reason}` if the card must stay held even after the operator answers (uncommon — most cases redispatch cleanly on the next tick once the command has been run).
+4. **Complete the dispatch.** `danxbot_complete({status: "complete", summary: "Opened a problem — operator must run <command>"})`. The card needs a human for as long as the problem is open; the operator runs the command and answers it, then the next dispatch (or the poller) picks up.

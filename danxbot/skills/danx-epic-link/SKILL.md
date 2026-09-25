@@ -29,7 +29,7 @@ immediately — the epic is already linked.
 ## Step 1 — Identify candidate phase cards
 
 1. The orchestrator's dispatch prompt names the epic's id. Load it via `issue_get({id})`.
-2. Call `issue_list({filter: {parent_id: null, include_closed: false}})` to list all open cards without a parent (`parent_id` in the filter accepts `null` — verified against the MCP tool's own schema).
+2. Call `issue_list({filter: {parent_id: null, include_closed: false}})` to list all open cards without a parent (`parent_id: null` is a valid filter value).
 3. For each open card (excluding the epic itself), extract `id`, `parent_id`, `title`, `type`.
 4. Build a candidate set:
    - `parent_id == null` (already-linked phase cards aren't candidates).
@@ -42,20 +42,14 @@ immediately — the epic is already linked.
 
 If zero candidates match, the epic genuinely has no phase children —
 leave `children[]` empty and exit (call the appropriate `issue_transition` if the epic needs a status bump, or just return). There is no in-card phase
-checklist (ISS-81 retired that field). **An Epic is a container and is
-NEVER dispatched to a worker as if it were a single card** (see
-`issue-card-workflow`'s container-atomic rule) — a childless Epic cannot
-be readied or picked up (`ready`/`pickup`/`rollback_pickup` are refused on
-every container, `CONTAINER_REFUSED_ACTIONS`,
-`src/issues/write/transition.ts`). It CAN still be completed or cancelled
-directly: with zero children (or every child already terminal) there is
-nothing to roll up, so the container's own stamp is the only available
-source of truth (`CONTAINER_ALLOWED_ON_CHILDLESS = ["complete", "cancel"]`,
-DX-2173, same file). If the epic genuinely has no work to decompose into
-phases, it was mis-typed and should be re-typed to a Story/Bug/Chore by
-whoever created it, not "worked as-is" by the orchestrator — cancelling it
-directly is the mechanically-available escape hatch if a re-type is not
-practical.
+checklist (ISS-81 retired that field). A childless Epic can never be
+readied or picked up (`ready`/`pickup`/`rollback_pickup` refused on every
+container — see `issue-card-workflow`'s Card Taxonomy for the general
+container-atomic rule), but CAN be completed or cancelled directly
+(`CONTAINER_ALLOWED_ON_CHILDLESS`, DX-2173) since there's nothing to roll
+up. A genuinely-childless epic was mis-typed — cancelling it directly is
+the mechanically-available escape hatch if re-typing to a Story/Bug/Chore
+(the creator's call) isn't practical; don't "work it as-is."
 
 If one or more candidates match, proceed to Step 2.
 
@@ -153,9 +147,9 @@ that up via the normal pipeline.
 If the candidate set is ambiguous (e.g. two cards could be Phase 1 of
 different epics, or a candidate's title doesn't clearly belong to this
 epic), this genuinely needs a human's judgment — abort and escalate. Open a
-problem on the epic (verified: the set path has no card-type check, so this
-works on an Epic exactly as it does on any other card — the only refusals
-are a terminal card, a started card, or none at all when adding):
+problem on the epic (`issue_problem`'s `add` action carries no card-type
+check — it works on an Epic exactly as on any other card — and refuses
+only when the card is already terminal, completed or cancelled):
 
 ```
 issue_problem({
@@ -169,9 +163,9 @@ issue_problem({
 })
 ```
 
-Also block the card so it does not sit dispatchable while the question is
-open (blocking and escalating are independent — do both here since the
-epic must neither auto-dispatch nor silently proceed):
+Also block the card so the ambiguity stays visible rather than getting
+silently retried on a future pass (blocking and escalating are
+independent — do both):
 `issue_transition({id, action: 'block', reason: "Ambiguous phase candidate set — see open problem"})`.
 Then return control to the orchestrator per Step 4 without calling
 `danxbot_complete` yourself.

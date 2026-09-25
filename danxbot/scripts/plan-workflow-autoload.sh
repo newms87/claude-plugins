@@ -43,7 +43,7 @@ if [ "$EVENT" = "UserPromptSubmit" ]; then
   if is_machine_authored_prompt "$PROMPT"; then
     exit 0
   fi
-  printf '%s\n' "danxbot:plan-workflow was auto-loaded in full at this session's last SessionStart (see that block above/earlier in context) — its mechanics (TodoWrite checklist, mechanical pickup gate, up-to-3-cards-in-flight, Turn Gate) are already in force; no need to re-call Skill() for them unless you want the on-demand form again."
+  printf '%s\n' "danxbot:plan-workflow SHOULD have been auto-loaded in full at this session's last SessionStart (see that block above/earlier in context) — its mechanics (TodoWrite checklist, mechanical pickup gate, up-to-3-cards-in-flight, Turn Gate) apply. If that block looks short (~2KB) rather than the full skill body, the harness truncated it — call Skill(danxbot:plan-workflow) now for the complete text before relying on it."
   exit 0
 fi
 
@@ -59,6 +59,6 @@ fi
 # context, and printing it verbatim would look like a broken skill invocation.
 BODY="$(awk '/^---$/{n++; next} n>=2' "$SKILL_FILE")"
 
-printf '%s\n' "danxbot:plan-workflow AUTO-LOADED (full text below, read fresh from disk this SessionStart — this satisfies the Skill(danxbot:plan-workflow) load requirement for this turn; you do not need to call Skill() again to get this same content, only if you want to re-trigger its on-demand behavior explicitly). This refreshes on every session start, resume, clear and compact, so a resumed session's orchestration mechanics are never working from a stale or truncated memory."
+printf '%s\n' "danxbot:plan-workflow AUTO-LOAD ATTEMPTED (full text below, read fresh from disk this SessionStart — this SHOULD satisfy the Skill(danxbot:plan-workflow) load requirement for this turn). If the block below is short (~2KB) rather than the full skill body, the harness truncated this SessionStart output and only a preview reached you — call Skill(danxbot:plan-workflow) explicitly to get the complete text before relying on it. This is re-attempted on every session start, resume, clear and compact."
 printf '\n'
 printf '%s\n' "$BODY"

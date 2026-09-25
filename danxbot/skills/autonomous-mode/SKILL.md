@@ -50,7 +50,7 @@ Pick exactly one of the following. Do not pause first.
 2. **Escalate to the operator with the question as a problem.** When the
    choice is genuinely irreversible / architectural / requires
    credentials or design intent you don't have, follow Step 10 (Escalate)
-   of `danx-next/SKILL.md`:
+   of `danx-next/references/step-procedures.md`:
    - Stop processing.
    - Call `issue_problem({id, action: 'add', statement: "<question>", solutions: [...]})`:
      - `statement` — the question phrased the way you'd have asked the human.

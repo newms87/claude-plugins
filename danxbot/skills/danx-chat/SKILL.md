@@ -25,21 +25,11 @@ For every turn (first message OR resumed):
 4. **If the user is asking a question or wants info**: reply with the answer. Do NOT make speculative edits "while you're at it."
 5. Call `danxbot_complete({status: "complete", summary: "..."})`. The chat shell waits for this signal to flush the streaming response and mark the turn complete; without it the agent sits idle until the inactivity timer kills the dispatch.
 
-## /loop and ScheduleWakeup — narrow contract
+## /loop and ScheduleWakeup
 
-Chat is a one-turn-per-message dispatch (read → respond → optional
-`issue_*` edit → complete). You have NO legitimate reason to arm `/loop` or `ScheduleWakeup`
-in this skill.
-
-**FORBIDDEN:**
-
-- Waiting for the user's next message (the dashboard fires a fresh
-  dispatch — your turn ends with `danxbot_complete`).
-- "Let me check on this in N minutes" for anything outside this card.
-- Arming `/loop` and then calling `danxbot_complete` in the same dispatch.
-
-**RULE:** when you call `danxbot_complete`, every `ScheduleWakeup` armed
-during this dispatch must be disarmed (or have already fired and exited).
+Chat is one-turn-per-message — you have no legitimate use for `/loop` or
+`ScheduleWakeup` in this skill. Full contract: `danx-start`'s "/loop and
+ScheduleWakeup — FORBIDDEN in a dispatch" section.
 
 ## Reading the card
 
@@ -55,16 +45,9 @@ When you edit, follow the DB schema rules — see `danxbot:issue-card-workflow` 
 - **AC edit** — call `issue_edit({id, ac: [...]})`. Append a new item or flip an existing item's `checked` field.
 - **Description rewrite** — call `issue_edit({id, description: "..."})`. Preserve the markdown structure.
 - **Comment append** — call `issue_comment({id, action: 'add', text: "..."})`. Server stamps `author` + `timestamp`.
-- **Retro fill** — call `issue_retro({id, good: "...", bad: "...", action_item_ids: [], commits: [], tests: [...]})` (`tests[]` is REQUIRED — empty array allowed, omitting the key fails). Populate all retro fields atomically.
+- **Retro fill** — call `issue_retro({id, good, bad, correctable_danxbot_problem, correctable_danxbot_problem_description, action_item_ids: [], commits: [], tests: [...]})`. `correctable_danxbot_problem` + `correctable_danxbot_problem_description` and `tests[]` (empty array allowed) are all REQUIRED on every call — see the tool's own MCP description for the exact per-field shape.
 
-After calling an MCP tool, re-read the card with `issue_get` to confirm the mutation succeeded. If an MCP tool returns `{ok: false, body: {error}}`, read `body.error` and re-route per the message.
-
-## Out of scope
-
-- **Do NOT call `issue_create`** from this skill. New cards are an operator-driven flow (Phase 2 Create-Card button); chat surfaces the suggestion in the reply and lets the operator decide.
-- **Do NOT touch other cards.** Your authority extends only to the `<PREFIX>-N` named in the dispatch. Cross-card edits during a chat turn cascade silently into other dispatches' working state.
-- **Do NOT dispatch other agents** or call `make launch-*` / `make deploy*` commands. The `danxbot:no-unauthorized-worker-launch` skill applies to this dispatch too.
-- **Do NOT alter `dispatch`, `parent_id`, `children[]`, `external_id`, `schema_version`, `tracker`, `id`** on the card. Those are owned by other lifecycle paths.
+After calling an MCP tool, re-read the card with `issue_get` to confirm the mutation succeeded — see Failure handling below for what to do on an error response.
 
 ## Reply shape
 
@@ -91,14 +74,14 @@ with "I read your message and considered…" — the user knows.
 
 ## Boundaries
 
-- You read + write **exactly one** card via the `mcp__danx-dashboard__issue_*` tools. Never edit any other
-  card's `comments[]`, `ac[]`, `description`, or fields you weren't
-  asked to touch.
-- You do NOT implement the work the card describes — chat is
-  conversation + spec mutation, not code change. If the user asks
-  "please implement this card now," reply with "the dashboard's
-  pickup flow handles implementation; I can rewrite the AC or split
-  into phases here, then the next /danx-next dispatch ships the code."
-- The chat dispatch's TTL is the worker's standard inactivity
-  timeout. Long replies are fine; abandoning the turn without
-  `danxbot_complete` is not — the worker waits forever.
+You read + write **exactly one** card, via the `mcp__danx-dashboard__issue_*` tools, and never touch anything else:
+
+- **Do NOT call `issue_create`** — new cards are an operator-driven flow (Phase 2 Create-Card button); chat surfaces the suggestion in the reply and lets the operator decide.
+- **Do NOT touch other cards** — your authority extends only to the `<PREFIX>-N` named in the dispatch; cross-card edits during a chat turn cascade silently into other dispatches' working state.
+- **Do NOT dispatch other agents** or call `make launch-*` / `make deploy*` — `danxbot:no-unauthorized-worker-launch` applies to this dispatch too.
+- **Do NOT alter** `dispatch`, `parent_id`, `children[]`, `external_id`, `schema_version`, `tracker`, `id` — owned by other lifecycle paths.
+- **Do NOT implement the work the card describes** — chat is conversation + spec mutation, not code change. If the user asks "please implement this card now," reply that the dashboard's pickup flow handles implementation; you can rewrite the AC or split into phases here, and the next `/danx-next` dispatch ships the code.
+
+The chat dispatch's TTL is the worker's standard inactivity timeout. Long
+replies are fine; abandoning the turn without `danxbot_complete` is not —
+the worker waits forever.

@@ -16,10 +16,6 @@ The always-on `.claude/rules/docker-runtime.md` rule file documents the runtime 
 5. If creating an `.env.local` (or any `.env.{APP_ENV}`) at a Laravel repo root → STOP. Production-burning trap.
 6. After edit: confirm idempotent re-run is a no-op + atomic write preserved.
 
-## Clean-room `mcp.template.json` contract
-
-Workers' per-dispatch MCPs come from the dispatch **profile's** DB-catalog `mcp-server` selections, materialized into the clean-room `mcp.template.json` (`src/dispatch/materialize-dispatch-config.ts`) and merged with the danxbot infrastructure server inside `dispatch()`. That materialized `mcp.template.json` defines the full tool surface for dispatched agents. The root `.mcp.json` (if present) is the dev's interactive surface only; it does not feed worker dispatches.
-
 ## Per-target env overlays — `.env.<target>` merge contract
 
 When values must differ between local dev and a specific deploy target (prod Slack channel ID, prod-only DB host, prod URLs), put the override in a sibling `.env.<target>` file at the SAME directory as the `.env` it overrides. `<target>` matches the deploy target name (`make deploy TARGET=<target>`), e.g. `.env.gpt`.
@@ -49,15 +45,19 @@ When wiring up a new connected repo (especially Laravel / any framework with an 
 
 ## `.claude/settings.local.json` — Developer-Only
 
-`<repo>/.claude/settings.local.json` is STRICTLY the developer's file (permissions, personal allowlists, local MCP toggles for their interactive `claude`). Danxbot does NOT read or write it. The worker port lives in `<repo>/.danxbot/.env` (`DANXBOT_WORKER_PORT=<port>`) alongside the rest of the bot-owned per-repo env; production gets it via `process.env.DANXBOT_WORKER_PORT` injected by compose from `deploy/targets/<target>.yml`.
+`<repo>/.claude/settings.local.json` is STRICTLY the developer's file (permissions, personal allowlists, local MCP toggles for their interactive `claude`). Danxbot does NOT read or write it. The worker port is NOT per-repo `.env` (DX-1809 retired `DANXBOT_WORKER_PORT` from that file) — it is a single target-level field, `deploy/targets/<target>.yml`'s `worker.port`, injected into the dispatch env as `DANXBOT_WORKER_PORT`.
 
 ## Strict isolation from danxbot
 
 Danxbot-dispatched agents (poller, `/api/launch`, Slack) use their own per-dispatch MCP config and env from `<repo>/.danxbot/.env` delivered to the worker container via `env_file: ../.env` in `<repo>/.danxbot/config/compose.yml`. Danxbot injects NO MCP server into the dev's repo-root `.claude/` — the repo root is developer-owned and the inject pipeline actively scrubs any leftover `danx-*` artifacts there (DX-269 retired the rules/skills inject; the legacy `danx-issue` server is gone — the clean-room-shape tests assert its absence). The worker's own dispatches source MCP exclusively from the per-dispatch `--mcp-config` temp file (resolved from the clean-room `mcp.template.json`) under `--strict-mcp-config`; the live agent-facing server is `@thehammer/danx-dashboard-mcp` (tools prefixed `mcp__danx-dashboard__`, in-tree at `packages/danx-dashboard-mcp/`), plus `playwright` on profiles whose catalog selects it.
 
-## The clean-room cwd: dispatched-agent cwd
+## The clean-room cwd + `mcp.template.json` contract
 
-Every dispatched agent (poller, HTTP `/api/launch`, Slack) runs with `cwd` = an external per-dispatch **clean-room dir** — one resolved clean-room per dispatch, NOT any in-repo tree. Its `.claude/` (`mcp.template.json`, `settings.json` enabling the guardrail hooks, `rules/`, `skills/`, `agents/`, `tools/`) is materialized fresh per-dispatch from the dispatch **profile's** DB-catalog selections (`src/dispatch/materialize-dispatch-config.ts` is the SOLE producer — no copy-from-source base). The DB catalog is the single config source: the operator-required baseline is boot-seeded from the in-repo default set (`src/inject/catalog-sources/`), per-repo rule bodies (`danx-repo-config` etc.) project into the catalog via `ensureRepoCatalog`, and the materializer writes the profile's resolved subset onto disk. The repo-root `.claude/` is strictly developer-owned; the inject pipeline actively scrubs any leftover `danx-*` artifacts there. See agent-dispatch.md "Clean-room cwd + catalog-materialized `.claude/`".
+Every dispatched agent (poller, HTTP `/api/launch`, Slack) runs with `cwd` = an external per-dispatch **clean-room dir** — one resolved clean-room per dispatch, NOT any in-repo tree. Its `.claude/` (`mcp.template.json`, `settings.json` enabling the guardrail hooks, `rules/`, `skills/`, `agents/`, `tools/`) is materialized fresh per-dispatch from the dispatch **profile's** DB-catalog selections (`src/dispatch/materialize-dispatch-config.ts` is the SOLE producer — no copy-from-source base). The DB catalog is the single config source: the operator-required baseline is boot-seeded from the in-repo default set (`src/inject/catalog-sources/`), per-repo rule bodies (`danx-repo-config` etc.) project into the catalog via `ensureRepoCatalog`, and the materializer writes the profile's resolved subset onto disk.
+
+MCP servers specifically: the profile's DB-catalog `mcp-server` selections land in that clean-room `mcp.template.json`, which `dispatch()` merges with the danxbot infrastructure server into the per-dispatch `--mcp-config` file — that merged file, under `--strict-mcp-config`, is the SINGLE source of truth for a dispatched agent's tool surface (no `--allowed-tools`, no `allowed-tools.txt`).
+
+The repo-root `.claude/` (including its `.mcp.json`, if present) is strictly the developer's interactive surface — it never feeds a worker dispatch, and the inject pipeline actively scrubs any leftover `danx-*` artifacts there. Full contract → `.claude/rules/agent-dispatch.md` "Clean-room cwd + catalog-materialized `.claude/`".
 
 ## Container Paths
 

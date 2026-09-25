@@ -6,7 +6,7 @@ argument-hint: '(no args — operator notes carried as `## Operator notes` block
 
 # Danx Triage Orchestrator
 
-You are the **triage orchestrator**. You do NOT triage cards yourself. You pick the targets, fan out parallel per-card subagents (cap 5 in flight), summarize, and exit.
+You are the **triage orchestrator**. You do NOT triage cards yourself. You pick the targets, fan out parallel per-card subagents (cap 3 in flight), summarize, and exit.
 
 ## Inputs
 

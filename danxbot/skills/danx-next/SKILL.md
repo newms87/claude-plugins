@@ -29,14 +29,14 @@ Config references: `.claude/rules/danx-repo-config.md` for repo commands. Never 
 
 All cards are in the DB, accessed via MCP tools (`mcp__danx-dashboard__issue_*`). Quick points:
 
-- **`status` / `status_derived`** is **DERIVED** from lifecycle triggers — agents NEVER write via `issue_edit`. Pickup → `issue_transition({action: 'pickup'})` → rule 4 → `In Progress`. Approve → `issue_transition({action: 'ready'})` → rule 5 → `ToDo`. Complete → `issue_transition({action: 'complete', summary})` → rule 2 → `Done`. Cancel → `issue_transition({action: 'cancel'})` → rule 1 → `Cancelled`. Block → `issue_transition({action: 'block', reason})` → rule 3 → `Blocked`. Direct `status:` write FORBIDDEN.
+- **`status` / `status_derived`** is **DERIVED** from lifecycle triggers, never written directly via `issue_edit` — six-rule precedence table + exact rule numbers: `danxbot:issue-card-workflow` → references/lifecycle-states.md § "Status Derivation Rules". Mechanically: Pickup → `issue_transition({action: 'pickup'})` stamps `started_at` → `In Progress`. Approve → `issue_transition({action: 'ready'})` stamps `ready_at` → `ToDo`. Complete → `issue_transition({action: 'complete', summary})` stamps `completed_at` → `Done`. Cancel → `issue_transition({action: 'cancel'})` stamps `cancelled_at` → `Cancelled`. **Block is NOT one of the six status rules** — `issue_transition({action: 'block', reason})` stamps a separate dispatch-gate field (`blocked.at`) that leaves whichever status rule already applies untouched. Direct `status:` write FORBIDDEN.
 - **Use MCP tools for all mutations.** Call `issue_edit` for prose, `issue_transition` for lifecycle, `issue_comment` for comments, `issue_problem`/`issue_solution` for human escalation, `issue_retro` for terminal retro.
 - **`retro`** filled on terminal via `issue_retro({good, bad, action_item_ids[], commits[], tests[]})` (`tests[]` REQUIRED). Server auto-renders `## Retro` comment. `commits[]` is owned-repo only (DX-559 gate). `action_item_ids[]` is LAST RESORT.
 - **`blocked`** vs **open problems** vs **`waiting_on`** — blocked = THIS card held until its own blocker is resolved (a hold, not a human escalation; never in Needs You; resolve it yourself where you can, then `unblock`); an **open problem** (`issue_problem({action: 'add', ...})`) is the ONLY way a card reaches Needs You — a card needs a human exactly when `open_problem_count > 0`, computed automatically, nothing to set or clear directly (there is no separate `requires_human` tool or flag); waiting_on = queued behind OTHER work (no human). All three are dispatch gates, status-independent. `conflict_on[]` is one more independent gate.
 
 ## Detailed Steps
 
-All step procedures (0–11) live in **references/step-procedures.md**. Each step reads the card (`issue_get`), makes decisions, mutates via the `mcp__danx-dashboard__issue_*` tools, and advances. Step 11 terminal call gates on all six prereqs holding.
+Full procedures for Steps 0–11 live in **references/step-procedures.md**.
 
 **Key gates:**
 - **Step 1.1:** Resume detection + validation (never trust prior claims).
@@ -44,19 +44,7 @@ All step procedures (0–11) live in **references/step-procedures.md**. Each ste
 - **Step 8:** Definition-of-Done (zero unchecked ACs).
 - **Step 11:** Pre-call gate (all six prereqs before `danxbot_complete`).
 
-**Step 11 — two-step termination (DX-835):**
-
-`danxbot_complete` no longer moves the card. It only finalizes the dispatch row. Call `issue_transition` (or `issue_problem` for an escalation) FIRST, THEN `danxbot_complete`.
-
-| Outcome | Step A — card move | Step B — dispatch end |
-|---|---|---|
-| Done | `issue_transition({action:'complete', summary})` → stamps `completed_at` → `Done` | `danxbot_complete({status:'complete', summary})` |
-| Cancelled (card abandoned) | `issue_transition({action:'cancel'})` → stamps `cancelled_at` → `Cancelled` | `danxbot_complete({status:'complete', summary})` |
-| Blocked (hold — agent-resolvable later) | `issue_transition({action:'block', reason})` → stamps `blocked_at` → `Blocked` | `danxbot_complete({status:'failed', summary})` (env-fault tracking) |
-| Needs a human (decision or external action) | `issue_problem({action:'add', statement, solutions})` → card in Needs You (`open_problem_count > 0`) — this one call is the whole escalation | `danxbot_complete({status:'complete', summary})` |
-| Env-broken | n/a (card stays In Progress) | `danxbot_complete({status:'critical_failure', summary})` — halts poller |
-
-Verify before Step B: re-fetch via `issue_get` and confirm `completed_at`/`cancelled_at`/`blocked_at` is non-null AND `status_derived` matches (Needs-a-human row: `fields:["problems"]` shows ≥1 open problem, i.e. `open_problem_count` > 0).
+**Step 11 — two-step termination (DX-835):** `danxbot_complete` never moves the card — it only finalizes the dispatch row. Call `issue_transition` (or `issue_problem` for an escalation) FIRST, THEN `danxbot_complete`. Canonical table (Done/Cancelled/Blocked/Needs-a-human) + the required post-Step-A verification: `danxbot:issue-card-workflow` § "DX-835 — two-step termination is MANDATORY". One row that table doesn't carry, dispatch-specific: an **env-broken** dispatch stays In Progress on the card and calls `danxbot_complete({status:'critical_failure', summary})` — this halts dispatch (see `danxbot:halt-flag`).
 
 Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; conversation stream discarded within 5s.
 

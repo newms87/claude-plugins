@@ -28,14 +28,11 @@ agents means you either falsely tell the operator "everything stopped" or — wo
 that didn't need stopping. **Before writing the handoff, know which of your dispatches are
 still alive** and say so explicitly; don't assume either state.
 
-**There is no reliable way to make Claude Code surface this skill automatically before a
-compaction happens.** A `PreCompact` hook event exists and fires before both manual (`/compact`)
-and automatic compaction, but **its stdout is never added to the model's context** — same limitation as
-`PostCompact`, and the reason `base`'s own post-compaction gate is wired on `SessionStart` with
-`matcher: "compact"` instead (the only event that both fires around compaction and reaches the
-model). Nothing exists to inject "compaction is imminent, run the checklist" into context ahead
-of time. This skill has to be invoked deliberately — by the operator asking, or by your own
-judgment that context is running low with unfinished work — not by a hook.
+**Nothing injects "compaction is imminent" into context ahead of time.** A `PreCompact` hook
+fires before compaction, but — like `PostCompact` — its stdout never reaches the model (see the
+`SessionStart`/`compact` row above for the one event that does). This skill has to be invoked
+deliberately: by the operator asking, or by your own judgment that context is running low with
+unfinished work.
 
 ## The procedure
 
@@ -47,10 +44,9 @@ Run these in order.
 anything down. Do not reconstruct it from memory of what you edited — write down what the
 command says, verbatim.
 
-**Why this order matters:** a handoff written while an agent was still working went stale
-within minutes (SG-713) — it described work as uncommitted that had already been committed by
-the time it was read. The tree changes while you're describing it. Capture, write, then
-re-verify (step 8) before you call it done.
+**Why this order matters (SG-713):** a handoff can describe work as uncommitted when it was
+already committed by the time it's read — the tree changes while you're writing. Capture, write,
+then re-verify (step 8) before you call it done.
 
 ### 2. Attribute interleaved work per card, not per tree
 
@@ -90,8 +86,8 @@ the in-flight count lie.
 
 Fix is one call: `issue_transition({action: "rollback_pickup", keep_assignment: true})`
 (documented in `danxbot:plan-workflow` → "Card state always true"; this step says to actually
-run the sweep as part of compaction prep, not only when someone notices — SG-483 sat claimed
-and untouched for days before anyone caught it). `keep_assignment: true` returns the card to
+run the sweep as part of compaction prep, not only when someone notices — SG-483).
+`keep_assignment: true` returns the card to
 ToDo without erasing who was holding it or implying judgment about the work — it makes the
 board tell the truth, nothing more.
 
@@ -131,8 +127,7 @@ sections first.
 ### 7. Two dashboard-API gotchas that read as facts about the board, not the request
 
 Only relevant when working the `danx_dashboard` HTTP API directly (e.g. the MCP server is down
-and you're using the token-based fallback, `.junk/pln7/*.mjs` in this repo has working
-examples) — but both are silent:
+and you're using the token-based fallback) — but both are silent:
 
 - **`GET /api/issues/<id>` omits `description`, `comments`, and the checklist unless you pass
   `?fields=description`.** Nothing in the response says a body was withheld — a carefully

@@ -30,9 +30,12 @@ A card that passes all four (not implemented, still relevant, no superseding sib
 
 ## Status = Blocked
 
-**Hard Gate audit (unchanged):** Read most recent `author: danxbot` comment containing `## Blocked` / "operator must" section. For each "operator must" step, classify:
-- **Locally executable** = edit config, `artisan`, `make`, `yarn`, `npm`, `composer`, log tail/grep, test re-run, restart Octane/queue/Horizon, session JSONL, git commands, code read.
-- **Human-only** = ONLY: credential/secret rotation, deploy/SSM access, write-only repo, design/product decision, physical/OOB action (per `issue-card-workflow` "Hard Gate" table).
+### Hard Gate — Locally-Executable vs Human-Only (canonical)
+
+This is the single canonical classification table — cite it by this section heading from anywhere else that needs it. Read the most recent `author: danxbot` comment containing a `## Blocked` / "operator must" section. For each "operator must" step, classify:
+
+- **Locally executable** = edit `.env`/config, `artisan`/`make`/`yarn`/`npm`/`composer` commands, `tail`/`grep`/`cat` on logs, re-running test suites (`artisan test:*`, `phpunit`, `vitest`), restarting Octane/queue/Horizon, reading session JSONL logs, git commands, reading code. **Not human-only (DX-758 worker zero-trust):** git env failures on the agent's own worktree (fetch errored, rebase conflict, dirty tree, push race) — the agent owns its own env state; there is no worker-side recovery to wait for. A block reasoned "operator must reset worktree" / "operator must rebase" is misclassified — Demote and let the next dispatch's prep step handle it.
+- **Human-only** = ONLY: credential/secret rotation, deploy/SSM access, write-only repo, design/product decision, physical/out-of-band action.
 
 There is no confidence question here — a Hard Gate audit is a mechanical classification of escalation steps, not a value judgment on the card, so it does NOT call `issue_triage`. Only the transition, if any, changes the card.
 

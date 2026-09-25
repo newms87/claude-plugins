@@ -20,17 +20,23 @@ one through the loop below.
 
 ## The canonical loop (per template id)
 
-1. **`load_template_app({template_id})`** — sets the app up on demand. The
-   worker pulls the app's existing source from the consumer (extracting it
-   into `<cwd>/templates/<template_id>/source/`) or scaffolds a fresh default
-   app when the consumer has none yet, starts the per-template Vite HMR
-   dev-server, and fires the consumer's HMR-ready callback. Returns
-   `{template_id, hmr_url}` synchronously — `hmr_url` is the live preview
-   URL. Call this **before** editing an app's source. Idempotent per id
-   (re-calling bumps the existing HMR server).
+1. **`load_template_app({template_id})`** — sets the app up on demand. On a
+   fresh dispatch it pulls the app's existing source from the consumer or
+   scaffolds a fresh default app when the consumer has none yet — this
+   wholesale-resets the source dir, so call this **before** you write
+   anything, or a later load wipes your own edits. On a resumed dispatch
+   (continuing your own prior session) it touches nothing already there.
+   Either way it starts the per-template Vite HMR dev-server and fires the
+   consumer's HMR-ready callback. Returns `{template_id, hmr_url,
+   source_dir}` synchronously — `hmr_url` is the live preview URL;
+   `source_dir` is the absolute canonical editable path — use it verbatim,
+   never a relative `templates/<template_id>/source/` guess, a
+   `$DANX_SANDBOX_PATH/...` copy, or a `/tmp/danxbot/...` copy, or your edits
+   never reach the build. Idempotent per id (re-calling bumps the existing
+   HMR server).
 
-2. **Edit the three editable files** under
-   `templates/<template_id>/source/`:
+2. **Edit the three editable files** under the `source_dir`
+   `load_template_app` returned:
 
    | File | Role | You may edit |
    |---|---|---|

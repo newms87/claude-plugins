@@ -10,18 +10,7 @@ You triage **ONE** card per dispatch: read → investigate → decide (per statu
 
 ## Quick Reference
 
-See references/triage-paths.md for complete decision trees, Confidence Rubric, Master Plan check, out-of-scope gates, failure handling, conflict-check mode.
-
-**Path selection — `waiting_on` first, then the open-problem Triage-escalation check, then `blocked`, then `status_derived`. `blocked` is an orthogonal GATE, not a derived status — `status_derived` never reads `blocked_at` (see "Status = Blocked" below), so it must be checked independently of status, not as a status value.**
-
-| DB state | Path |
-|---|---|
-| `waiting_on != null` (any status) | **Waiting On** — re-check `waiting_on.by[]` |
-| `waiting_on == null` AND an open problem exists whose statement starts with `"Triage: "` | **Out of scope** — confidence-gate checkpoint (opened by Review-path routing below, DX-2782: an `issue_problem add` call, never a `blocked` stamp); a human answers it via the dashboard, not you |
-| `waiting_on == null` AND `blocked != null` (any other reason, or empty) | **Blocked** — Hard Gate audit + Demote / Confirm-Block |
-| `waiting_on == null` AND `blocked == null` AND `status_derived === "Review"` | **Review** — Confidence-score + Master Plan check |
-
-Out-of-scope refuse: `waiting_on == null` AND `blocked == null` AND `status_derived ∈ {ToDo, In Progress, Done, Cancelled}` — dispatchable / active / terminal cards don't triage. (Plus the `"Triage: "`-prefixed open-problem case above.)
+**Path selection — `waiting_on` first, then the open-problem Triage-escalation check, then `blocked`, then `status_derived`.** `blocked` is an orthogonal GATE, not a derived status — `status_derived` never reads `blocked_at` (see "Status = Blocked" below), so it must be checked independently of status, not as a status value. See references/triage-paths.md's routing table (top of file) for the full path-selection table, decision trees, Confidence Rubric, Master Plan check, out-of-scope gates, failure handling, and conflict-check mode.
 
 ## Workflow
 
@@ -36,7 +25,7 @@ Out-of-scope refuse: `waiting_on == null` AND `blocked == null` AND `status_deri
    - Skipping this step because the description "looks complete" or "looks like clearly good/bad work" is exactly the failure this gate exists to catch — a plausible-sounding card and an already-obsolete one read identically from the description alone.
 3. **Decide** per status path (see references/triage-paths.md):
    - **Review** → assign ONE Confidence score, 0–5 — the server (not you) computes the outcome (Cancel / Park / Keep / Approve) by comparing your score to the board's configured thresholds. Park and Keep no longer block the card (DX-2782) — the server opens a problem stating your reason with three choices (`"Approve and ready"` / `"Defer"` / `"Cancel"`, exactly one recommended); opening that problem is what puts the card in Needs You (`open_problem_count > 0`) — nothing further to set. The operator's answer applies the outcome. You never pick the outcome; you only score how much value the card would add.
-   - **Blocked** → Hard Gate audit → Demote / Confirm-Block (unchanged from before — see references/triage-paths.md "Status = Blocked")
+   - **Blocked** → Hard Gate audit → Demote / Confirm-Block (see references/triage-paths.md "Status = Blocked" → "Hard Gate — Locally-Executable vs Human-Only")
    - **Waiting On** → re-check `waiting_on.by[]` → Unblock / Confirm-Block (unchanged — see references/triage-paths.md "Status = Waiting On")
 4. **Act:**
    - **Review** → call `mcp__danx-dashboard__issue_triage({id, confidence, reason})`:

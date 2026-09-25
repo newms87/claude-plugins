@@ -2,29 +2,28 @@
 
 ## Status Derivation Rules
 
-Statuses are computed from lifecycle triggers via `deriveStatus()` in `src/issues/derive/status.ts` (dashboard mirror: `dashboard/src/composables/derive-status.ts`):
+Statuses are computed from lifecycle triggers via `deriveStatus()` in `src/issues/derive/status.ts` (CLAUDE.md Core Principle 2 is the canonical statement; this table mirrors it). Six rules, five timestamps:
 
 | Rule | Condition | Derived status |
 |---|---|---|
 | 1 | `cancelled_at !== null` | `Cancelled` |
 | 2 | `completed_at !== null` | `Done` |
-| 3 | `blocked.at !== null` | `Blocked` |
-| 4 | `dispatch !== null` | `In Progress` |
-| 5 | `ready_at !== null` | `ToDo` |
-| 6 | `archived_at !== null` | `Backlog` |
-| 7 | (fallthrough) | raw `status` field (`Review` on creation) |
+| 3 | `started_at !== null` (and no terminal trigger above) | `In Progress` |
+| 4 | `ready_at !== null` | `ToDo` |
+| 5 | `archived_at !== null` | `Backlog` |
+| 6 | (fallthrough, all five null) | raw `status` field (`Review` on creation) |
 
-Precedence: 1 > 2 > 3 > 4 > 5 > 6 > 7. First matching rule wins. **Agents NEVER write `status:` directly** — timestamp triggers + gate fields drive state.
+Precedence: 1 > 2 > 3 > 4 > 5 > 6, first match wins. **`started_at` is decoupled from `dispatch_id`** (DX-1565) — pickup stamps `started_at` directly, not a side effect of a `dispatch` row existing. **`Blocked` is NOT one of these six rules and is NOT a derived status.** `blocked.at` is a dispatch GATE (blocks `pickup`, checked at `src/issues/derive/dispatchable.ts`) — it leaves whichever of the six rules above already applies untouched; a blocked card can display as ToDo, Review, or In Progress underneath the gate. **Agents NEVER write `status:` directly** — timestamp triggers + gate fields drive state.
 
-## Rule 4 ("In Progress") has three causes — verify before declaring health, never trust the count
+## "In Progress" has more than one cause — verify before declaring health, never trust the count
 
-`dispatch !== null` collapses three distinct real states into one displayed status. An aggregate count of "N cards In Progress," or a dashboard "Agents Broken" banner, is a symptom pointer — not proof of health OR proof of a specific cause. Before declaring the system healthy, or diagnosing what's wrong, resolve EVERY `In Progress` card to one of:
+An aggregate count of "N cards In Progress," or a dashboard "Agents Broken" banner, is a symptom pointer — not proof of health OR proof of a specific cause. Before declaring the system healthy, or diagnosing what's wrong, resolve EVERY `In Progress` card to one of:
 
-1. **Container rollup** — an Epic/Feature parent derives `In Progress` because a child does (see Container Status below). No action; the container's own `dispatch` field is null, only the derivation cascades.
-2. **Legitimate manual/operator pickup** — `dispatch.kind === 'manual'`. Owned by whoever picked it up; not the poller's concern, no self-heal applies.
-3. **Genuinely stranded** — `dispatch` is non-null but the underlying process is dead (worker restart, crash, or a failed dispatch that cleared its own `dispatch_id` without the derived status recomputing). This is the only case that needs recovery.
+1. **Container rollup** — an Epic/Feature parent derives `In Progress` because a child does (see Container Status below). No action; the container's own `started_at` stays null, only the derivation cascades.
+2. **Legitimate manual/operator pickup** — `dispatch_kind === 'manual'`. Owned by whoever picked it up; not the poller's concern, no self-heal applies.
+3. **Genuinely stranded** — `started_at` is set but the underlying dispatch process is dead (worker restart, crash, or a failed dispatch that never reached its own terminal trigger). This is the only case that needs recovery.
 
-**Mechanical check before saying "N In Progress is healthy" or before diagnosing why:** for EACH In Progress card, read `dispatch_id` / `started_at` / `dispatch_kind`, AND cross-reference the real dispatch-tracking table's running/queued rows against the worker's actual concurrent-dispatch capacity. A count of In Progress cards that exceeds worker slots, or that doesn't reconcile 1:1 against live dispatch rows, means some fraction is stranded — the aggregate number alone cannot tell you which fraction. Same discipline applies to an agent-profile "broken" flag / banner: clearing it is a fresh start, not a diagnosis — check the profile's strike history (which card, which failure reason) before assuming the same failure won't immediately re-trip it.
+**Mechanical check before saying "N In Progress is healthy" or before diagnosing why:** for EACH In Progress card, read `started_at` / `dispatch_id` / `dispatch_kind`, AND cross-reference the real dispatch-tracking table's running/queued rows against the worker's actual concurrent-dispatch capacity. A count of In Progress cards that exceeds worker slots, or that doesn't reconcile 1:1 against live dispatch rows, means some fraction is stranded — the aggregate number alone cannot tell you which fraction. Same discipline applies to an agent-profile "broken" flag / banner: clearing it is a fresh start, not a diagnosis — check the profile's strike history (which card, which failure reason) before assuming the same failure won't immediately re-trip it.
 
 ## Status on Creation — ALWAYS start in Review
 
@@ -38,14 +37,14 @@ This applies to:
 
 **Why:** Card in `ToDo` is dispatchable next tick. If description half-written, AC vague, scope overlaps other in-flight work, poller wastes dispatch flailing. `Review` forces triage agent to read cold + decide: Approve (→ `ToDo` via `ready_at`), Cancel (→ `Cancelled` via `cancelled_at`), Defer (→ `Backlog` via `archived_at` + `ready_at: null`, and escalates), or Keep (escalates to the operator via an open problem, stays derived-Review — DX-2782/DX-2830, no TTL to refresh any more).
 
-**Promotion to ToDo is SEPARATE action, never co-located with creation.** Even when certain card is ready, leave it derived `Review`. Promotion via:
-- Triage agent ICE-scores Approve → stamps `ready_at = <now ISO>` (rule 5 → `ToDo`) — normal path.
+**Promotion to ToDo is a SEPARATE, EXPLICIT call — never an implicit side effect of creation.** `issue_create` has no `status` param; every card lands in Review first, full stop. Promotion via:
+- Triage agent ICE-scores Approve → stamps `ready_at = <now ISO>` (rule 4 → `ToDo`) — normal path.
 - Human operator promotes via dashboard (PATCH writes `ready_at`).
-- **Creating agent ONLY when:** (a) finished description + `ac[]` in same turn, (b) verified zero-context-test pass, (c) confirmed card genuinely dispatchable right now. Two-step (create-in-Review, stamp `ready_at`) is explicit + visible — NOT shortcut. Default: leave to triage agent.
+- **The creating agent itself, same turn, when it already knows the card needs to happen now** (CLAUDE.md: "if you know the card needs to happen, transition it to `ready` immediately after filing"): (a) finished description + `ac[]`, (b) verified zero-context-test pass, (c) confirmed genuinely dispatchable right now. This is the explicit two-step create-then-`ready` call, not a shortcut — default to leaving it for the triage agent only when one of (a)–(c) isn't yet true.
 
 **Interaction with `waiting_on`.** `waiting_on` is status-independent — card may carry dep-chain record at any status (Review, ToDo, In Progress, Blocked). Validator does NOT couple them. Sequential phase chains may stamp `waiting_on.by[]` at creation alongside `status: Review` — chain rides through Review → ToDo cleanly; no second-pass edit needed.
 
-**Interaction with container status derivation (Epic OR Feature).** Poller propagates the parent container's triggers from children's derived-status union. When all children derive `Review`, the container also derives `Review` (rule 7 fallthrough). When the creating agent stamps `ready_at` on some children, the parent container gets its own `ready_at` stamped by poller (rule 5 → parent `ToDo`). Agent does NOT manually stamp a container's triggers — derivation owns them.
+**Interaction with container status derivation (Epic OR Feature).** Poller propagates the parent container's triggers from children's derived-status union. When all children derive `Review`, the container also derives `Review` (rule 6 fallthrough). When the creating agent stamps `ready_at` on some children, the parent container gets its own `ready_at` stamped by poller (rule 4 → parent `ToDo`). Agent does NOT manually stamp a container's triggers — derivation owns them.
 
 ## Triage Lifecycle
 
@@ -69,27 +68,7 @@ The triage block on each card is owned by the **per-card triage agent** dispatch
 
 ## Blocked vs Waiting On vs an Open Problem (needs a human)
 
-Three different "this card cannot dispatch right now" signals — NOT interchangeable; dashboard surfaces three distinct indicators; picker checks each as an independent gate.
-
-| Signal | Field | When | Cleared by |
-|---|---|---|---|
-| **Blocked** | `blocked: {at, reason, by}` (derived `Blocked` via rule 3) | Dispatch paused on THIS card (card-specific tool failure, a hold with a named release condition, an ambiguous spec/decision an agent can settle itself). Does NOT by itself mean a human is needed — `block` only holds dispatch, it never asks a human, and the agent (or a later dispatch) can often resolve it itself. | Whoever resolves the blocker calls `issue_transition({action: 'unblock'})` — derived status falls through to the next trigger. Answering a problem never clears a `blocked` card. |
-| **Open Problem** (needs a human) | `problems` field group; `open_problem_count` scalar (status-independent) | A human must decide or act: a decision only the operator can make, or an action on a system the agent has zero reach into (3rd-party token rotation, external dashboard access, manual external infra deploy). **The only thing that puts a card in the operator's Needs You view is `open_problem_count > 0`.** There is no separate flag — escalate via `issue_problem({action: 'add', statement, solutions?})`. | Automatically when the operator answers the card's last open problem (a card with several problems stays in Needs You until every one is answered), or when the last open problem is removed (`issue_problem remove` — always allowed, even as the last one). |
-| **Waiting On** | `waiting_on: {reason, timestamp, by[]}` (status-independent) | Card queued behind OTHER in-flight work (phase siblings, Action Items, separately-scoped task). | Picker dispatches moment every `by[]` blocker reaches Done / Cancelled. `waiting_on` record stays as durable dep-history. |
-
-**All three dispatch gates may coexist** (blocked, an open problem, waiting_on, plus `conflict_on[]`): each models a different real-world cause; picker AND-s them; dispatch only when every one is clear. A card may legitimately carry all of them at once. Each is cleared by a different actor/event independently.
-
-### Coexistence
-
-An open problem is fully independent of `blocked` and `waiting_on`; all may coexist (rare). Example: a card both `Blocked` (a card-specific tool failure the next agent re-checks) AND carrying an open problem (rotate a token) at the same time. Answering the problem clears it but leaves `blocked` untouched; the agent that resolves the tool failure calls `unblock` separately. Poller checks each gate independently; every one has to clear before the card dispatches.
-
-### Whitelist/Blacklist for escalating to a human
-
-Full whitelist + blacklist for what warrants opening a problem (vs a self-resolvable `Blocked`) lives in the `issue-blocker` skill's Field Selection section — check there before deciding. Condensed form:
-
-**Escalate (open a problem):** a decision only the operator can make (domain intent, business/UX judgement, scope/authority), 3rd-party token rotation, external dashboard access, manual external infra deploy, anything the agent has zero programmatic reach into.
-
-**Don't escalate — use `Blocked`, or just fix it:** an ambiguous spec the agent can settle, a failing test, a merge conflict, a missing local dependency, a clarifying question the agent can answer itself — those stay `Blocked` at most, never an open problem.
+Canonical field-selection table (which of `blocked` / an open problem / `waiting_on` / `conflict_on[]` applies, the coexistence example, and the escalate/don't-escalate routing) lives in `danxbot:issue-blocker` § "Field selection" — this file does not restate it. The one piece specific to THIS reference is the mid-dispatch escalation procedure:
 
 ### Termination contract for escalating mid-dispatch
 
@@ -110,13 +89,15 @@ Reverse the terminal trigger. NEVER touch `status:`. NEVER touch `list_name`. On
 |---|---|
 | Reopen Done | `completed_at: null` + `ready_at: <now ISO>` |
 | Reopen Cancelled | `cancelled_at: null` + `ready_at: <now ISO>` |
-| Reopen back to Review | clear terminal trigger + leave `ready_at: null` (rule 7 falls through to raw `status: Review`) |
+| Reopen back to Review | clear terminal trigger + leave `ready_at: null` (rule 6 falls through to raw `status: Review`) |
 
 Forbidden in reopen edits (and every other): writing `status:` field directly via `issue_edit`. Use `issue_transition` to drive lifecycle. Status and display list are server-derived from trigger fields; agents touch only trigger timestamps. Use MCP tools only.
 
 ## Container Status is Computed, Not Edited
 
-A **container type** (Epic OR Feature) has its status **derivation-owned by server** — computed from its children's derived statuses, NOT from its own lifecycle. Feature, like Epic, is a CONTAINER: never dispatched to a worker, status computed from children, its own lifecycle columns (`ready_at` / `completed_at` / `cancelled_at` / `blocked`) stay null. Story / Bug / Chore are **leaves** — a leaf NEVER rolls up from `children[]` even if it somehow has any; its status derives from its own lifecycle. The DB engine computes container status from children's derived statuses — union of child states propagates correctly. Agents NEVER manually stamp a container's triggers; call `issue_transition` on child cards instead; server recomputes container status automatically.
+A **container type** (Epic OR Feature) has its status **derivation-owned by server** — computed from its children's derived statuses, NOT from its own lifecycle, **while it has children**. Feature, like Epic, is a CONTAINER: never dispatched to a worker, status computed from children, its own lifecycle columns (`ready_at` / `completed_at` / `cancelled_at` / `blocked`) stay null. Story / Bug / Chore are **leaves** — a leaf NEVER rolls up from `children[]` even if it somehow has any; its status derives from its own lifecycle. The DB engine computes container status from children's derived statuses — union of child states propagates correctly. Agents NEVER manually stamp a container's triggers; call `issue_transition` on child cards instead; server recomputes container status automatically.
+
+**Two carve-outs to "computed from children" (CLAUDE.md CP1/CP2):** a **childless container** (DX-2177) honours its own `completed_at`/`cancelled_at` directly — nothing to roll up — so a childless Epic/Feature accepts a manual `complete`/`cancel` just like a leaf. A **`Task` child does NOT count toward rollup** (DX-2493) — a container whose only children are `Task`s behaves as childless for this purpose (`CONTAINER_STATUS_CHILD_TYPE_EXCLUSION_SQL_LIST`); only `Story`/`Bug`/`Chore`/nested `Epic`/`Feature` children hold a container open.
 
 **Priority rules (first match wins) — same for Epic AND Feature:**
 
@@ -132,7 +113,7 @@ Cancelled children excluded from rules 4–5 — single non-cancelled child shif
 Parent rollup ignores an open problem on a child — checked only at dispatch, not propagated. Dashboard surfaces a child-count subscript on epic children when any phase has `open_problem_count > 0`.
 
 **Implications for agents (container = Epic OR Feature):**
-- When you finish a child card, call `issue_transition({id, action: 'complete', summary})` FIRST, THEN `danxbot_complete({status: 'complete'})` (DX-835 — `danxbot_complete` finalizes the DISPATCH row only and does NOT move the card). The poller propagates the parent container on the next tick. Do NOT touch the container — edit overwritten.
+- When you finish a child card, use the two-step termination sequence (`danxbot:issue-card-workflow` § "DX-835 — two-step termination is MANDATORY") — `issue_transition` FIRST, THEN `danxbot_complete`. The poller propagates the parent container on the next tick. Do NOT touch the container — edit overwritten.
 - When a child stamps `blocked.at`, the container's `blocked` synthesized by poller. Operator triages from container view.
 - The container stays at whatever derivation produces. Stamping `completed_at` on an Epic OR Feature with one child `In Progress` is no-op, cleared next tick.
 - Parents with `waiting_on != null` skipped by parent-status derivation — parent's own dep-chain note takes precedence. Set parent's `waiting_on` explicitly when needed.

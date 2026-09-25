@@ -1,27 +1,36 @@
-# Flesh-Out Overview
+# Flesh-Out — DX-544 Sentinel Detail + Comment Shape
 
-Flesh-out is a single-shot dispatch: read → probe → rewrite → save → complete. No `/loop`, no `ScheduleWakeup`. Terminal call is `danxbot_complete({status: "ready"})` (or `"review"` for sentinel branch).
+Two details `SKILL.md`'s mechanical gate points here for. Everything else
+(in-scope/refuse rules, the workflow steps, the epic/Feature split logic,
+boundaries) lives in `SKILL.md` — this file adds no duplicate of any of it.
 
-Flesh-out is invoked when operator creates half-baked card via dashboard Create-Card button. Card enters with `status: Blocked` + sentinel `blocked.reason` starting "Awaiting flesh-out". Agent fills in: `description` (pass zero-context-test bar), `ac[]` (3–8 verifiable items), optional `issue_triage` call (sentinel-target-Review only), optional epic split via `issue_create`.
+## DX-544 sentinel-to-review triage stamp
 
-**Refuse paths (only if sentinel wrong):**
-- `status: In Progress / Done / Cancelled` → agent doesn't re-flesh mid-flight cards.
-- `status: Blocked` AND `blocked.reason` NOT starting "Awaiting flesh-out" → non-sentinel self-block, human decided card needs human action.
-- `waiting_on != null` OR `open_problem_count > 0` → parked cards out of scope.
-- `children[]` non-empty → epic already split, refuse to orphan phases.
+When the sentinel-blocked card's ` start as <Review|ToDo>` token resolves
+to `Review` (the card entering Review for the first time), stamp triage
+**before** clearing the block and completing: call
+`issue_triage({id, confidence, reason})` — a single 0–5 confidence plus a
+reason string; the server computes the verdict from board thresholds
+(cancel/defer/keep/approve bands) and stamps `ready_at` on approve, or
+opens a problem (auto-triage escalation, see `issue-card-workflow`) for a
+keep/defer verdict. `triage_expires_at` / ICE / history stamping do not
+exist — never a raw write to a `triage{}` object.
 
-**Probe phase (5–10 min):** Read-only exploration via `Read` / `Grep` / `Glob` / git-only bash. No code execution, no edits outside your worktree, no backend-tracker MCP calls, no subagents.
+Never call this for a card already sitting in Review (out of scope per
+`SKILL.md`'s Refuse paths — existing Review cards don't get triaged by
+flesh-out) or for a ` start as ToDo` sentinel target (ToDo skips triage).
 
-**Card edits (via MCP):**
-1. `description` — rewritten per zero-context-test (Goal / Context / Solution / Key Files).
-2. `ac[]` — 3–8 verifiable items (imperative-verb prefix, no "operator verifies" / "manual UI smoke" / "post-dispatch auto-flip" shapes).
-3. If split: pick the container by slice count — **one slice stays a Story** (no split); **a few slices → a Feature CONTAINER with child Story cards** (never a Feature worked directly); **many slices / multi-domain → Epic**. Epic children are created atomically via `phase_children[]` (Epic-ONLY — the server 400s `phase_children` on a Feature); Feature children are created as separate `Story`/`Bug`/`Chore` cards each carrying `parent_id: <feature-id>`. The container's `children[]` is populated, `waiting_on` chain stamped child 2..N. A Feature is a container exactly like an Epic — never dispatched, status computed from children; a fleshed-out Feature must NEVER hold the work in its own body / `ac[]` with no children.
-4. If the DX-544 sentinel resolves to `review` (card entering Review for the first time): call `issue_triage({id, confidence, reason})` — a single 0–5 confidence plus a reason string; the server computes the verdict from board thresholds (cancel/defer/keep/approve bands) and stamps `ready_at` on approve, or opens a problem (auto-triage escalation, see `issue-card-workflow`) for a keep/defer verdict. `triage_expires_at` / ICE / history stamping do not exist — never a raw write to a `triage{}` object. Never call this for a card already sitting in Review (see In-Scope vs Refuse).
-5. `comments[]` — ONE `## Flesh-out` entry summarizing action (rewrite, AC count, split count).
-6. DX-544 sentinel-block clear: parse ` start as <Review|ToDo>` token; emit `danxbot_complete({status: "ready"})` (default) or `"review"` (sentinel target).
+Then clear the block (`issue_transition({id, action: 'unblock'})`, per
+`SKILL.md` step 6) and complete with `danxbot_complete({status: "review"})`
+instead of the default `"ready"`.
 
-After saving via MCP, re-read via `issue_get` to confirm the edits persisted.
+## Comment shape
 
-**Terminal calls:** only `ready` (default) or `review` (sentinel). Never `complete` (DX-734 / DX-735 bug class — half-baked lands Done).
+Author `"danxbot-flesh-out"`, markdown body:
 
-**Comment shape:** author `"danxbot-flesh-out"`, markdown body: `## Flesh-out — <date>`, `**Action:** <one of "rewrote", "refined", "split into N phases">`, `**AC count:** <N>` (or `<before> → <after>`), `**Phase split:** <bullet list>` (only if split), `**Triage:** confidence <0–5>, "<reason>"` (sentinel-target-Review only), `**Probe summary:** <2–3 sentence summary>`.
+- `## Flesh-out — <date>`
+- `**Action:** <one of "rewrote", "refined", "split into N phases">`
+- `**AC count:** <N>` (or `<before> → <after>`)
+- `**Phase split:** <bullet list>` (only if split)
+- `**Triage:** confidence <0–5>, "<reason>"` (sentinel-target-Review only)
+- `**Probe summary:** <2–3 sentence summary>`

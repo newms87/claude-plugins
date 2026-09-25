@@ -61,7 +61,7 @@ Apply filter, in order:
 1. **Required for THIS card's ACs?** → Mandatory. Fix in this dispatch. Filing hotfix/follow-up for AC-required work is **rule violation.**
 2. **Unrelated but small** (few file edits, no big refactor, fits session)? → Fix in dispatch. Action items create debt + re-dispatch cost.
 3. **Unrelated AND large** (multi-phase refactor, cross-cutting redesign, needs own scoping, would derail THIS card)? → Action item OK.
-4. **Needs human decision or external access** (credentials, ambiguous spec only the operator can settle, repo you can't write, secret rotation)? → Step 10 (Escalate: open a problem) / action item. **NOT valid blocker:** "needs deploy", "needs prod smoke", "needs production verification", "manual UI smoke", "pre-existing flaky test in unrelated file", "post-terminal-save state I cannot observe". Card is **Done when code committed + tests pass locally** — deploys are operational, not verification gate.
+4. **Needs human decision or external access** (credentials, ambiguous spec only the operator can settle, repo you can't write, secret rotation)? → Step 10 (Escalate: open a problem) / action item. Deploy/prod-smoke/manual-UI-smoke/post-completion claims are NOT valid blockers here either — see Step 10's NOT-a-blocker pointer. Card is **Done when code committed + tests pass locally** — deploys are operational, not verification gate.
 
 **Mechanical check:** before writing action item, Blocked move or escalation: **"Could I just do this in next 10–30 minutes?"** Yes → do it. Drop action item / cancel Blocked.
 
@@ -79,7 +79,7 @@ Only after exhausting in-session fixes reach for action items or Blocked.
 1. Read full `description`, all `comments[]`, all `ac[]` titles, existing `children[]` — request them explicitly: `issue_get({id, fields: ["description", "ac", "comments", "children"]})` (a bare `issue_get` returns MINIMAL scalars only). Call `issue_get` on each child id to see what is built.
 1.5. **Load issue-ref context from the code you'll touch (DEFAULT MODE).** Before designing changes, grep the files in scope for COMMENT-anchored card refs and load each one: `grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>` (anchor to comment markers — bare `[A-Z]+-[0-9]+` also hits test names / migration filenames / fixtures in this ref-dense repo) → for every UNIQUE id, `mcp__danx-dashboard__issue_get({id, fields: ["description", "ac", "comments"]})` and read those fields (a bare `issue_get({id})` returns MINIMAL scalars only — none of them). Those comments name standing constraints prior cards imposed on this code — editing past them without loading the card silently breaks original intent. (Full protocol: `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol".)
 2. **Bug cards (`type: Bug`):** investigate root cause via `Read` / `Grep` / `Bash` before designing fix.
-3. **Escalate vs Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly. Step 10 ONLY for blockers you cannot resolve: a human decision or action (credentials, secret rotation, ambiguous spec only the operator can settle, architectural ambiguity) → Escalate (open a problem via `issue_problem`); an agent-resolvable blocker that must hold the card → Blocked. **"Needs deploy" / "needs prod smoke" / "needs Layer 3 system test" are NOT valid blockers** — Layer 3 tests run locally (`make test-system`); deploys ship code already accepted as Done. Step 10b (Waiting On) for waiting on other in-flight work — no human required. Anything else → apply Step 1.5, fix yourself.
+3. **Escalate vs Blocked vs Waiting On vs fix-it-yourself:** if card cannot be done by agent, route correctly — full routing rules + NOT-a-blocker list live at Step 10 / Step 10b below. Anything else → apply Step 1.5, fix yourself.
 4. Design approach in head. No code yet.
 5. Invoke `/pipe-start` skill to reload pre-implementation rules.
 
@@ -156,7 +156,7 @@ For each `ac[i]`, verify it holds (test evidence, command output, direct code re
 
 If you cannot verify — repo this worker cannot commit to, depends on external state unreachable — leave `checked: false`. Do NOT check off with excuse. Do NOT paraphrase as "done in spirit."
 
-**"Requires deploy" is NOT valid reason to leave AC unchecked.** Every AC is verifiable locally. `make test`, `make test-system`, integration tests, manual local smoke against `http://localhost:5566` — all run here. Production deploy is operations, NOT verification gate. If AC says "verify in production," rewrite to "verify locally via `<command>`" + check once passes — `make deploy` ships code already accepted as Done.
+**"Requires deploy" is NOT valid reason to leave AC unchecked** (same rule as Step 1.5/10 — deploys are operational, never a verification gate). Every AC is verifiable locally: `make test`, `make test-system`, integration tests, manual local smoke against `http://localhost:5566`. If AC says "verify in production," rewrite to "verify locally via `<command>`" and check once it passes.
 
 ## Step 7 — Commit
 
@@ -178,7 +178,7 @@ Commits (claude-plugins repo):
 
 Putting cross-repo shas in `retro.commits[]` makes DX-559 gate block your `danxbot_complete({status: "complete"})` — gate verifies every sha against THIS repo's `origin/main`, treats unresolvable as missing.
 
-**Resolving a sibling repo's checkout — never assume a location.** Filesystem layout differs per machine and per context (operator main session, host-mode worker, container worker), and a repo that moved leaves every hardcoded path silently wrong. For the plugin marketplace repo, `~/.claude/plugins/known_marketplaces.json` is the reliable anchor: it carries each marketplace's `source.url` (the repo) and `installLocation` (a real checkout of that same repo on this machine). Read the URL from there, then search for an existing working checkout of that URL before cloning anything:
+**Resolving a sibling repo's checkout — never assume a location.** For the plugin marketplace repo, `~/.claude/plugins/known_marketplaces.json` carries each marketplace's `source.url` (the repo) and `installLocation` (a real checkout of that repo on this machine). Read the URL from there, then search for an existing working checkout of that URL before cloning anything:
 
 ```bash
 cat ~/.claude/plugins/known_marketplaces.json          # -> source.url + installLocation
@@ -289,7 +289,7 @@ If card is waiting on other in-flight work — that's **Waiting On** (Step 10b),
 - **Board EXISTS → DELEGATE, never self-block.** `issue_create({board: '<repo>:<slug>', type, title, description, ac})` moving the real spec + AC to the target board → `issue_dependency({id: <this>, action: 'add', kind: 'depends_on', target_id: <new>, reason: 'delegated cross-repo work'})` → drop the structured delegation marker comment on THIS card (template below) → keep any residual in-repo AC (if none, the card just tracks the delegate). The `depends_on` gate holds this card non-dispatchable until the partner is terminal, then the picker auto-re-dispatches it and Step 1.1 reads the marker on resume. Do NOT stamp `blocked` — cross-board `depends_on` resolves the partner globally by id and auto-clears on the partner's Done/Cancel (no new infra; confirmed by `src/issues/__tests__/cascade.test.ts`).
 - **Board does NOT exist** (operator-only repo, e.g. the plugin marketplace repo) → fall through to the block path below.
 
-Structured delegation marker comment (`issue_comment({id, action: 'add', text})`) — keep the `## Delegated → <id>` header verbatim so Step 1.1 can key on it:
+Structured delegation marker comment (`issue_comment({id, action: 'add', text})`) — keep the `## Delegated → <id>` header verbatim so Step 1.1 can key on it. (This is the per-dispatch mechanism; the danxbot repo's interactive-session flow for the same DX-1368 scenario — `.claude/rules/cross-board-requests.md` — releases the card via `rollback_pickup` instead of holding it with this marker, so the two are not interchangeable.)
 
 ```
 ## Delegated → <TARGET-CARD-ID>
@@ -305,13 +305,9 @@ non-dispatchable until <TARGET-CARD-ID> is terminal.
   here if it now fits, or re-block / re-delegate).
 ```
 
-Use Step 10 ONLY when blocker is genuinely one of (route in parentheses):
+Use Step 10 ONLY when blocker is genuinely one of (route in parentheses). Before treating anything as a blocker, run it against the NOT-a-blocker list first — `issue-blocker` checklist item 5 + the `no-false-blockers` skill cover deploy/prod-smoke ACs, pre-existing flaky tests, manual-UI-smoke ACs, and post-`danxbot_complete` behavior; none of those are valid blockers.
 
 - **Credentials / secrets** human must rotate / push to SSM (→ Escalate).
-  - **NOT Blocker:** "needs deploy" / "needs prod smoke" / "needs Layer 3 system test". Layer 3 (`make test-system`) runs locally — you can run. Prod deploy ships code already accepted Done; NEVER completion gate. Card with only remaining ACs "deploy + smoke prod" is **already Done** — rewrite ACs to local-verify, run them, mark Done.
-  - **NOT Blocker:** pre-existing flaky/failing test in unrelated file. File Action Item via `issue_create`, push id to `retro.action_item_ids[]`, check AC off (your card's tests pass), proceed.
-  - **NOT Blocker:** AC says "manual UI smoke" / "operator clicks X." Agent has dashboard token + playwright MCP + dashboard component-test runner. Verify programmatically (component test → playwright → rewrite AC), check off, proceed.
-  - **NOT Blocker:** AC verifies behavior firing AFTER `danxbot_complete` (epic auto-flip, post-completion auto-sync, tracker mirror, self-derived state). Rewrite AC to unit test for derivation function, run it, check off.
 - **External repo / file worker has no write access** AND no other agent fixes it — but ONLY after the cross-repo DELEGATE pre-check above fails (i.e. the target repo has NO danxbot board). If it has a board, delegate, don't block (→ Escalate).
 - **Genuine human design decision** (ambiguous spec, missing requirement, conflicting direction). Specifically: answer changes goal / implementation plan in way ONLY human decides (→ Escalate).
 - **Architectural ambiguity** — multiple valid implementations, different tradeoffs, human call (→ Escalate; each implementation is a solution, one recommended).
@@ -426,7 +422,7 @@ If either fails, three options:
 - **Split into fresh sibling card** for genuinely separate scope; narrow THIS card's AC set; document in `comments[]`.
 - **Route per Step 10 / 10b** when a real human decision/action (Escalate), an agent-resolvable blocker (Blocked hold) or an external dep (Waiting On) gates remainder.
 
-**`danxbot_complete({status: "complete"})` on a container (`type: Epic` OR `type: Feature`) is FORBIDDEN.** A container's terminal state derives from child rollup, never direct write — neither is ever dispatched or completed directly. Planning dispatch whose candidate IS a container (split-into-children pattern) calls `danxbot_complete({status: "complete"})` ONLY when every child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses the `completed_at` / `cancelled_at` stamp on a container card, surfaces a `stamp-terminal-epic-refused` system error. Dispatch row finalizes; the card stamp is suppressed. Guard is defense-in-depth — rule above is what you uphold. If you reach guard, you tripped the rule.
+**`danxbot_complete({status: "complete"})` on a container (`type: Epic` OR `type: Feature`) is FORBIDDEN.** A container's terminal state derives from child rollup, never direct write — neither is ever dispatched or completed directly. Planning dispatch whose candidate IS a container (split-into-children pattern) calls `danxbot_complete({status: "complete"})` ONLY when every child already terminal — rare; planning typically split-and-handoff. Worker's write-side guard (`src/issue/stamp-terminal.ts`) refuses the `completed_at`/`cancelled_at` stamp on a container card (`stamp-terminal-epic-refused`) — the dispatch row finalizes but the card stamp is suppressed. Defense-in-depth for the rule above, not a substitute for it.
 
 ### Sha-less completion rejected
 
@@ -468,7 +464,7 @@ Never exit without `danxbot_complete`. Never call with prereqs unmet.
 - `pipe-finish` mode B final-session wrap (mode B for human sessions only; dispatched workers MUST skip)
 - any text response at all
 
-`base:convey` self-trigger gate has explicit carve-out — see "Hard carve-out — terminal MCP calls" section. If you reach for report reflex after tool result, that is the rule the carve-out exists to block.
+`base:convey`'s self-trigger gate carries an explicit carve-out for this — see its "Hard carve-out — terminal MCP calls" section.
 
 ## If the Card Is Empty / In a Wrong State
 

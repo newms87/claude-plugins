@@ -10,7 +10,7 @@ You flesh out **ONE** card: read card → probe repo → rewrite `description` �
 
 ## Quick Reference
 
-See references/overview.md for full contract + probe rules + card edit checklist (via MCP) + comment format + failure handling.
+See references/overview.md for the DX-544 sentinel-to-review triage step and the exact comment-shape spec — everything else lives here.
 
 **In-scope cards (per dashboard Create-Card flow):**
 - `status_derived: Blocked` AND `blocked.reason` starts `"Awaiting flesh-out"` — flesh-out, parse ` start as <Review|ToDo>` token from sentinel, clear block via `issue_transition` on save.
@@ -36,17 +36,11 @@ See references/overview.md for full contract + probe rules + card edit checklist
    Then `issue_edit` to wire `parent_id` on any manual children, and set `waiting_on` chains via `issue_dependency`. **Forbidden end-state:** a fleshed-out Feature holding the work in its own body / `ac[]` with no child cards.
 
 **Quality gates + known dependency edges:** for deciding which `required_gates` to flag on the card(s) and recording any already-known `depends_on` / `conflict_on` edges, consult `issue-card-workflow` (single source of truth) — do NOT review or board-scan; just decide + flag. Every `issue_create` in the split also passes `triage_enabled` EXPLICITLY per card (server default `false` = never auto-triaged) — see `issue-card-workflow` "Auto-Triage Opt-In".
-6. **Save changes** — call `issue_edit({id, description, ac})` to persist the prose changes. If sentinel-blocked, call `issue_transition({id, action: 'unblock'})` to clear the block.
-7. **Append comment** — call `issue_comment({id, action: 'add', text: "## Flesh-out — <date>\n..."})` with markdown body.
-8. **Complete** — `danxbot_complete({status: "ready"})` (default).
+6. **Save changes** — call `issue_edit({id, description, ac})` to persist the prose changes. If sentinel-blocked, call `issue_transition({id, action: 'unblock'})` to clear the block; if the sentinel target is Review, stamp triage first — see references/overview.md.
+7. **Append comment** — call `issue_comment({id, action: 'add', text: "## Flesh-out — <date>\n..."})` — see references/overview.md for the exact field shape.
+8. **Complete** — `danxbot_complete({status: "ready"})` (default), or `"review"` for the sentinel-target-Review path.
 
 **FORBIDDEN:** Never call `complete` with `status: "done"` or similar (DX-734 / DX-735 half-baked-done bug). Never `loop` or `ScheduleWakeup`. Never call `issue_edit` with `status` key.
-
-## In-Scope vs Refuse
-
-**Flesh-out:** half-baked Review/ToDo cards OR DX-544 sentinel-blocked cards.
-
-**Refuse:** In Progress / Done / Cancelled (mid-flight) OR non-sentinel self-blocks OR parked via `waiting_on`/an open problem (`open_problem_count > 0`) OR epic already split with empty `children[]`.
 
 ## Boundaries
 

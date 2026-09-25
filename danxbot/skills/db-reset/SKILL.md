@@ -8,7 +8,7 @@ audience: worker
 
 You are about to reset, refresh, drop, wipe, or roll back a database.
 **STOP.** Every direct destructive command is blocked by the
-`base/scripts/deny-destructive-db.sh` PreToolUse hook — you cannot run
+`base/scripts/deny-destructive-db.mjs` PreToolUse hook — you cannot run
 `php artisan migrate:fresh`, `db:wipe`, `DROP DATABASE`, or any
 equivalent and have it succeed. There is exactly ONE sanctioned reset
 path. Use it. Do not invent a workaround.
@@ -48,9 +48,9 @@ target is always the worktree's own DB, derived from
 
 1. Reads `<worktree>/.env` (already worktree-scoped).
 2. Hard-fails if its derived `DB_DATABASE` matches the primary repo's
-   primary DB name (defense-in-depth — even though Phase 1's role
-   REVOKE makes the operation impossible, the script refuses to even
-   try).
+   primary DB name (defense-in-depth — even though the worktree DB
+   role's own REVOKE already makes reaching the primary DB impossible,
+   the script refuses to even try).
 3. Runs the consumer-repo-appropriate reset against the worktree DB
    only.
 4. Logs every step to stdout for your tool result.
@@ -76,7 +76,7 @@ Before invoking the script, confirm:
 3. **Your worktree's `.env` carries a worktree-specific DB name.**
    Run `grep '^DB_DATABASE=' <worktree>/.env`. The value must NOT be
    the primary repo's primary DB name (e.g. for gpt-manager that's
-   `laravel`). If it does match, STOP — Phase 1 provisioning is
+   `laravel`). If it does match, STOP — worktree DB provisioning is
    broken; do NOT run the reset. Report to the operator with the
    exact `DB_DATABASE` value you observed.
 
@@ -118,16 +118,13 @@ Read the script's stderr verbatim. Then:
 | `chmod +x <worktree>/.danxbot/safe-reset-db.sh` | The worker provisions the script chmod-ed +x already. If it isn't, that's a provisioning bug — file an issue, do NOT silently fix it. |
 | Editing the script (`Edit <worktree>/.danxbot/safe-reset-db.sh ...`) | The script is consumer-repo-authored and lives at `<repo>/.danxbot/safe-reset-db.sh` in the consumer repo. Edits to the worktree copy are blown away on the next provisioner run AND bypass the consumer repo's review gate. File an issue against the consumer repo if the script's behavior needs to change. |
 | Copying the script's body into your own Bash command | Same outcome as editing — bypasses the script's guard rails AND the deny hook. The hook only knows about command shapes; bypassing the script means re-implementing the safety check, which you will get wrong. |
-| Calling `php artisan migrate:fresh` / `db:wipe` directly | Blocked by `base/scripts/deny-destructive-db.sh`. You will sit in a deny-retry loop. |
+| Calling `php artisan migrate:fresh` / `db:wipe` directly | Blocked by `base/scripts/deny-destructive-db.mjs`. You will sit in a deny-retry loop. |
 | Calling `docker exec <container> php artisan migrate:fresh` | Same hook pattern, same block. |
 | Calling `psql -c 'DROP DATABASE ...'` / `mysql -e 'DROP DATABASE ...'` | Same hook pattern, same block. |
 | `TRUNCATE` loops over `information_schema.tables` | Reinventing `db:wipe` by another route. The hook may not catch it, but you are now operating without the script's defense-in-depth check that the target DB is NOT primary. SG-162 in slow motion. |
 | Recreating the Docker volume to "reset" the DB | Bypasses every guard. Destroys whatever else lives in that volume. |
 | Asking the operator to disable the deny hook | The hook exists to prevent exactly this class of destructive mistake. Disabling it re-opens the failure mode. The answer is always "run the sanctioned script." |
-| Inventing a new "safe reset" script in your worktree | Phase 2 already shipped one. Find it or report it missing. |
-
-The script is the contract. The agent calls it. The agent does not
-reinvent it.
+| Inventing a new "safe reset" script in your worktree | danxbot already ships one — find it or report it missing. |
 
 ## Forward-Looking Notes
 

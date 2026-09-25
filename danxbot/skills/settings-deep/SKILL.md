@@ -10,13 +10,13 @@ Always-on reminder: `.claude/rules/settings-file.md` carries the load-bearing 5-
 ## TodoWrite checklist (mandatory on first invoke)
 
 1. Identify which contract applies: schema / ownership / writer-merge / reader hot-path / display-refresh / pre-rename key fallback.
-2. If editing an enforcement path (`slack/listener.ts`, `poller/index.ts`, `worker/dispatch.ts`) → MUST go through `isFeatureEnabled`, never `readSettings` directly.
+2. If editing a toggle-enforcement path (`worker/dispatch.ts`, `dispatch/core.ts`, the escalation reconcile) → MUST `await isFeatureEnabled(...)`, never `readSettings` directly and never an un-awaited call.
 3. If adding a feature toggle → extend the schema, update `normalize`, update `isFeatureEnabled`, default to env-driven value (or `false` for cost-bearing toggles).
 4. If touching a writer → merge `display` and `overrides` independently; never let one section's patch clobber the other.
 
 ## What lives at `<repo>/.danxbot/settings.json`
 
-- **Feature toggles** (`overrides.slack`, `overrides.issuePoller`, `overrides.dispatchApi`, `overrides.ideator`, `overrides.autoTriage`) — three-valued (`true` / `false` / `null`). `null` defers to env default on `RepoContext`. `true` / `false` = explicit runtime override winning over env. `ideator` and `autoTriage` default `false` (explicit opt-in for cost-bearing recurring dispatches); the other three default to their env-driven values.
+- **Feature toggles** — the `Feature` type is exactly `dispatchApi | ideator | autoTriage | autoModelEscalation` (`src/settings-file.ts`). Three-valued (`true` / `false` / `null`): `null` defers to env default, `true`/`false` is an explicit override. `ideator` and `autoTriage` default `false` (explicit opt-in for cost-bearing recurring dispatches); `autoModelEscalation` (DX-1100 — bounded context-overflow auto-upgrade) defaults `true`; `dispatchApi` defaults to its env-driven value. **`slack` and `issuePoller` are NOT feature toggles here** — see the Readers section above.
 - **Masked config mirrors** (`display.*`) — safe read-only projections rendered by the dashboard Agents tab. **Never raw secrets.**
 - **Metadata** (`meta.updatedAt`, `meta.updatedBy`).
 
@@ -25,6 +25,8 @@ Lock file `<repo>/.danxbot/.settings.lock` serializes concurrent writes via `fs.
 > **Sibling tripwire — NOT this file:** a critical-failure halt is a separate `board_halts` DB row, not a file, with an unrelated schema, writer, and lifecycle. Operator toggles here = three-valued runtime overrides; the halt = present-or-absent signal cleared by a human via the dashboard. Do not conflate. Full contract: `.claude/rules/agent-dispatch.md` "Critical failure halt — poller halt".
 
 ## Ownership
+
+**The operator-facing write path for the toggles has moved (DX-1817).** `PATCH /api/agents/:repo/toggles` (`src/dashboard/agents-toggles.ts`) persists via `writeBoardSettings` (`src/board-settings.ts`) into the per-board `board_settings` Postgres row — not `writeSettings`/`overrides` on this file. `DASHBOARD_PREFIX` and the `Feature` type are still shared from `src/settings-file.ts`, but the write itself is DB, matching the Readers section above. The table below documents this file's OWN write contract (still real for whatever still calls `writeSettings` directly, e.g. `effortLevels`) — verify which path a given field actually goes through in `src/settings-file.ts` vs `src/board-settings.ts` before assuming this file's `writeSettings` is the live path for a specific field.
 
 | Writer                  | Touches                                | When                                               |
 |-------------------------|----------------------------------------|----------------------------------------------------|
@@ -39,11 +41,11 @@ Lock file `<repo>/.danxbot/.settings.lock` serializes concurrent writes via `fs.
 
 ## Readers
 
-One function: `isFeatureEnabled(ctx: RepoContext, feature: Feature)` — hot path called on every Slack message, every poller tick, every `/api/launch`. Never throws; falls back to `ctx`'s env default on any failure (missing file, corrupt JSON, filesystem error).
+**`isFeatureEnabled(boardCtx, ctx, feature)` in `src/settings-file.ts` is ASYNC** (DX-1817 moved per-board settings off this file's `overrides` into the `board_settings` Postgres row — the read is now a DB query, not a synchronous file read). Never throws — falls back to `envDefault(ctx, feature)` on any failure (DB unreachable, pool exhausted, missing/incomplete row, or a read exceeding the bounded `featureReadTimeoutMs` ceiling). **Always `await` it.** A missed `await` makes `!isFeatureEnabled(...)` evaluate `!Promise` → always `false` → silently opens the gate; `tsc` does not catch this, only the sweep `src/__tests__/no-unawaited-board-settings-reads.test.ts` does. The `dispatchApi` / `ideator` / `autoTriage` / `autoModelEscalation` toggles resolve through this path from `src/worker/dispatch.ts` and `src/dispatch/core.ts`.
 
-Everything else (`readSettings`, dashboard `GET /api/agents[/repo]` handlers) goes through `readSettings` which returns the default structure when the file is absent and logs-once-per-minute-per-path on parse errors without throwing.
+**Slack and issue-poller enablement do NOT go through `isFeatureEnabled` at all.** DX-1025 moved Slack enable + tokens + channel into `board_slack_settings`; DX-1030 moved poller enablement into `board_poller_settings` — both per-board DB tables gated directly by their own readers, not this file's contract. `src/poller/index.ts` is itself retired (commit `4669e288`) — dispatch is driven by `src/dashboard/dispatcher-loop.ts` now, not a per-repo poll loop.
 
-**Do not bypass `isFeatureEnabled` in the three enforcement paths** — `src/slack/listener.ts`, `src/poller/index.ts`, `src/worker/dispatch.ts`. A direct `readSettings` call there would skip the env-default fallback and open a race where brief file corruption suppresses messages or 503s live traffic.
+Everything else touching the per-repo `settings.json` file itself — `readSettings` (sync, file-backed, returns the default structure when the file is absent, logs-once-per-minute-per-path on parse errors without throwing) — is for the `overrides`/`display` contract this skill documents below, never for the DB-backed toggles above.
 
 ## Why the worker refreshes `display` on every boot (not deploy writing it directly)
 
@@ -61,47 +63,27 @@ Effective flow:
 
 No remote JSON-writing script, no drift between deploy and worker views of config, no duplicated display-building logic.
 
-## Agents roster — TWO surfaces, do not conflate (DX-1113)
+## Agents roster — NOT in this file at all (DX-1225)
 
-There are two distinct "agents" homes; only ONE moved to Postgres. Conflating them is the trap this section exists to prevent.
-
-| Surface | Home | Accessor | Status |
-|---|---|---|---|
-| **Per-repo** `settings.json` `agents{}` map | `<repo>/.danxbot/settings.json` (the file THIS skill documents) | `normalizeAgents` / `mutateAgents` / `agentsMapMutated` + the DX-281 per-key merge in `writeSettings`, all in `src/settings-file.ts`; `AGENTS_MAX` cap | **UNCHANGED** — still on disk, still DX-281 per-key merged |
-| **Per-board** named-agent roster | `board_agents` Postgres table (one row per `(board_id, name)`) | `src/issues/db/board-agents.ts` — `readBoardAgents` / `readBoardAgent` / `insertBoardAgent` / `deleteBoardAgent` / `mutateBoardAgent` / `ensureBoardAgents` | **MOVED to Postgres (DX-1113)** |
-
-DX-1113 moved ONLY the per-board roster (bio, capabilities, schedule, `enabled`, `broken`, `strikes`, `effortLevel`) into `board_agents`. Each agent is its own row, so the strike accumulator, the dashboard CRUD, and the broken stamp do per-row updates under a `(board_id, name)` advisory lock — the old whole-file per-key merge (`mergeBoardAgents` / `mutateBoardAgents` / `agentsMapMutated`) that existed only to stop one file-writer clobbering another agent's keys is **deleted**, not preserved (exactly ONE home — Core Principle 1). Boot step `ensureBoardAgents` (`src/index.ts`) seeds the table once from the legacy on-disk roster (`src/agents-backfill.ts`) — the one-time data migration. Never add an `agents` field back to the per-BOARD settings contract, and never add a JSON-fallback reader.
-
-**Keep the distinction sharp:** the per-REPO `settings.json` `agents{}` map (first row above) is a SEPARATE surface and is NOT affected by DX-1113 — its DX-281 per-key merge in `writeSettings` is live and load-bearing. Only the per-board roster left the settings layer.
+The named-agent roster has never lived in `<repo>/.danxbot/settings.json` since DX-1225. There is no `agents{}` map, no `normalizeAgents`/`mutateAgents`, on this file — `src/settings-file.ts`'s `Settings` interface carries no `agents` field. The intermediate per-board `board_agents` Postgres table (DX-1113, one row per `(board_id, name)`) is itself superseded: DX-1225 moved the roster again, into the **install-global** `agent_profiles` Postgres table (`src/issues/db/agent-profiles.ts`) — one row per NAME across the whole install, since profiles are board-agnostic roles that a board selects rather than owns. Per-(profile, card) strikes live in the sibling `agent_profile_strikes` table (`src/agent/strikes.ts`). There is exactly ONE home (Core Principle 1) — never add an `agents` field back to this file, and never add a JSON-fallback reader.
 
 ## Schema (abbreviated)
 
 ```
 {
   "overrides": {
-    "slack":        { "enabled": true | false | null },
-    "issuePoller": {
-      "enabled":          true | false | null,
-      // Optional. When set as a non-empty string, the poller only
-      // dispatches ToDo cards whose name starts with this prefix —
-      // pre-existing real ToDo cards are left untouched on every tick.
-      // Used by `make test-system-poller` for race-free isolation;
-      // operators can also set it to temporarily
-      // limit the poller to one card class without disabling it.
-      // null / missing / empty string → no filter (default behavior).
-      "pickupNamePrefix"?: string | null
-    },
     "dispatchApi":  { "enabled": true | false | null },
     // env default `false` — operator opts in per-repo when they want
     // /danx-ideate to run when the Review list runs short.
     "ideator":      { "enabled": true | false | null },
     // env default `false` — operator opts in per-repo when they want
     // /danx-triage to run on Action Items + Review when ToDo is empty.
-    "autoTriage":   { "enabled": true | false | null }
+    "autoTriage":   { "enabled": true | false | null },
+    // DX-1100 — bounded context-overflow auto-upgrade. Default `true`.
+    "autoModelEscalation": { "enabled": true | false | null }
   },
   "display": {
     "worker":  { "port": 5562, "runtime": "docker" },
-    "slack":   { "botToken": "xoxb-****abc", "channelId": "C0123...", "configured": true },
     "github":  { "token":    "ghp_****xyz", "configured": true },
     "db":      { "host": "mysql", "database": "ssap_sail", "configured": true },
     "links":   { "slackChannelUrl": "", "githubUrl": "..." }
@@ -109,5 +91,7 @@ DX-1113 moved ONLY the per-board roster (bio, capabilities, schedule, `enabled`,
   "meta": { "updatedAt": "...", "updatedBy": "dashboard:<username>" | "deploy" | "setup" | "worker" }
 }
 ```
+
+`pickupNamePrefix` (system-test isolation, `make test-system-poller`) is NOT under `overrides` — it lives under `testIsolation` on the worker-owned runtime-drift file, not the operator-facing contract shown above.
 
 See `src/settings-file.ts` for the canonical TypeScript types and `docs/superpowers/specs/2026-04-20-agents-tab-design.md` for the full design document.

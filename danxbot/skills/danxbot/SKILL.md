@@ -53,39 +53,29 @@ Three distinct runtime contexts. Don't confuse them.
 |---|---|---|
 | **Main session** | Your shell on the dev host | Normal Edit/Read/Write/Bash. NEVER call a backend-tracker MCP directly. |
 | **Dispatched agent** | Inside a Claude Code CLI subprocess on Machine B (or local worker) launched from a per-dispatch **clean-room cwd** | The profile's catalog-materialized `.claude/` (`mcp.template.json` + `agents/*.md` + `rules/*.md`) defines the tool surface. Per-dispatch, isolated. |
-| **Worker process** | `node` running the danxbot dist on Machine B; runs the issue poller and `/api/launch` HTTP server | Reads the dashboard DB via its internal HTTP client for dispatch picker logic; spawns Claude CLI dispatches via `dispatch()`. |
+| **Worker process** | `node` running the danxbot dist on Machine B; hosts the `/api/launch` HTTP server and receives per-board dispatch push signals from the dashboard's dispatcher loop | Reads the dashboard DB via its internal HTTP client for dispatch picker logic; spawns Claude CLI dispatches via `dispatch()`. |
 
-The dispatched-agent runtime is what the dispatch API hands work to. The worker runtime hosts the dispatch API and the poller — never confuse "the worker" with "an agent."
+The dispatched-agent runtime is what the dispatch API hands work to. The worker runtime hosts the dispatch API — never confuse "the worker" with "an agent."
 
 ## Local vs Deployed
 
 | Verb | What it does |
 |---|---|
-| `make launch-worker BOARD=<board-name>` (from danxbot repo) | Starts the ONE machine-level Docker worker container for this dev box (DX-1734 — a single worker dispatches agents across every connected repo's boards; `BOARD=` only resolves its boot identity). `REPO=<name>` is retired (DX-979) and fails loud. Compose file: `docker-compose.worker.yml`. Uses local image `danxbot:latest`. |
-| `make deploy TARGET=<target>` (from danxbot repo) | Deploys danxbot + every repo's worker to the target's AWS instance. Per-target config: `deploy/targets/<target>.yml`. Pushes per-target env overlays from SSM. |
-| `make publish-mcp` / other `publish-*` targets | Publishes MCP servers to npm. Required before a new dispatch can pick up changes. **You own these packages — publish freely without asking.** |
+| `make launch-worker [TARGET=<target>] [BOARDS=<comma-separated>]` (from danxbot repo) | Starts the ONE machine-level Docker worker container for this dev box (DX-1734 — a single worker dispatches agents across every board the active target declares). `BOARDS=` (plural) is an optional runtime filter; the old singular `BOARD=` and `REPO=<name>` are both retired (DX-1811 / DX-979) and fail loud. |
+| `make deploy TARGET=<target> COMMIT=<sha>` (from danxbot repo) | The only deploy path (GitHub Actions was deleted, DX-3230) — always runs locally from a dedicated deploy directory, pinned to the named commit. Full contract: `.claude/rules/production-deploy.md`. |
+| `make publish-<pkg>` (e.g. `make publish-danx-dashboard-mcp`) | Publishes an in-tree MCP package to npm. Required before a new dispatch can pick up a source change — `npx` caches by name and never re-checks the registry on its own. **You own these packages — publish freely without asking.** |
 
-"Deploy the X danxbot" ALWAYS means `make deploy TARGET=<x>` from the danxbot repo. NEVER means `make launch-worker` (that's local). NEVER means deploying the connected repo's own app.
+"Deploy the X danxbot" ALWAYS means `make deploy TARGET=<x> COMMIT=<sha>` from the danxbot repo. NEVER means `make launch-worker` (that's local). NEVER means deploying the connected repo's own app.
 
-Production IS reachable from the dev shell — proxy / SSH / `docker exec` recipes live in `danxbot/.claude/rules/production-access.md`. Don't claim "I can't reach production from here."
+Production IS reachable from the dev shell — proxy / SSH / `docker exec` recipes → `danxbot:prod-access` skill. Don't claim "I can't reach production from here."
 
 ## Per-Repo Configuration
 
-Inside each connected repo:
+Each connected repo's `<repo>/.danxbot/` layout (`config/`, `.env`, `.env.<target>`, `settings.json`, the board-rooted worktree pool) is documented in `.claude/rules/docker-runtime.md` "Per-repo config layout" and `.claude/rules/settings-file.md` in the danxbot repo — read those instead of a restated table here, since the layout changes independently of this plugin skill.
 
-| Path | Purpose | Committed? |
-|---|---|---|
-| `<repo>/.danxbot/config/config.yml` | Repo-level danxbot config (board mapping, worker port, etc.) | yes |
-| `<repo>/.danxbot/config/compose.yml` | Per-repo dev-stack bind config consumed by the machine worker's network overlay (NOT a standalone per-repo worker anymore — DX-1734 retired per-repo worker containers) | yes |
-| `<repo>/.danxbot/config/overview.md` + `workflow.md` + `tools.md` | Repo context for dispatched agents | yes |
-| `<repo>/.danxbot/.env` | Secrets + per-repo toggles, `DANX_*` prefix, `DANXBOT_WORKER_PORT` | gitignored |
-| `<repo>/.danxbot/.env.<target>` | Per-deploy-target overlay | gitignored |
-| `<repo>/.danxbot/settings.json` | Per-repo three-valued runtime toggles (Slack, issuePoller, dispatchApi, ideator, autoTriage). The named-agent roster is NOT here — it lives in Postgres (`agent_profile` / `board_agents`, DX-1113 / DX-1225) | yes |
-| `<repo>/.danxbot/worktrees/<agent>/` | Per-agent git worktree + per-agent `docker-compose.yml` w/ worktree-unique port allocation (consumer-repo stack — pgsql/redis/etc — runs once per agent, isolated from primary) | gitignored |
+**Agent lookup — mechanical pre-claim check.** The named-agent roster (`agent_profiles` Postgres table, DX-1225) is **install-global, not per-repo** — a profile is a board-agnostic role a board selects, not a file living under any one connected repo. Before claiming an agent name "does not exist" / "never landed" / "is missing", query the roster itself (dashboard Agents tab, or `mcp__danx-dashboard__` tooling that reads `agent_profiles`) rather than grepping any repo's `.danxbot/`. If nothing resolves, say the lookup could not run — do NOT report "the agent does not exist" off a partial check.
 
-**Multi-repo agent lookup — mechanical pre-claim check.** Before claiming an agent name "does not exist" / "never landed" / "is missing", enumerate EVERY connected repo under the danxbot checkout's `repos/` dir: `for r in "$DANXBOT_REPO"/repos/*/; do grep -l <name> "$r/.danxbot/settings.json" 2>/dev/null; done` AND `ls "$DANXBOT_REPO"/repos/*/.danxbot/worktrees/`. Agents are per-repo; cwd `.danxbot/` is just one repo's roster.
-
-`$DANXBOT_REPO` is a placeholder you resolve on the machine you are running on — there is no fixed location for it, and hardcoding one from a past session is how this check silently enumerates nothing. Resolve it: if cwd is inside the danxbot checkout, `git rev-parse --show-toplevel`; otherwise locate an existing checkout by remote rather than by assumed path (`find ~ -maxdepth 4 -type d -name .git | while read -r g; do d=$(dirname "$g"); git -C "$d" remote get-url origin 2>/dev/null | grep -q danxbot && echo "$d"; done`). If nothing resolves, say the lookup could not run — do NOT report "the agent does not exist". Same applies to worktrees — checking `git worktree list` from the danxbot source repo shows ONLY danxbot's worktrees, not gpt-manager's or platform's. "I checked the agents dir" w/o naming which repo's agents dir is the failure mode this rule blocks.
+A per-agent **worktree**, by contrast, IS per-repo/per-board (`<repo>/.danxbot/boards/<slug>/worktrees/<agent>/`). Enumerate EVERY connected repo under the danxbot checkout's `repos/` dir to check those: `ls "$DANXBOT_REPO"/repos/*/.danxbot/boards/*/worktrees/`. `$DANXBOT_REPO` is a placeholder you resolve on the machine you are running on — there is no fixed location for it, and hardcoding one from a past session is how this check silently enumerates nothing. Resolve it: if cwd is inside the danxbot checkout, `git rev-parse --show-toplevel`; otherwise locate an existing checkout by remote rather than by assumed path (`find ~ -maxdepth 4 -type d -name .git | while read -r g; do d=$(dirname "$g"); git -C "$d" remote get-url origin 2>/dev/null | grep -q danxbot && echo "$d"; done`). Checking `git worktree list` from the danxbot source repo shows ONLY danxbot's own worktrees, not gpt-manager's or platform's — name which repo's worktrees you checked.
 
 Per-target overlays are layered ONLY at deploy time (`make deploy TARGET=<x>`). Local dev never reads them.
 
@@ -95,10 +85,11 @@ The dashboard Postgres DB is the sole tracker:
 
 ```
 Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical, sole source of truth)
-                                       ▲
-                                       │  (worker poll, ~60s — DB read for dispatch picker)
                                        │
-                            danxbot worker poller
+                                       │  dispatcher-loop.ts ticks each board every 60s,
+                                       │  reads the dispatchable queue in-process
+                                       ▼
+                         assignWorkerSlot ──> pushDispatchSignal ──> worker ──> spawnAgent
 ```
 
 - The dashboard Postgres DB is the authoritative source for all issue state, accessed by agents via `mcp__danx-dashboard__issue_*` MCP tools and by the worker via its internal HTTP client for dispatch picker logic.
@@ -106,20 +97,17 @@ Dispatched agent  ──MCP tools──>  Dashboard Postgres DB (canonical, sole
 
 > **Trello sync — auxiliary, dashboard-side, never an agent concern.** The dashboard (NOT the worker, NOT the agent) mirrors each board's issues ⇄ a Trello board in real time: outbound is event-driven — the dashboard subscribes to the `issue:updated` event bus and projects the changed card to Trello immediately; inbound arrives via a Trello webhook on the dashboard. A periodic per-board reconcile sweep is an idempotent belt-and-suspenders backstop, not the sync. Agents do nothing with Trello — no tool, no read, no write — and never need to think about it. (`src/trello/*` + `src/dashboard/server.ts`, DX-876 V1–V8.)
 
-Schema authoritative source: `<DANXBOT_REPO>/src/issue-tracker/interface.ts` (the `Issue` type).
+Schema authoritative source: `<DANXBOT_REPO>/src/issues/types.ts` (`IssueV2` + `KNOWN_SCHEMA_MAX`).
 
 Universal workflow: invoke `danxbot:issue-card-workflow` skill.
 
-## Issue Poller (Worker-Owned)
+## Dispatch Loop — Dashboard-Owned, Not a Per-Repo Poller
 
-The worker process on Machine B runs a poller per connected repo (`src/poller/index.ts`), dispatching off the dashboard DB via the dashboard HTTP API. Each tick is **single-dispatch-per-tick** with this decision tree:
+`src/poller/index.ts` is **retired** (commit `4669e288`) — `src/poller/` today holds only leaf helpers (config/constants/fs-probe/yaml parsing), no tick loop. Dispatch is driven centrally by `src/dashboard/dispatcher-loop.ts`: one tick per board every 60s (`POLLER_TICK_INTERVAL_MS`), which reads the dispatchable queue in-process, resolves free worker capacity via `assignWorkerSlot` (spreads across every alive worker serving that board), and pushes a thin signal (`pushDispatchSignal`) to the chosen worker's `callback_url` — the worker then pulls the full dispatch detail and spawns the Claude Code CLI.
 
-1. **Active-dispatch check** — reattaches via the structured `dispatch{}` block (PID + host + kind + TTL) so a worker restart does not redispatch a card whose original session is still alive.
-2. **Work-ready dispatch** — picks one ToDo card with `waiting_on: null`, sorted by the canonical dispatch order: `priority` DESC, `COALESCE(triage_ice_total, 0)` DESC, numeric id ASC (the same tie-break every dispatch-sort consumer uses — `pickDispatchableCardsInProcess` / `listIssuesFiltered`, `src/dashboard/dispatcher-deps.ts`). Spawns the Claude Code CLI on the chosen card. There is no "untriaged first" bucket and no `triage.expires_at` field — that column was dropped (DX-2820); `triage_ice_total` is the only surviving triage-derived sort input, and it is just one more tie-break column, not a first-class bucket.
-3. **Triage dispatch** — if no work-ready card was dispatched, `getTriageEligibleCardId` (`src/dashboard/dispatcher-deps.ts`, DX-1886) picks the single Review card, per board per tick, that is `triage_enabled: true`, not blocked, has no open problem (`open_problem_count = 0`, DX-2830), and carries no active dispatch — ordered by the same canonical sort as above — and dispatches `/danx-triage-card <PREFIX-N>`. Eligibility is instant and event-driven, never TTL-gated: a card drops out the moment it gets blocked, dispatched, or an open problem, and returns the instant that clears (DX-2782 dropped the old `keep`-verdict TTL carve-out along with `triage_expires_at` itself). **`Blocked` and `Waiting On` are NOT selected by this automatic trigger at all** — both were retired from this eligibility query before it was restored; `/danx-triage-card` still audits a Blocked/Waiting-On card, but only via operator-directed dispatch (`POST /api/triage`, or a direct invocation), never this poller trigger.
-4. **Action Items items** — the worker spawns one fresh issue per `retro.action_item_ids[]` string on terminal save.
+The same per-board tick also picks the single eligible Review card for auto-triage, and spawns one fresh issue per `retro.action_item_ids[]` string on terminal save. Full triage-eligibility rules (which statuses are auto-triaged vs operator-directed only) → `danxbot:issue-card-workflow` skill, `references/lifecycle-states.md` § "Triage Lifecycle" — this file does not restate that table.
 
-Agents write card state via `mcp__danx-dashboard__issue_*` tools only. The poller's job is dispatch off the DB; Trello mirroring is the dashboard's job, not the poller's (see the Trello sync note above).
+Agents write card state via `mcp__danx-dashboard__issue_*` tools only. Trello mirroring is the dashboard's job, not the dispatch loop's (see the Trello sync note above).
 
 ## Pre-dispatch worktree git (worker-owned, DX-1154 / DX-1156)
 
@@ -150,7 +138,7 @@ Each MCP server consumed by a danxbot dispatch has an owner repo with a `make pu
 
 | Symptom | Likely cause | Pointer |
 |---|---|---|
-| New MCP tool not available in dispatched agent | Forgot to publish after editing source | `make publish-mcp` (or relevant publish target), then re-dispatch |
+| New MCP tool not available in dispatched agent | Forgot to publish after editing source | `make publish-<pkg>` (e.g. `make publish-danx-dashboard-mcp`), then re-dispatch |
 | Dispatch fails with "Timed out after 2000ms waiting for PID file" | WSL → Windows interop stall on host-mode launcher | check the operator's WSL-interop runbook (host-mode only) |
 | Editing `mcp-server/` doesn't change agent behavior | Source change ≠ runtime change. Must publish to npm + clear npx cache. | This skill — Repo Location ≠ Runtime Location |
 | Confusion about whether Laravel can reach the agent's `/tmp/schemas/{id}/` | It cannot. Boundary is HTTP. Machine B owns local FS. | This skill — Two-Machine Networking Model |

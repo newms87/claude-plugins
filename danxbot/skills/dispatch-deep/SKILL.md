@@ -118,9 +118,9 @@ Error mapping:
 
 ## Multi-block assistant turns — one API response, multiple JSONL lines, ONE usage block
 
-When an assistant turn returns more than one content block (text + tool_use, thinking + text + tool_use, etc.), Claude Code writes ONE JSONL entry per content block, but stamps the IDENTICAL response-level `message.usage` on every entry (verified against real captures). All entries share the same `message.id`. The API charged the response ONCE; the JSONL just splits the rendering.
+When an assistant turn returns more than one content block (text + tool_use, thinking + text + tool_use, etc.), Claude Code writes ONE JSONL entry per content block, but stamps the IDENTICAL response-level `message.usage` on every entry. All entries share the same `message.id`. The API charged the response ONCE; the JSONL just splits the rendering.
 
-Any code that accumulates `usage` across JSONL entries MUST dedupe by `message.id` — without it, multi-block turns count 2-5× their real cost (bit production once, commit `d11b63d`). The producers in this codebase that sum usage across entries are:
+Any code that accumulates `usage` across JSONL entries MUST dedupe by `message.id` — without it, multi-block turns count 2-5× their real cost. The producers in this codebase that sum usage across entries are:
 
 - `src/agent/launcher.ts` — `job.usage` accumulator in the watcher subscriber. Closure-local `seenUsageMessageIds: Set<string>`; skips entries whose `messageId` was already accumulated.
 - `src/dashboard/jsonl-reader.ts` — `parseJsonlContent` aggregates `usage` blocks. Same per-call Set, applied BEFORE pushing blocks so timeline display + totals both stay consistent.
@@ -260,16 +260,16 @@ Both bite AFTER authorization is granted (see `no-unauthorized-worker-launch`) �
 
 ### 1. `export VAR=...; make target` does NOT reliably override — use `make VAR=... target`
 
-The danxbot Makefile does `-include .env` near the top. GNU Make's variable-resolution order gives a **file-defined** variable (from `-include`d `.env`) precedence over a **shell-exported** variable of the same name for recipe execution — the opposite of what most people assume. Root `.env` unconditionally defines `DANXBOT_DASHBOARD_URL` and `DANXBOT_DISPATCH_TOKEN` (local-dev defaults). If you `export DANXBOT_DISPATCH_TOKEN=<prod-token>` and then run `make launch-worker BOARD=...`, the exported value is silently discarded — the recipe sees `.env`'s local-dev value instead. Symptom: worker registers fine (enrollment secret usually matches by design), but every dispatch-push from the dashboard 401s, because the pushed bearer doesn't match what the worker actually holds.
+The danxbot Makefile does `-include .env` near the top. GNU Make's variable-resolution order gives a **file-defined** variable (from `-include`d `.env`) precedence over a **shell-exported** variable of the same name for recipe execution — the opposite of what most people assume. Root `.env` unconditionally defines `DANXBOT_DASHBOARD_URL` and `DANXBOT_DISPATCH_TOKEN` (local-dev defaults). If you `export DANXBOT_DISPATCH_TOKEN=<prod-token>` and then run `make launch-worker TARGET=...`, the exported value is silently discarded — the recipe sees `.env`'s local-dev value instead. Symptom: worker registers fine (enrollment secret usually matches by design), but every dispatch-push from the dashboard 401s, because the pushed bearer doesn't match what the worker actually holds.
 
 **The only reliable override is the `make` command-line form:**
 ```bash
-make DANXBOT_DISPATCH_TOKEN="$TOKEN" DANXBOT_WORKER_ENROLLMENT_SECRET="$SECRET" launch-worker BOARD=<board>
+make DANXBOT_DISPATCH_TOKEN="$TOKEN" DANXBOT_WORKER_ENROLLMENT_SECRET="$SECRET" launch-worker TARGET=<t>
 ```
 not:
 ```bash
 export DANXBOT_DISPATCH_TOKEN="$TOKEN"   # WRONG — .env silently wins inside the recipe
-make launch-worker BOARD=<board>
+make launch-worker TARGET=<t>
 ```
 This bit BOTH the host-mode path (`scripts/worker-env.sh`, fixed in DX-1763 with an explicit preset/restore pattern around its OWN `.env` re-sourcing) and the docker path (`docker-compose.worker.yml`'s `${VAR}` substitution, which reads whatever the recipe shell ultimately exports). The `${VAR}` substitution mechanism itself is NOT the bug here — it's the `-include .env` vs. shell-export precedence one level up, in the Makefile.
 
@@ -283,28 +283,14 @@ This bit BOTH the host-mode path (`scripts/worker-env.sh`, fixed in DX-1763 with
 
 The DOCKER worker path has no such restriction — `docker compose up -d` backgrounds the container regardless of the invoking shell's nesting, so an authorized agent CAN launch the docker path from inside its own session. Prefer the docker path when an agent (rather than the operator) needs to bring a worker up.
 
-## syncWorktree ff-only abort — never work around with ref/index/tree mutation (DX-340)
+## Worktree git contention → gitignore boundary, never ref/index/tree mutation
 
-`syncWorktree` (`src/agent/worktree-manager.ts:447-496`, per DX-293) is intentionally strict: `git pull --ff-only origin/main` aborts on any dirty / divergent working tree, and `dispatchWithRecovery` (`src/dispatch/recovery-mode.ts:65-84`) escalates that abort to `agents.<name>.broken` quarantine. The strictness is the feature — it surfaces writer-vs-git contention loudly instead of silently destroying work.
+If a consumer repo TRACKS paths that danxbot's inject pipeline (`src/inject/*`) rewrites into `<consumer-repo>/.danxbot/*` on every tick, the pre-spawn worktree sync (`src/dispatch/worktree-ff.ts`, DX-1154 — see `.claude/rules/agent-dispatch.md`) sees a dirty tree every time and escalates to a `worktree-maintenance` dispatch instead of the work dispatch. `git update-ref` / `git reset --hard` / `git stash` / `git checkout <file>` on the dirty paths are forbidden workarounds regardless of motivation (`dev:git-discipline`) — they mask the real bug and corrupt agent state without fixing the recurring dirt.
 
-**Forbidden "workarounds" — every one masks the real bug + corrupts agent state:**
-
-- `git update-ref refs/heads/<branch> <commit>` to skip the merge → ref pointer moves but the working tree doesn't; next tick dirties differently; the agent quarantines on the next dispatch instead of this one.
-- `git reset --hard origin/main` to "force the worktree to current" → destroys whatever the inject pipeline (or any other live writer) wrote since fork; same dirt reappears on the next tick.
-- `git stash` of the inject-written files → destroys the inject's output; next tick re-writes it; oscillation, not a fix.
-- `git checkout <file>` / `git restore` on the dirty paths → already banned in `dev:git-discipline`, regardless of motivation.
-
-**Correct fix (canonical example: DX-340).** danxbot's inject pipeline (`src/inject/*`, e.g. `syncRepoFiles`) rewrites danxbot-owned content into `<consumer-repo>/.danxbot/*` every tick. When the consumer repo TRACKS those paths, every tick dirties the working tree → `syncWorktree` aborts → quarantine. The fix is on the writer-side gitignore boundary:
+**Correct fix is on the writer-side gitignore boundary:**
 
 1. Extend `<repo>/.danxbot/.gitignore` (via `ensureGitignoreEntry` calls in the inject pipeline) to cover the inject-owned paths.
 2. One-time `git rm --cached` of those paths in each consumer repo, commit, push. Files stay on disk; inject keeps writing them; git stops seeing the writes as modifications.
-3. Re-dispatch — `syncWorktree` returns `noop` or a clean ff merge.
+3. Re-dispatch — the pre-spawn sync returns clean.
 
-**Mechanical decision rule when `syncWorktree` aborts on ff-only:**
-
-1. `git status --short` inside the failing worktree → which paths are dirty?
-2. Identify the writer (`grep -r "<path-fragment>"` across danxbot `src/`; `syncRepoFiles` / any inject helper = the writer is danxbot itself).
-3. Fix the gitignore at the writer's gitignore boundary. Commit. Push. One-time `git rm --cached` in the affected consumer repo(s).
-4. Re-dispatch.
-
-Reaching for ref / index / tree mutation in step 3 is a workflow violation. The right action is always on the writer side.
+Decision rule: `git status --short` in the worktree to find the dirty paths → identify the writer (`grep -r "<path-fragment>"` across danxbot `src/`) → fix the gitignore at that writer's boundary → commit, push, one-time `git rm --cached` → re-dispatch.

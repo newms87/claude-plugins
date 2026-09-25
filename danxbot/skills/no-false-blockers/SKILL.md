@@ -13,9 +13,9 @@ escalate to the operator (opening a problem via `issue_problem`, the only way
 a card reaches a human).** Use the in-session resolution below; keep the
 card moving.
 
-These extend (do NOT override) `danx-next/SKILL.md` Step 10 — Step 10 stays
-the authoritative menu. This rule names the patterns Step 10 does not yet
-list.
+These extend (do NOT override) `danx-next`'s Step 10 (`references/step-procedures.md`
+§ "Step 10 — Blocker You Cannot Resolve") — Step 10 stays the authoritative menu. This
+rule names the patterns Step 10 does not yet list.
 
 ## Pattern 1 — Test failure unrelated to your card
 
@@ -48,36 +48,11 @@ forbidden here: any "verify failure pre-existed my changes"
 investigation. There is ZERO value in the answer — the suite either
 passes for YOUR changes (option 2) or it does not (option 1 / 3).
 
-### Pre-action gate — destructive working-tree op
-
-Before invoking ANY of the forbidden commands above, you MUST write a
-3-step audit into your reasoning. Skipping the audit is a rule
-violation EVEN IF the operator told you to do it. "User said do it" /
-"operator authorized" is NOT enough — the operator expects you to
-investigate first, then act on the result.
-
-1. `git log -1 -- <path>` — who last committed; what's the prior
-   shape; is the uncommitted diff a deviation from a recent commit by
-   the same author?
-2. Read the diff content + its inline comments — does the diff
-   justify itself in plain language (e.g. "fixes prod crash on
-   transient mid-write rows")? If yes, the diff is likely a real fix
-   and the test is what's stale.
-3. Search open issue cards / active dispatches for any peer agent
-   mid-flight on this file (query open cards via `issue_list` for the path; check
-   `dispatches` table for in-flight jobs touching the file). If a
-   peer is iterating, leave it alone — your "fix" cascades into
-   their work.
-
-Only after answering all 3 in writing may you proceed. If any answer
-points to "this diff is intentional / a peer is working on it / there
-is a real bug it fixes" — the action is FORBIDDEN regardless of
-authorization.
-
-Reverting another agent's uncommitted work cascades — the peer agent
-re-runs, re-applies, two sessions fight over the same file, the
-working tree melts. Cost of the cascade > cost of any verification
-benefit. Do not.
+Before touching ANY destructive git op, or reasoning about whether a
+failure "pre-existed your changes," run `danxbot:issue-blocker`'s
+Checklist Items 2–4 (the uncommitted-diff audit, the stash-forbidden
+rule, and root-cause-by-reading) — that skill owns the full audit; this
+file does not restate it.
 
 **Forbidden:** "I stashed the diff, ran tests, popped back to confirm
 the failure pre-existed" → rule violation, regardless of how clean the
@@ -97,19 +72,21 @@ one that works.
 
 ### a) Component test (cheapest, almost always sufficient)
 
-Mount the SFC with fixture data using `@vue/test-utils` + the dashboard's
-existing `vitest` setup (`cd dashboard && npx vitest run`). Assert the DOM
-reflects the new state. This satisfies "renders X when state Y" ACs
-deterministically without a browser.
+Mount the component with fixture data using `@testing-library/react` + the
+frontend's own `vitest` setup (`cd frontend && npx vitest run`). The Vue
+dashboard in `dashboard/` is frozen — new UI work and its tests target
+`frontend/` (React), never a `.vue` SFC (`.claude/rules/ui-deprecation.md`).
+Assert the DOM reflects the new state — this satisfies "renders X when
+state Y" ACs deterministically without a browser.
 
-```ts
-// dashboard/src/components/AgentBadge.test.ts
-import { mount } from "@vue/test-utils";
-import AgentBadge from "./AgentBadge.vue";
+```tsx
+// frontend/src/components/AgentBadge.test.tsx
+import { render, screen } from "@testing-library/react";
+import { AgentBadge } from "./AgentBadge";
 
 it("renders initials when no avatar", () => {
-  const wrapper = mount(AgentBadge, { props: { name: "Dan", size: "md" } });
-  expect(wrapper.text()).toContain("D");
+  render(<AgentBadge name="Dan" size="md" />);
+  expect(screen.getByText("D")).toBeInTheDocument();
 });
 ```
 
@@ -139,7 +116,7 @@ title to a programmatic gate you CAN run:
 
 ```yml
 # was: "Manual smoke at http://localhost:5566 — badges visible"
-# now: "Component test dashboard/src/components/AgentBadge.test.ts asserts badge renders for issue rows + drawer header + busy state"
+# now: "Component test frontend/src/components/AgentBadge.test.tsx asserts badge renders for issue rows + drawer header + busy state"
 ```
 
 Add a `comments[]` note explaining the rewrite. The AC's intent is
@@ -165,14 +142,15 @@ runtime side-effect.
 
 **In-session resolution:**
 1. Identify the function / module that produces the derived state. Examples:
-   `src/poller/index.ts#deriveEpicStatus`, `src/worker/auto-sync.ts`,
+   `src/issues/cascade/recompute-derived.ts` (container/Epic-Feature rollup —
+   calls `deriveContainerStatus` from `src/issues/derive/container-status.ts`),
    `src/dashboard/server.ts` post-save handlers.
 2. Confirm a unit test exists that exercises that function directly with
    fixture inputs. If absent, write one (Step 1.5 — fix in-session).
 3. Rewrite the AC to point at the unit test:
    ```yml
    # was: "Epic DX-158 every AC checkable; epic flipped to Done by operator/automation on terminal save"
-   # now: "Unit test src/poller/epic-derive.test.ts asserts deriveEpicStatus({phases all Done}) returns 'Done' (covers the auto-flip code path that runs on next poll tick after terminal save)"
+   # now: "Unit test src/issues/derive/container-status.test.ts asserts deriveContainerStatus({children all Done}) returns 'Done' (covers the rollup code path the next dispatcher tick runs after terminal save)"
    ```
 4. Run the unit test, check the AC off.
 
@@ -183,13 +161,7 @@ derivation function IS the verification.
 
 ## Generalized rule
 
-Resolve a blocker yourself whenever you can. A card is held with **Blocked**
-(`issue_transition({action: 'block'})`) only when its blocker cannot be
-resolved in this dispatch; blocked stops auto-dispatch but never reaches the
-operator. A card goes to the operator — by opening a problem via
-`issue_problem` add — only when a HUMAN ACTION or decision (credential
-rotation, external repo write access, a design decision only the operator
-can make) is the next step. Three things that are NOT blockers at all:
+Resolve a blocker yourself whenever you can. The three patterns above collapse to one table:
 
 | Apparent blocker | Actual class | Resolution |
 |---|---|---|
@@ -197,15 +169,7 @@ can make) is the next step. Three things that are NOT blockers at all:
 | "Manual UI smoke" AC | Wording defect or programmatic substitute available | Component test → playwright → rewrite AC |
 | Post-terminal-save behavior verification | Self-referential AC | Rewrite AC to point at the unit test for the code path |
 
-Before calling `issue_transition({action: 'block'})` or escalating with `issue_problem` add, mechanically run this checklist:
-
-1. Is this unresolvable by me in this dispatch — and, for an escalation,
-   does it require a HUMAN to act or decide (rotate credentials, push to SSM,
-   make a design decision, edit a repo I cannot write to)? **No →
-   neither block nor escalate; resolve it.**
-2. Does any existing tool in my dispatch (Bash, playwright MCP, dashboard token file, component test runner, unit test runner) produce evidence equivalent to what the AC asks for? **Yes → use it.**
-3. If the AC's literal wording demands something only a human can do,
-   does its INTENT have a programmatic substitute? **Yes → rewrite the
-   AC to the substitute, add a comment via `issue_comment` explaining the rewrite, verify, check off.**
-
-Only after answering all three "no" do you proceed to Step 10 (hold with `blocked`, or escalate by opening a problem).
+These three patterns are inputs to `danxbot:issue-blocker`'s 8-item Pre-Block Gate, not a
+substitute for it — that skill owns the full block-vs-escalate checklist and the field-selection
+table (`blocked` vs an open problem vs `waiting_on` vs `conflict_on[]`). Run it before calling
+`issue_transition({action: 'block'})` or `issue_problem` add.

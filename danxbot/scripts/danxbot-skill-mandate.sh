@@ -16,7 +16,7 @@ HIGH-VIOLATION:
 (4) danxbot:no-false-blockers — assessing blocker is genuine vs ambiguous/recoverable (three false-blocker patterns).
 (5) danxbot:no-unauthorized-worker-launch — about to run `make launch-worker`/`make launch-all-workers`/`make deploy*`/any worker or prod start.
 (6) danxbot:autonomous-mode — dispatched to worker (DANXBOT_REPO_NAME set); no AskUserQuestion, no plan-mode pause, one exit via danxbot_complete.
-(7) danxbot:halt-flag — CRITICAL_FAILURE present, poller halted, or signaling `danxbot_complete({status:"critical_failure"})`.
+(7) danxbot:halt-flag — a board_halts row is raised, dispatch halted, or signaling `danxbot_complete({status:"critical_failure"})`.
 (8) danxbot:danxbot — touching <repo>/.danxbot/, running make launch-worker/deploy, investigating stuck dispatch, explaining dispatch runtime.
 (9) danxbot:db-reset — destructive DB reset (`migrate:fresh`, `DROP DATABASE`, etc.).
 
