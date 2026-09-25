@@ -11,7 +11,7 @@ description: 'Core dev principles: ideal correct solution, no legacy/fallbacks/d
 
 Build the system **correctly** every time. Cost, effort, and token usage are NEVER factors when choosing between a correct solution and a worse one. The system stays **lean and clean** — every line either earns its place under the principles below or it is deleted in the same change.
 
-The default failure mode this skill exists to block: agent reaches for the fastest patch, ships a partial fix, leaves the legacy path running, and ships a solution that is not the architecturally correct shape. Its mirror image is just as costly: agent hits a defect in its own new work and WITHDRAWS the work rather than finishing it (#2b).
+The default failure mode this skill exists to block: reaching for the fastest patch, shipping a partial fix, leaving the legacy path running. Its mirror image is just as costly: hitting a defect in your own new work and WITHDRAWING it rather than finishing it (#2b).
 
 Reflect first. Decide. Execute.
 
@@ -29,11 +29,7 @@ Mechanical gate before committing to any approach:
 
 Yes → drop A. Don't mention it. Choose B and execute.
 
-Approaches **disqualified** by this principle (do not consider, do not propose, do not weigh):
-- "A takes longer to write." → just do A.
-- "B touches another module / repo / package." → just do B.
-- "C requires extending shared infra." → extend it.
-- "D needs new tests / types / abstractions." → that's how the work gets done.
+**Disqualified** (never a reason to prefer the worse approach): takes longer to write, touches another module/repo/package, requires extending shared infra, needs new tests/types/abstractions. Each is just what doing the ideal approach costs — pay it.
 
 The only real trade-offs between approaches are those the **running system** would experience differently:
 - Two architecturally clean approaches with **different system invariants**.
@@ -171,11 +167,11 @@ If any step changes the plan, restart from step 2. The plan is ready when one fu
 
 ## Composes With
 
-- `dev:git-discipline` — owns the MECHANICS of destructive git operations (revert / reset / restore / checkout are gated there). This skill owns the DECISION that precedes them: #2b says work that is merely imperfect is never a candidate for removal in the first place, so the question of how to remove it safely never arises.
-- `dev:code-quality` — the per-edit zero-tech-debt + SOLID checklist that owns the file-level details (refactor first, instance state over param threading, comments-are-authoritative). This skill owns the **decision and shape**; code-quality owns the **execution**.
-- `dev:debugging` — the bug-fix workflow already requires root-cause; this skill adds the rule that any code in the failure's blast radius made obsolete by the fix is deleted in the same commit, not left "for later."
-- `investigate:investigate` — read-only diagnostics still apply the reuse audit principle when surfacing findings.
-- `danxbot:plan-workflow` — owns where a plan is recorded (the danxbot Plan: records, architecture document, attached cards); this skill owns the principle the plan must satisfy before it's allowed to leave plan mode.
-- `human-collaboration:human-loop` — owns when / whether to surface a decision to a human collaborator. This skill is silent on user interaction; the four principles apply regardless of who or what consumes the resulting work.
+This skill owns the decision/principle; these own the mechanics — when in doubt, this skill wins on principle, they win on mechanics.
 
-When in doubt, this skill wins on **principle**, the composing skills win on **mechanics**.
+- `dev:git-discipline` — mechanics of destructive git ops (#2b: imperfect work is never a removal candidate, so how-to-remove-safely never arises).
+- `dev:code-quality` — file-level execution of these principles (refactor first, comments-are-authoritative).
+- `dev:debugging` — bug-fix root-cause workflow; this skill adds "delete obsolete code in the same commit."
+- `investigate:investigate` — read-only diagnostics; still applies the #4 reuse audit when surfacing findings.
+- `danxbot:plan-workflow` — where a plan is recorded; this skill is what the plan must satisfy before leaving plan mode.
+- `human-collaboration:human-loop` — when/whether to surface a decision to a human; this skill is silent on that and applies regardless.
