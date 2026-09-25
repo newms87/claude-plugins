@@ -86,7 +86,7 @@ describe("human-loop-mandate.sh", () => {
   test("still fires on a typed operator prompt containing '?'", () => {
     const out = runHook("is this firing on every turn?");
     assert.match(out, /QUESTION DETECTED in user prompt/);
-    assert.match(out, /STOP all work/);
+    assert.match(out, /Skill\(human-loop\)/);
   });
 
   test("stays silent on a typed operator prompt with no '?'", () => {
@@ -104,7 +104,7 @@ describe("human-loop-mandate.sh", () => {
     // wrapper, not the body text, to decide.
     const out = runHook(TASK_NOTIFICATION_BODY);
     assert.match(out, /QUESTION DETECTED in user prompt/);
-    assert.match(out, /STOP all work/);
+    assert.match(out, /Skill\(human-loop\)/);
   });
 
   test("stays silent on the real notification shape: tag alone on the first line, no preamble", () => {

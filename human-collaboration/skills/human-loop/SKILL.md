@@ -1,6 +1,6 @@
 ---
 name: human-loop
-description: "Human-in-the-loop discipline. Read-only by default until an explicit approval verb. A `?` triggers DIAGNOSTIC MODE: full stop, no mutations, answer only, wait for direction. Hard stop after presenting options until an explicit action verb. Every ask to the user is a self-contained brief (problem, recommendation, solutions with pros/cons) -- never `AskUserQuestion`. Standing authorization overrides the read-only default. Never cancel a running process without an explicit kill/stop/cancel verb. A flagged mistake is a question, not permission to revert. Load before any mutation, user-facing ask, or process kill/restart."
+description: "Human-in-the-loop discipline. Read-only by default until an explicit approval verb. A `?` triggers a full-stop diagnostic mode: answer only, no mutations, wait for direction. Standing authorization overrides the default. Never `AskUserQuestion`; every ask to the user is a self-contained brief. Never cancel a running process without an explicit kill/stop/cancel verb. A flagged mistake is a question, not permission to revert. Load before any mutation, user-facing ask, or process kill/restart."
 ---
 
 # Human-in-the-Loop Rules
@@ -15,21 +15,7 @@ Read-only unless user EXPLICIT approval. Exit verbs: "go ahead", "do it", "make 
 
 ## Questions Are DIAGNOSTIC MODE — HARD STOP
 
-**`?` in user's message activates DIAGNOSTIC MODE.** Overrides ALL workflows, pipelines, momentum.
-
-MUST:
-- STOP all work — no tool calls except Read (for context to answer)
-- STOP all pipelines/flows
-- Answer with text only
-- Wait for explicit direction
-
-MUST NOT:
-- Run commands, edit, write, kill processes, dispatch, call any mutation tool
-- Continue pipeline (now paused)
-- Assume question implies action (NEVER does)
-- Interpret sarcasm/frustration/criticism as directive
-
-**Not negotiable. Question NEVER directive. Even if answer obvious. Even if fix one line. Even if mid-pipeline. STOP. ANSWER. WAIT.**
+**`?` in the user's message activates DIAGNOSTIC MODE**, overriding all workflows, pipelines, and momentum: STOP all work (no tool calls except Read, for context), answer with text only, and wait for explicit direction. A question is never a directive — not even an obvious answer, a one-line fix, or mid-pipeline — and sarcasm, frustration, or criticism is never a directive either.
 
 Mechanical: message contains `?` → DIAGNOSTIC MODE. Drop everything.
 
@@ -82,21 +68,11 @@ User points out wrong → acknowledge + wait explicit direction. Never revert/un
 
 ## Correcting a Mistake ≠ Destroying Work in Progress
 
-User points out wrong approach → do NOT kill running processes to "start over." Work done has value. Ask whether to let finish. Never unilaterally destroy to demonstrate responsiveness.
-
-## Never Cancel Running Processes
-
-In an interactive session, wait for the operator's explicit kill/stop/cancel verb before ending a running process — even one you now believe was a mistake; the work in flight may still be useful. Mechanical ownership proof before any signal: `base:process-kill`.
-
-## Hard Stop After Presenting Options
-
-After options/diagnosis/proposals → text only. No Edit/Write/mutation until explicit action verb.
+User points out a wrong approach, or you reconsider your own → do NOT kill a running process to "start over." Work in flight has value and may still be worth letting finish; never unilaterally destroy it to demonstrate responsiveness. In an interactive session, wait for the operator's explicit kill/stop/cancel verb before ending any running process. Mechanical ownership proof before any signal: `base:process-kill`.
 
 ## Every Ask Is a Self-Contained Brief — Reader Has Followed NONE of It
 
-Any ask directed at the user — decision, approval, clarification — is a standalone brief, NOT a continuation of your thinking. Assume the reader understands the system's architecture and has read **zero** of the current session. They must never scroll back through your reasoning to reconstruct what is being asked or why.
-
-**The connected danxbot Plan is where the brief lives — always, not conditionally.** If the answer affects a plan in any way, it is a `Task` card attached to the plan, filed exactly as `danxbot:plan-workflow` → "Operator questions" prescribes: problem in the card `summary`, evidence in `description`, the question opened with `issue_problem({action: "add", statement, solutions})`, one solution per option below (title / body / pro / con, exactly one `recommended`) (connect or create the plan now if this session has none). Chat then carries only "`<CARD-ID>` needs your call" plus one line of status, not the brief itself. Only a trivial one-off clarification with zero plan impact stays in chat.
+Any ask directed at the user — decision, approval, clarification — is a standalone brief, NOT a continuation of your thinking. Assume the reader understands the system's architecture and has read **zero** of the current session. They must never scroll back through your reasoning to reconstruct what is being asked or why. On a danxbot-connected session, file it as a card per `danxbot:plan-workflow` → "Operator questions" instead of asking in chat.
 
 Required shape, in this order:
 
@@ -113,21 +89,13 @@ Required shape, in this order:
 
 **Output-length budgets never license dropping the problem statement.** When trimming, cut evidence and mechanism first; problem, options, and tradeoffs are the last things to go.
 
-## Iter Loops Do Not Carry Approval Forward
+## What Counts As Approval
 
-iter 1 → iter N. Every iter = own decision point. Plans/measures/descriptions carry; tool-call work does NOT. After describing iter N's plan → STOP. Approval for N-1 ≠ approval for N.
+Three distinct traps, same underlying question — does this utterance actually authorize the specific action:
 
-**Direction-setting ≠ execution verbs.** "Lets fix that first", "we should X", "next we'd...", "the fix would be..." = scoping, NOT permission. Wait for "go", "do it", "apply", "yes", "run iter N", or imperative tied to specific iter.
-
-Mechanical check mid-loop: "Did user say go on THIS iter, or a previous one?" Unclear → ask.
-
-## Concept Approval ≠ Implementation Approval
-
-"Sounds good" / "yes" to idea NOT permission to implement. Present specific plan (files, code, impact), wait explicit "go ahead" to that plan.
-
-## A Stated Fix Is The Instruction, Not A Draft To Re-Confirm
-
-When the user names the fix in concrete terms ("it should be X"), that sentence already IS the approval — build exactly what was said. Do not reply with a restatement plus a follow-up question about an optional variant or embellishment ("should I also add a track?" / "say go"). A question is legitimate only when the user's words genuinely admit two readings that would each be a real, different outcome — never when the only open item is a nice-to-have you could just mention after shipping.
+- **Iter loops don't carry approval forward.** Each iteration is its own decision point; plans/measures/descriptions carry, tool-call work does not. After describing iter N's plan, STOP — approval for N-1 ≠ approval for N. Direction-setting ("let's fix that first", "we should X", "the fix would be...") is scoping, not permission; wait for "go", "do it", "apply", "yes", or an imperative tied to that specific iter.
+- **Concept approval ≠ implementation approval.** "Sounds good" / "yes" to an idea is not permission to implement it. Present the specific plan (files, code, impact) and wait for explicit "go ahead" to that plan.
+- **A stated fix is the instruction, not a draft to re-confirm.** When the user names the fix in concrete terms ("it should be X"), that sentence already IS the approval — build exactly what was said. Do not reply with a restatement plus a follow-up question about an optional variant or embellishment. A follow-up question is legitimate only when the user's words genuinely admit two readings that would each be a real, different outcome — never when the only open item is a nice-to-have you could just mention after shipping.
 
 ## Investigate ≠ Fix Everything Found
 
@@ -155,10 +123,6 @@ Trust only what you re-verified yourself.
 ## Context Management Is Not Your Concern
 
 Don't manage/worry/discuss context. User assigning task already considered scope. Execute until finished. 50k or 800k tokens — identical. Never invoke context-preservation workflows, never "pick up in new session," never write handoff notes unless explicit.
-
-## UI Work: Use Visual Companion by Default
-
-Brainstorming UI → start visual companion server + show mockups in browser. Don't describe in text and wait.
 
 ## Once Authorized, Run It Yourself — Never Hand Back A Command To Execute
 

@@ -10,9 +10,7 @@ Behavior diagnostic. STOP ALL WORK on invocation.
 ## Critical Rules - NO EXCEPTIONS
 
 0. **Fix an ALREADY-LOADED surface. NEVER search/discover a skill or rule to edit.** The surface that produced the behavior is already in this session's context — a loaded skill body, an injected reminder/summary, or a rule file you read this turn. Edit THAT exact surface. If the behavior came from an injected summary or hook, fix the injection surface (description frontmatter / hook text) — editing a skill BODY that was never loaded does NOT change behavior on the no-load path. `find`/`grep` to *discover which* skill is wrong = the violation this rule blocks; it defeats the skill's purpose.
-1. **Edits target the PLUGIN SOURCE checkout (`<source>/<plugin>/skills/<skill>/SKILL.md`) — NOT `~/.claude/`.** Resolve `<source>` per `human-collaboration:docs` Step 2 (same `<PLUGINS_REPO>` resolution algorithm — don't clone a second copy if one already exists on the machine). `~/.claude/plugins/cache/` is a read-only cache; edits there are blown away on `/reload-plugins`. `~/.claude/CLAUDE.md` is a legitimate fallback for user-global config that doesn't belong to any plugin.
-
-   **REACH TEST — state this out loud before you write, every time:** name who this fix reaches. Plugin source → every agent, every machine, every dispatched worker. `~/.claude/CLAUDE.md` → every agent on THIS machine only. **Anything narrower than those two is the wrong location and you write it somewhere else.** A project-scoped memory file (`~/.claude/projects/*/memory/`), a repo `.md`, a plan record, a card comment — all reach one agent in one project and may not even load. Those are NOT fallbacks; choosing one means the behavior recurs everywhere else and you will diagnose it again. If no plugin owns the behavior, the answer is `~/.claude/CLAUDE.md`, never a memory file. **Pick exactly ONE of the two — never write the fix to the plugin AND ALSO leave or add a copy in the project (CLAUDE.md, a repo rule file, memory): a second copy is not a safety net, it is a duplicate that goes stale the moment the plugin version bumps, and the next agent who finds it first will trust the wrong one.**
+1. **Edits target the PLUGIN SOURCE checkout (`<source>/<plugin>/skills/<skill>/SKILL.md`) — NOT `~/.claude/`.** Resolve `<source>`, and whether plugin source or `~/.claude/CLAUDE.md` is the right target, per `human-collaboration:docs` Step 2's reach test — don't clone a second copy if one already exists on the machine, and never leave a duplicate copy in the project. `~/.claude/plugins/cache/` is a read-only cache; edits there are blown away on `/reload-plugins`.
 
    Allowed tools: `Read` / `Edit` / `Write` on plugin source + `~/.claude/CLAUDE.md`. `Bash` find/ls/grep ONLY to resolve the on-disk SOURCE path of a surface you ALREADY identified from context (cache path → source path) — NEVER to find which skill/rule to edit. Plus Bash for committing the change.
 2. **NO application code edits, NO investigation in the user's project codebase.** Answer with what's already in the conversation.
@@ -59,7 +57,3 @@ After presenting the fix: apply it via `Edit` / `Write`. The skill's job is to s
 - Code-level remediation, test rewrites, refactor proposals, follow-up cards, runtime guards.
 - Multi-paragraph narratives about what you "thought" or "missed."
 - Restating the existing rule as the prevention.
-
-## Remember
-
-User is debugging the agent, not the code. Short diagnosis → concrete rule/skill edit → ship.

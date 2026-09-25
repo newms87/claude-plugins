@@ -46,15 +46,11 @@ if printf '%s' "$PROMPT" | grep -qxF -- "$TASK_NOTIFICATION_MARKER"; then
 fi
 
 if echo "$PROMPT" | grep -q '?'; then
-    GATE="QUESTION DETECTED in user prompt. MANDATORY: Load Skill(human-loop) immediately.
-
-Diagnostic mode overrides ALL behaviors:
-1. STOP all work — no tool calls except Read for context
-2. STOP all pipelines — paused until explicit action verb
-3. ANSWER the question — text only
-4. WAIT for explicit direction — user decides next
-
-NEVER assume question implies action. NEVER use tool calls without fresh verb."
+    # DX-2979: this used to hardcode its own STOP/no-tool-calls directive, an
+    # independently-drifting duplicate of Skill(human-loop)'s own "Questions Are
+    # DIAGNOSTIC MODE" section. The skill body is now the single source of truth;
+    # this hook is just the trigger that makes sure it gets loaded.
+    GATE="QUESTION DETECTED in user prompt — load Skill(human-loop) now; its read-only, diagnostic-mode default applies (standing authorization still overrides it)."
 
     # UserPromptSubmit adds plain stdout to the model's context — no JSON envelope.
     printf '%s\n' "$GATE"
