@@ -55,6 +55,8 @@ Tests = contract between intent and behavior. Skipped steps = test bugs.
 
 **Forbidden:** "flaky anyway, re-run it" (find root cause) · "update assertion to match code" (editing spec to fit bug) · "pre-existing, not mine" (you own all tests).
 
+**A characterisation test outlives its diagnosis.** A test written to pin down a bug is scaffolding for one hypothesis about where the fix will land. When the fix lands somewhere else (a layer up, a different function), the test keeps asserting the old, now-wrong theory and passes for the wrong reason. A green characterisation test proves nothing about correctness by itself — when the fix lands, go back and re-derive what the test should now assert; invert it and keep the history in the test body, don't delete it and don't leave it asserting the old theory.
+
 ## Framework Gotchas
 
 **Vitest:** `vi.clearAllMocks()` + reset return values in `beforeEach`. `restoreMocks: true` in config better than `afterEach`.

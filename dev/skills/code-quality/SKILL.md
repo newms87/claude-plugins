@@ -20,7 +20,7 @@ Module imports deleted symbol = migrate it, don't delete module. Rewrite ~90% of
 
 ## Never Guess — Verify
 
-Read source before using a prop/component/code. Reading = seconds; fixing a guess = minutes. Comments on a class/method are authoritative.
+Read source before using a prop/component/code. Reading = seconds; fixing a guess = minutes. Comments on a class/method are authoritative — **when read, not self-updating after.** A docblock was true the moment it was written; nothing marks the moment it stopped being. Before trusting one: (1) when it names a producer, caller, or mechanism, confirm that thing still exists — naming one you haven't checked manufactures evidence; (2) when you change a branch, re-read every docblock/constant describing that branch, including ones you didn't edit; (3) verifying the headline claim isn't verifying the docblock — check its examples too, they're what the next reader copies. A wrong docblock compounds: it gets copied, gets cited by other docblocks as corroboration (agreement between prose, not code), and survives symbol deletion since a typechecker doesn't see comments. Two cheap checks: grep for a deleted symbol in PROSE, not just imports; when a docblock cites another docblock, follow the citation to CODE — if the chain ends in more prose, you've corroborated nothing.
 
 **A comment referencing a tracked work item (`// CARD-ID: reason` / `# TICKET-N: reason`) is authoritative on WHY** — it records a standing constraint the original work imposed. Before changing code that carries such a ref, consult the referenced item to recover the full intent; editing past it blind risks silently breaking the requirement that put it there. When you make a non-obvious decision driven by a tracked item, add the same ref.
 
