@@ -24,11 +24,10 @@
 #
 # WHY PLAIN STDOUT AND NOT `jq`
 # -----------------------------
-# Verified on the operator's Windows machine 2026-09-05 with a live probe
-# hook: hooks execute under Git Bash (MINGW64_NT, bash 5.3.15) and `jq` is
-# NOT on the hook runtime PATH (nor in WSL). Every hook here that piped its
-# text through `jq -n ... hookSpecificOutput.additionalContext` therefore
-# emitted NOTHING and injected NOTHING — installed, silent, useless.
+# Verified 2026-09-05 with a live probe hook: hooks execute under Git Bash
+# (MINGW64_NT, bash 5.3.15) and `jq` is NOT on the hook runtime PATH. Every
+# hook here that piped its text through `jq -n ... hookSpecificOutput.additionalContext`
+# therefore emitted NOTHING and injected NOTHING — installed, silent, useless.
 # Claude Code adds a SessionStart / UserPromptSubmit hook's stdout to the
 # model's context as plain text on exit 0, so plain stdout is both the
 # documented path and the one with zero dependencies. Do not reintroduce a
