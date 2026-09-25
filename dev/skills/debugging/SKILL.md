@@ -7,7 +7,7 @@ description: 'Bug + investigation discipline: Reproduce → Evidence → Hypothe
 
 Bugs = skipped steps. The checklist IS the work.
 
-**Triggers:** test fails · command returns error · unexpected value · user reports broken · stack trace / error log · any claim about system behavior · timing/latency claims · paraphrased code description · causality claim ("failed because Y") · config-value assertion.
+**Triggers:** any claim about system behavior — test fails, command errors, unexpected value, user reports broken, stack trace, timing/latency claim, causality claim ("failed because Y"), config-value assertion.
 
 **No minimum size.** Typo = 500 error. Same checklist applies.
 
@@ -39,13 +39,9 @@ You do NOT skip phases. If a phase doesn't apply, mark it complete with a one-li
 
 **1. Reproduce:** exact inputs/env/sequence. If user-reported, ask URL/request-id/steps — don't guess. STOP if can't reproduce.
 
-**2. Capture evidence:** pull actual data (offending row, payload, log, audit record). DB bugs: `SELECT *` + timestamps. Forbidden: "code suggests it must do X".
+**2. Capture evidence, 4. Form hypothesis, 5. Prove it:** same discipline as `investigate:investigate` steps 2–5 — pull real data, not "code suggests it must do X"; one-sentence falsifiable hypothesis; prove with a runtime artifact (log line, file:line, command output, DB row). Forbidden proof: different instance, code-read, pattern-match.
 
-**3. Identify producer:** find what wrote the bad value. (1) currently buggy, (2) was buggy, fixed now, (3) expectation wrong, (4) external source. Answer all four before editing.
-
-**4. Form hypothesis:** one sentence "X happening because Y causing Z." Every link independently verifiable. 4+ links = don't understand yet.
-
-**5. Prove hypothesis:** experiment (log, debug cmd, repro, dump state). Proof = runtime artifact (log line, file:line, command output, DB row, JSONL). Forbidden proof: different instance, code-read, pattern-match. Pre-report audit: `LINK: <claim> | PROOF: <artifact-id>` for every causal link.
+**3. Identify producer** (bug-specific, no equivalent in investigate:investigate): find what wrote the bad value. (1) currently buggy, (2) was buggy, fixed now, (3) expectation wrong, (4) external source. Answer all four before editing.
 
 ## Phases 6–11: Decide → Close
 
@@ -53,9 +49,9 @@ You do NOT skip phases. If a phase doesn't apply, mark it complete with a one-li
 
 **6.5. Solution quality:** (1) mechanism not symptom, (2) textbook for platform, (3) class not instance. Tier 1 (fixes mechanism, textbook) > Tier 2 (architectural) > Tier 3 (observability, co-ships with T1) > Tier 4 (defense, under T1 only). Forbidden: symptom-only patch, retry as primary, local patch without naming others, "later" without artifact.
 
-**7. Write failing test:** TDD non-negotiable. Test describes bug, not fix. "Can't unit test" = misunderstanding. All categories (infra, config, cross-process) require tests.
+**7. Write failing test:** TDD non-negotiable, test describes the bug not the fix — see `dev:testing` #2 (same all-categories-need-tests rule).
 
-**8. Implement:** fix producer (case #1/#4), plan data fix (case #2), fix expectation (case #3). Minimal. Forbidden: consumer tolerant (`??`, `try/catch`), "legacy data accept it", "error message tells what to change".
+**8. Implement:** fix producer (case #1/#4), plan data fix (case #2), fix expectation (case #3). Minimal — no fallback/consumer-tolerant patch (`??`, `try/catch`) papering over the bug; see `dev:ideal-solution-mindset` #2.
 
 **8.0. MECHANISM-READ GATE (mandatory before the FIRST edit/commit of any fix).** Quote, from the source that ENFORCES the behavior (the validator/contract/shape/level/config code itself — `file:line`), the rule the fix must satisfy. An error STRING, a sibling test's pattern, or "the other case does X" is NOT that source — it tells you a symptom, not the governing contract. If you cannot cite the enforcing code, you do not understand the fix yet: keep reading, do NOT edit. **Doubly mandatory when validation is expensive** (a multi-minute run, an LLM pipeline, a deploy) — there you get one shot, so certainty comes from reading the contract, never from "commit a guess and see what the next run says." Committing a fix on an inferred mechanism = the failure this gate blocks.
 
@@ -84,8 +80,6 @@ You do NOT skip phases. If a phase doesn't apply, mark it complete with a one-li
 ```
 
 Multiple bugs → one block per bug, numbered. A "side effect" of a bug uses the same shape with `Side-effect — <name>` heading. A bug summary table is OK as a TOC at the top, but it does NOT replace the per-bug blocks.
-
-**Why this is mandatory:** prose bug reports collapse the five distinct facts into a single ambiguous paragraph — the reader can't tell whether `Actual` is observed or hypothesized, can't reproduce without re-asking for `Scenario`, and can't decide blast radius without `Affects`. The five fields force every claim to be either evidence-backed or visibly missing.
 
 **Forbidden:**
 - Narrative bug reports ("So what happened was…").

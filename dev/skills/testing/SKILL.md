@@ -7,7 +7,7 @@ description: 'Test discipline: pre-run output-to-file, TDD, own-every-test, filt
 
 Tests = contract between intent and behavior. Skipped steps = test bugs.
 
-**Triggers (ALWAYS first time):** invoke runner · run filtering / full suite · write new test · write TDD failing test · fix failing test · delete test · mark skip/xfail · create/update mocks/fixtures · answer coverage question · report test results. **No minimum size** — one `it.only` is enough. **No "quick check" exception** — that's when output gets lost.
+**Triggers (ALWAYS first time):** any test action — run, write, fix, delete, skip/xfail, mock/fixture change, coverage or results question. **No minimum size, no "quick check" exception** — that's when output gets lost.
 
 ## Core Invariants
 
@@ -31,7 +31,7 @@ Tests = contract between intent and behavior. Skipped steps = test bugs.
 
 **What to test:** critical logic · state transitions · security / auth · edge cases (empty/one/many, null/malformed) · error handling · bug regression · boundaries.
 
-**Never test:** framework features (routing, casting) · DB constraints · getters/setters · implementation details ("calls Y three times"). **Rule:** would this fail if MY code broke, or only if framework broke? If framework, skip it.
+**Never test:** would this fail if MY code broke, or only if the framework broke? If framework, skip it (routing/casting, DB constraints, getters/setters, "calls Y three times" implementation details all fail this test).
 
 **Test name = contract, not code.** ✅ `returns_422_when_email_is_missing` ❌ `testFoo`. Readable English sentence.
 
@@ -74,10 +74,8 @@ Tests = contract between intent and behavior. Skipped steps = test bugs.
 | **Bare test invocation** | `npx vitest run` with no redirect | Scrollback lost; re-run cycle begins; flakes evaporate |
 | **Re-run to get different output** | `vitest 2>&1 \| tail` then `vitest 2>&1 \| grep FAIL` then `vitest --reporter=verbose` | Each run rerolls flakes; violates the output-to-file rule |
 | **Grep FAIL on stdout that's already noisy** | Tests logging ERROR stacks in passing error-path tests get caught by `grep FAIL` | Signal lost in noise; read the summary block, not the log spam |
-| **"Pre-existing failure"** | `git diff` to prove a failure isn't yours, then skip it | You own everything. Green suite or no commit |
 | **Full suite for a one-line change** | Skipping `--filter` | 20× slower than needed; iteration cost destroys the fix cycle |
 | **`it.skip`-as-fix** | Mark failing test skipped, move on | Permanent debt, suite looks green but isn't |
 | **Symptom-suppressing assertion edit** | Changing `toBe(42)` to `toBe(43)` to match broken behavior | Editing the spec to match the bug — invert the arrow, fix the code |
-| **Subagent running tests** | Dispatching a test-reviewer agent with Bash permission to re-run | Parallel test runs corrupt each other; parent runs tests |
 | **Mock that tests the mock** | Asserting on `fn.mock.calls[0][0].mock.calls[0]` | Over-specified; refactor will break the test without breaking behavior |
 | **Wall-clock assertion** | `expect(result.timestamp).toBe(Date.now())` without time freeze | Nondeterministic by construction; fix with injected clock |
