@@ -27,6 +27,12 @@ The one real exception is a repo that exists **twice** on genuinely different fi
 
 **A sync delay is never the diagnosis** — it would explain any absence, so it explains nothing. Check the mirror's exclusion list, then read the file back from the side that matters.
 
+## MSYS Path Translation — Absolute Paths Get Mangled in Git Bash
+
+An absolute path typed in git-bash (e.g. `/var/www/html/foo.php`, or a container/WSL path) gets silently rewritten by MSYS path translation into a Windows path like `C:/Program Files/Git/var/www/html/foo.php`. Used as a literal filename rather than a real path, the leading `C:` is read as a directory name and a stray mangled-path tree gets created at the current directory.
+
+**Prevention:** run the command where the path is native instead (inside the container/WSL via `docker compose exec` / `wsl -e`), or prefix the command with `MSYS_NO_PATHCONV=1`; prefer relative paths, which pass through unchanged. A stray directory created by this is untracked and visible in `git status` — delete it, never `.gitignore` it (that hides the signal it's happening again).
+
 ## Docker Containers: Just Start Them
 
 Stopped container ≠ broken infrastructure. `docker compose up -d` and continue. Never install dependencies on host, run project scripts on host, try alternatives that bypass container.
