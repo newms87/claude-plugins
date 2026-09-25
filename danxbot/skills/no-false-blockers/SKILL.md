@@ -159,16 +159,6 @@ verify it → Blocked." That logic blocks every card that touches a system
 with eventual-consistency / post-save hooks. The unit test on the
 derivation function IS the verification.
 
-## Generalized rule
-
-Resolve a blocker yourself whenever you can. The three patterns above collapse to one table:
-
-| Apparent blocker | Actual class | Resolution |
-|---|---|---|
-| Pre-existing flaky test in unrelated file | In-session work or Action Item | Fix in 30 min OR file Action Item, check AC, proceed |
-| "Manual UI smoke" AC | Wording defect or programmatic substitute available | Component test → playwright → rewrite AC |
-| Post-terminal-save behavior verification | Self-referential AC | Rewrite AC to point at the unit test for the code path |
-
 These three patterns are inputs to `danxbot:issue-blocker`'s 8-item Pre-Block Gate, not a
 substitute for it — that skill owns the full block-vs-escalate checklist and the field-selection
 table (`blocked` vs an open problem vs `waiting_on` vs `conflict_on[]`). Run it before calling

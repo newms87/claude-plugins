@@ -68,17 +68,3 @@ As with Blocked, this is a mechanical re-check of dependency state, not a value 
 | **At least one blocker non-terminal** | **Confirm-Block**: leave as-is (no MCP mutation) | `danxbot_complete({status: "complete"})` — card remains Waiting On |
 
 **Edge case — blocker not found.** If `issue_get` fails for a blocker id, treat as **Cancelled** (non-existent card cannot block). Note in the comment: "Blocker <PREFIX>-N not found — treated as Cancelled."
-
-## Terminal-Call Summary
-
-| Path | Decision | MCP call(s) | `danxbot_complete` |
-|---|---|---|---|
-| Review | (any) | `issue_triage({id, confidence, reason})` — read `body.issue.triage_last_status` for the outcome the server picked | `{status: "complete"}` always |
-| Blocked | Demote | `issue_transition({action: "unblock"})` | `{status: "complete"}` |
-| Blocked | Confirm-Block | none, or `issue_problem` add when a human-only step has no open problem yet | `{status: "complete"}` |
-| Waiting On | Unblock | `issue_transition({action: "unblock"})` | `{status: "complete"}` |
-| Waiting On | Confirm-Block | none | `{status: "complete"}` |
-| Out of scope | — | none | `{status: "complete", summary: "out of scope: <reason>"}` |
-| Dispatch itself failed (unreadable card, MCP error, no decision reached) | — | — | `{status: "failed"}` (real ≥30-char reason) |
-
-`danxbot_complete` is ALWAYS `status: "complete"` on a successful triage run, regardless of outcome — the card's fate is already moved via the MCP call(s) above; `danxbot_complete` only reports whether the dispatch itself succeeded. Never use `"ready"`/`"cancelled"`/`"archive"` here — that stamps the DISPATCH row `failed` even though the triage succeeded.

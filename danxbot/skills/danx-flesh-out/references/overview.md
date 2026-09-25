@@ -1,9 +1,5 @@
 # Flesh-Out — DX-544 Sentinel Detail + Comment Shape
 
-Two details `SKILL.md`'s mechanical gate points here for. Everything else
-(in-scope/refuse rules, the workflow steps, the epic/Feature split logic,
-boundaries) lives in `SKILL.md` — this file adds no duplicate of any of it.
-
 ## DX-544 sentinel-to-review triage stamp
 
 When the sentinel-blocked card's ` start as <Review|ToDo>` token resolves

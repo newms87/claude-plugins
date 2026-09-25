@@ -92,13 +92,10 @@ open one is answered.
 | "The required work belongs to a DIFFERENT repo that danxbot runs as a board" | **DELEGATE** (DX-1368) — `issue_create({board: '<repo>:<slug>'})` + `depends_on(this→new)` + a `## Delegated → <id>` marker comment (see `danx-next` Step 10 delegate branch); set NONE of the gates above, the `depends_on` gate holds + auto-clears | `status: Blocked` — block ONLY when the target repo has NO danxbot board (operator-only repo, e.g. the plugin marketplace repo) |
 | "Another agent's uncommitted diff broke my test" | Neither — interruption, not blocker. Note in `comments[]`, proceed with what you can verify. | Any of the above |
 
-### Wrong-mechanism consequences
+### Wrong-mechanism consequences (not already named in the Routing table above)
 
-- `blocked` for a cause only a human can resolve (decision OR external action) → the card is held and never reaches the operator; nobody answers; it rots.
-- `blocked` for a sibling-wait → never auto-dispatches; nobody will clear it; rots forever.
 - `waiting_on` for an operator-needed action → silently dispatches the moment the named card terminates, without the human action having happened.
 - Opening a problem for a blocker the agent can resolve → spends operator attention on work an agent could do.
-- Escalating in a comment instead of a problem → a comment is not visible in the operator's needs-a-human view; nobody sees it.
 
 If you're about to stamp `blocked: {at, reason}` because "this can't dispatch
 right now," check the table above FIRST. If the right mechanism is an open
@@ -275,17 +272,9 @@ calls `unblock`.
 
 Quote the 8 PASS results into a `## Blocker self-audit` section of the comment so the resolver can audit your reasoning. If you cannot quote 8 PASS results, you have not earned either move.
 
-## Forbidden patterns this skill catches
+## Forbidden patterns this skill catches (not already named by a checklist item's FAIL path)
 
 | Pattern | Why it's forbidden | Recovery |
 |---|---|---|
-| "Operator must decide revert vs keep silent-fallback" | Item 1 — silent-fallback violates `dev:code-quality`; the choice is obvious. Decide unilaterally. | Apply the obvious-correct option, document, ship. |
-| "I stashed the diff to verify pre-existence" | Item 3 — stashing is STRICTLY FORBIDDEN. | Pop the stash, abandon pre-existence reasoning, root-cause via reading. |
-| "Operator must run UI smoke / log in" | Item 5 — programmatic substitute exists. | Component test → playwright → rewrite AC. |
-| "Operator must launch / restart / re-deploy infra the agent cannot reach (worker, container, vendor portal)" | Wrong mechanism, not wrong card state. External action → an open problem, NOT `blocked`. | `issue_problem` add naming the action, with the exact command in the recommended solution's `body`; call `danxbot_complete({status: "complete", summary: "Opened a problem — see problems"})`. |
-| "I blocked the card and wrote my question in a comment" | A blocked card never reaches the operator — nobody sees the question. | `issue_problem` add (question as `statement`, options as `solutions[]`, one recommended). |
 | "Card already has `waiting_on` set; I'm about to ALSO flip status to Blocked because something new came up" | Coexistence is fine, but pick the right mechanism for the new cause. New cause = agent-resolvable hold → `blocked`. Needs a human → another problem (a card can carry several). Sibling-wait → extend `waiting_on.by[]`. | Don't replace existing gates; add the right new one. All may coexist. |
 | "Git env failed (`git fetch` errored, rebase conflict mid-prep, worktree wedged)" | DX-758 — git env is the agent's sole authority. The worker no longer pre-flights env; `agents.<name>.broken` is strikes-only. A genuine unreconcilable conflict routes via `danxbot_complete({status: "failed", summary: "<≥30-char reason naming the conflicting file/region>"})`. Vague "env wedged" without the named region → not a blocker; resolve in-session file by file. | Read both sides of the conflict; resolve in place; only escalate when a specific region is genuinely unreconcilable. |
-| "Auto-flip happens after I exit, can't verify" | Item 5 — unit-test the derivation function. | Rewrite AC to point at the unit test. |
-| "Pre-existing flaky test fails the local-verify AC" | Item 1 + 5 — Action Item card + check off. | `issue_create`, push id, check AC, proceed. |
-| "Another agent has uncommitted diff that breaks my test" | Item 2 — interruption, not blocker. | Note in comments[], proceed with what you can verify. |

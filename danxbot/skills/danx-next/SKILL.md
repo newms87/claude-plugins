@@ -38,12 +38,6 @@ All cards are in the DB, accessed via MCP tools (`mcp__danx-dashboard__issue_*`)
 
 Full procedures for Steps 0–11 live in **references/step-procedures.md**.
 
-**Key gates:**
-- **Step 1.1:** Resume detection + validation (never trust prior claims).
-- **Step 1.5:** Fix-it-yourself filter (last resort for action items / Blocked / Escalate).
-- **Step 8:** Definition-of-Done (zero unchecked ACs).
-- **Step 11:** Pre-call gate (all six prereqs before `danxbot_complete`).
-
 **Step 11 — two-step termination (DX-835):** `danxbot_complete` never moves the card — it only finalizes the dispatch row. Call `issue_transition` (or `issue_problem` for an escalation) FIRST, THEN `danxbot_complete`. Canonical table (Done/Cancelled/Blocked/Needs-a-human) + the required post-Step-A verification: `danxbot:issue-card-workflow` § "DX-835 — two-step termination is MANDATORY". One row that table doesn't carry, dispatch-specific: an **env-broken** dispatch stays In Progress on the card and calls `danxbot_complete({status:'critical_failure', summary})` — this halts dispatch (see `danxbot:halt-flag`).
 
 Do NOT emit text after `danxbot_complete` — the `summary` arg IS the report; conversation stream discarded within 5s.

@@ -40,13 +40,6 @@ Response shape: `{job_id: <new dispatch id>, parent_job_id, status: "launched"}`
 6. Dispatch row carries `parent_job_id` so the chain is queryable
 7. Response: `{job_id, parent_job_id, status: "launched"}`
 
-**Invariants preserved:**
-
-- Single fork — resume is its own dispatch; there is still exactly one claude process per dispatchId
-- JSONL-only monitoring — the resume child's entries land in the same JSONL but are found by its fresh dispatch tag
-- `danxbot_complete` — same MCP tool, same `/api/stop/:jobId` callback
-- Host/docker parity — `--resume` flows through `buildClaudeInvocation`, which both runtime paths share
-
 **Do not:**
 - Return the Claude session UUID to callers — it's an internal detail. Callers resume by the dispatch `job_id`.
 - Write a second mapping table (jobId → sessionId) — the dispatch tag already provides a deterministic, disk-durable mapping.

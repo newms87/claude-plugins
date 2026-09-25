@@ -108,16 +108,10 @@ order if they gave one, and distinguish:
 
 ### 6. Route every durable fact by its actual durability — don't restate the rules, follow them
 
-`danxbot:plan-workflow` already owns the shape and the size limits — this skill doesn't repeat
-them, it just says: before compaction, make sure everything that needs one of these actually has
-one.
-
-| Fact | Goes in | Limit (see plan-workflow → Records / Plan notes) |
-|---|---|---|
-| Outcome, constraint, or lasting architecture trade-off | plan record (`goal`/`rule`/`caveat`) | body ≤250 chars, detail in `context` |
-| Real milestone (cards done, a decision, a record/section change) | plan note | title ≤60, body ≤250 |
-| Progress, evidence, local state, what a paused agent was doing, file-to-card attribution | card comment | none of the above caps apply |
-| Operator question with no answer yet | Task card + open problem | `danxbot:plan-workflow` → "Operator questions" |
+`danxbot:plan-workflow` already owns the shape, the size limits, and the "Where things go"
+routing table — this skill doesn't repeat them, it just says: before compaction, make sure
+everything that needs one of those homes (goal/rule/caveat record, plan note, card comment, or
+Task-card-plus-problem) actually has one.
 
 Getting the API shape wrong here costs real turns — `plan-workflow` already documents that
 comments take `text` not `body`, records take `{kind, body, context}` not `statement`. Don't

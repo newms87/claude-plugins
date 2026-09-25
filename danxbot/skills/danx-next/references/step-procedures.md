@@ -320,8 +320,6 @@ Use Step 10 ONLY when blocker is genuinely one of (route in parentheses). Before
 - Waiting on another card / phase / Action Item to ship first → **Waiting On** (Step 10b). No human needed; poller auto-unblocks.
 - Anything fixable in-session (stale config, a readable/editable bug, a same-repo test failure, a missing file you can write, anything the next agent would just redo) → apply Step 1.5, fix it now.
 
-One more time: **"Does a human *action or decision* resolve this, or am I just waiting on other work?"** Human → Escalate. If waiting, use Step 10b. If 10–30 minutes to fix, cancel the move, do it.
-
 ### Hold — Blocked (an agent resolves it later)
 
 **Mutate the card via MCP:**
@@ -441,17 +439,6 @@ If either fails, three options:
 
 DX-770 hard-cut pre-existing `completed` / `agent_blocked` aliases. MCP tool rejects with typed error naming canonical name (`complete` / `failed`). Every caller MUST use canonical name.
 
-### What worker does on signal
-
-1. Stamps the terminal trigger in the DB (`completed_at` / `cancelled_at`).
-2. Finalizes dispatch row.
-3. Renders `## Retro` comment from `retro.{good, bad, action_item_ids, commits}`.
-4. Spawns Action Items cards from `retro.action_item_ids[]`.
-5. Card derives terminal (`Done` / `Cancelled`) via `deriveStatus`.
-6. Pushes tracker move.
-7. SIGTERMs claude.
-8. Resumes polling.
-
 Never exit without `danxbot_complete`. Never call with prereqs unmet.
 
 ### Terminal token — emit NO text after call
@@ -468,4 +455,4 @@ Never exit without `danxbot_complete`. Never call with prereqs unmet.
 
 ## If the Card Is Empty / In a Wrong State
 
-`issue_get` returns `{ok: false}` / card not found → signal `critical_failure` — poller broken. If the card's `status_derived` is already `Done` / `Cancelled`, something upstream is wrong — signal `failed` with summary explaining the inconsistency.
+If the card's `status_derived` is already `Done` / `Cancelled` and Step 1.1's verification does NOT confirm it (an AC, commit, or retro check fails) — the card was dispatched in an anomalous state no resume path covers. Signal `failed` with a summary explaining the inconsistency; do not attempt to "resume from failing AC" on an already-terminal card.

@@ -13,15 +13,10 @@ Current repo only — `/danx-ideate` takes no arguments.
 
 ## /loop and ScheduleWakeup — narrow contract
 
-Ideation is a single-shot dispatch (explore → score → draft → complete).
-Full FORBIDDEN list + RULE: `danx-start`'s "/loop and ScheduleWakeup —
-FORBIDDEN in a dispatch" section.
-
-**ALLOWED — polling an async pipeline whose result IS part of this card's
-AC** (e.g. dispatch a build, `/loop` every 5 min until it finishes, then
-verify the artifact and proceed; monitoring a long-running test whose
-pass/fail is the AC under test; watching for the next state of an external
-system you triggered AS PART OF THIS CARD's WORK).
+Ideation is a single-shot dispatch (explore → score → draft → complete) —
+you have no legitimate use for `/loop` or `ScheduleWakeup` in this skill.
+Full contract: `danx-start`'s "/loop and ScheduleWakeup — FORBIDDEN in a
+dispatch" section.
 
 ## Steps
 

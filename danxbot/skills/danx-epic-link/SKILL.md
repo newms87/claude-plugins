@@ -6,20 +6,15 @@ description: Wire two-way parent_id ↔ children[] linkage between an Epic and i
 # Danx Epic Link
 
 You are running because the orchestrator picked up an Epic-typed card whose
-DB `children[]` is empty. That means one of two things happened:
-
-1. **A human created phase cards directly on the tracker UI** without going
-   through `issue_create`. The phase cards were bulk-synced into the DB
-   on a previous tick, but no `parent_id` was set on them and no `children[]`
-   was set on the epic.
-2. **A previous agent split the epic via `issue_create`** but a code
-   regression skipped the linkage step. (You should not be hit if that
-   path ran cleanly — `issue_create` writes `parent_id` itself.)
+DB `children[]` is empty — its phase cards already exist in the DB (either
+created directly on the tracker UI, or split via `issue_create` where the
+linkage step never ran) but carry no `parent_id` pointing back to this epic.
 
 **Your one job**: identify which open issue cards (in DB) are this epic's phase
-cards, set `parent_id` on each via `issue_edit`, and set `children[]` on the epic. Then
-return control to the orchestrator. **Do NOT create any new cards. Do NOT
-edit any phase card content beyond `parent_id`.**
+cards and set `parent_id` on each via `issue_edit` — that is what populates
+the epic's `children[]` server-side. Then return control to the orchestrator.
+**Do NOT create any new cards. Do NOT edit any phase card content beyond
+`parent_id`.**
 
 If `children[]` is already non-empty when this skill is invoked, exit
 immediately — the epic is already linked.
@@ -41,7 +36,8 @@ immediately — the epic is already linked.
 5. List the matched candidates back to yourself with their ids and titles.
 
 If zero candidates match, the epic genuinely has no phase children —
-leave `children[]` empty and exit (call the appropriate `issue_transition` if the epic needs a status bump, or just return). There is no in-card phase
+leave `children[]` empty and just return (status is derived, there is
+nothing to stamp). There is no in-card phase
 checklist (ISS-81 retired that field). A childless Epic can never be
 readied or picked up (`ready`/`pickup`/`rollback_pickup` refused on every
 container — see `issue-card-workflow`'s Card Taxonomy for the general

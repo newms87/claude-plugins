@@ -33,7 +33,7 @@ ScheduleWakeup — FORBIDDEN in a dispatch" section.
 
 ## Reading the card
 
-Call `mcp__danx-dashboard__issue_get({id: <PREFIX>-N})` to fetch the card from the DB. On subsequent turns the conversation history already carries the prior card state, but if the conversation drifts and you need to re-anchor, call again — cheap and deterministic.
+On later turns the conversation history already carries the prior card state — but if it drifts, re-fetch with `mcp__danx-dashboard__issue_get({id: <PREFIX>-N})` to re-anchor rather than treating "read once on the first turn" as a hard limit. Cheap and deterministic.
 
 ## Editing the card
 
