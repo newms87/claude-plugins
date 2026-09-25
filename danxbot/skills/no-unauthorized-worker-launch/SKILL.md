@@ -54,9 +54,12 @@ I deploy?" is the failure this exception exists to remove.
   state never matters. Run it from a login shell (`bash -l`), node 22 via nvm, `DANXBOT_TARGET`
   exported to match `TARGET=`, checking no other deploy is running and no worker dispatch is in
   flight first. Full mechanism → `.claude/rules/production-deploy.md` in the danxbot repo.
-  gpt-manager: primary its GitHub Actions workflow (`make deploy REF=<sha>`); backup
-  `scripts/deploy-local.sh [sha]` — gpt-manager's own deploy mechanism is unaffected by this
-  change.
+  gpt-manager: same story, DX-3282 (2026-09-25) — `scripts/deploy-local.sh [sha]`, run from
+  `~/projects/newms87/gpt-manager-deploy`, is now the only deploy an agent uses. Its
+  `.github/workflows/deploy-production.yml` stays wired for later, but `gh-as` (the required
+  wrapper for every `gh` call) refuses `workflow run` / `run watch` / `run list` and names this
+  script instead, so `make deploy` in that repo no longer reaches Actions for an agent either.
+  Full contract → gpt-manager's `.claude/rules/paths-and-commands.md` "Production Deploy".
 - **Each machine deploys only the target(s) its own `deploy-machine.json` names (DX-3232,
   2026-09-24) — there is no global target ban.** DX-3148's "`platform` is not deployed by anyone"
   was a gpt-machine-specific fact written as if universal; it broke the Flytedesk machine, whose
