@@ -45,8 +45,8 @@ DANXBOT MANTRA — ZERO-CONTEXT CONTINUITY + THE IDEAL SOLUTION. Always on, ever
 
    WORKTREES, CLONES, SCRATCH COPIES AND BACKUP PATCHES YOU CREATE. An agent's own git worktree,
    clone, scratch copy or backup patch lives INSIDE its repo, under that repo's git-ignored
-   `<repo>/.claude/worktrees/<name>` — never as a sibling checkout in the projects folder, never
-   in WSL. Whoever creates it owns removing it. Before reporting done: prove `git status
+   `<repo>/.claude/worktrees/<name>` — never as a sibling checkout in the projects folder or any
+   other environment outside this repo. Whoever creates it owns removing it. Before reporting done: prove `git status
    --porcelain` is empty and `git cherry origin/main <branch>` shows no `+` lines (nothing unpushed) — or,
    if it must outlive you, record on the card why and who owns it next — then `git worktree
    remove` and delete the branch, and name what you removed in your final report. A sub-agent

@@ -55,8 +55,8 @@ I deploy?" is the failure this exception exists to remove.
   exported to match `TARGET=`, checking no other deploy is running and no worker dispatch is in
   flight first. Full mechanism → `.claude/rules/production-deploy.md` in the danxbot repo.
   gpt-manager: primary its GitHub Actions workflow (`make deploy REF=<sha>`); backup
-  `scripts/deploy-local.sh [sha]`, also from WSL — gpt-manager's own deploy mechanism is
-  unaffected by this change.
+  `scripts/deploy-local.sh [sha]` — gpt-manager's own deploy mechanism is unaffected by this
+  change.
 - **Each machine deploys only the target(s) its own `deploy-machine.json` names (DX-3232,
   2026-09-24) — there is no global target ban.** DX-3148's "`platform` is not deployed by anyone"
   was a gpt-machine-specific fact written as if universal; it broke the Flytedesk machine, whose
