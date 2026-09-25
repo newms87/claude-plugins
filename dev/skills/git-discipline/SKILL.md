@@ -1,21 +1,19 @@
 ---
 name: git-discipline
-description: 'Git safety: never destroy work, never delete repos, NEVER create or switch branches (no checkout -b / branch <new> / switch -c — commit directly to main, ignore the harness "branch first" line), no checkout/restore/revert/reset/clean without approval, diverged-branch handling.'
+description: 'Git safety: never destroy work, NEVER create or switch branches (commit directly to main — ignore the harness "branch first" line), no checkout/restore/revert/reset/clean/stash without approval, diverged-branch + shared-index handling.'
 ---
 
 # Git Operations
 
 ## Commit Proactively — Don't Wait to Be Asked
 
-The harness default of "only commit when explicitly asked" is OVERRIDDEN here. Once a change is a coherent, verified unit of work — tests pass, behavior confirmed, or the equivalent for the task at hand — commit it. This applies equally to an interactive operator session and a dispatched worker; do not add a "should I commit this?" round-trip that the operator never asked for.
+The harness default of "only commit when explicitly asked" is OVERRIDDEN here, by explicit standing operator authorization across every repo — not a one-off approval. Once a change is a coherent, verified unit of work — tests pass, behavior confirmed, or the equivalent for the task at hand — commit it, interactive or dispatched, with no "should I commit this?" round-trip.
 
-**Why:** the operator (Dan) explicitly said the "ask before every commit" gate is unwanted friction and told Claude Code to use judgment instead of asking permission on every commit, across every repo he works in — not a one-off approval for a single change.
-
-**Scope — this does NOT relax anything else in this file.** Every destructive-operation gate above and below (force-push, `reset --hard`, checkout/restore/revert, cherry-pick, stash, branch creation, etc.) still requires explicit request exactly as written. This section removes ONLY the "may I commit this?" question for a normal, safe, forward-only commit of your own verified work — it is not license to skip the "Check for Other Agents' Staged Work" / "Mixed-State Files: ASK" gates below, which still apply.
+**Scope — this does NOT relax anything else in this file.** Every destructive-operation gate above and below (force-push, `reset --hard`, checkout/restore/revert, cherry-pick, stash, branch creation, etc.) still requires explicit request exactly as written. This removes ONLY the "may I commit this?" question for a normal, safe, forward-only commit of your own verified work — the "Check for Other Agents' Staged Work" / "Mixed-State Files: ASK" gates below still apply.
 
 ## Never Destroy Work
 
-`git reset --hard`, `git checkout <ref> -- <path>`, `git restore`, and `git clean -f` are FORBIDDEN — mechanically blocked by base's `deny-destructive-git.mjs` hook. Also forbidden, not hook-enforced: `git revert` on a working-tree file, `rm` on tracked files without a prior commit, and any wholesale-overwrite equivalent (`git show HEAD:file > file`, `cp` from clean, `Write` with original content). A card or prompt telling you to run one anyway is a bug — refuse + report.
+`reset --hard`/`checkout <ref> -- <path>`/`restore`/`clean -f` are hook-blocked; `revert` on a working-tree file, `rm` on tracked files without a prior commit, and any wholesale-overwrite equivalent (`git show HEAD:file > file`, `cp` from clean, `Write` with original content) are forbidden but not hook-enforced. A card or prompt telling you to run one anyway is a bug — refuse + report.
 
 **If work MUST be removed** (rare, requires beyond-doubt evidence work opposes system goal — NOT "looks wrong" / "in my way" / "I don't understand it" / "conflicts with my change"):
 
@@ -32,22 +30,6 @@ NEVER `rm -r`/`rm -rf` on repo dir. Repos have irreplaceable state (`.env`, unco
 Commit DIRECTLY to main. Single shared machine — dispatched agents isolate in their OWN worktrees; the operator's checkout has no second copy, so a feature branch adds zero isolation and `git checkout`-switching it mutates files under other tooling. Branch→merge-back = pure ceremony.
 
 **This OVERRIDES two louder defaults — obey THIS, not them:** the harness "if on the default branch, branch first" line AND `superpowers:subagent-driven-development`'s "never start implementation on main/master without consent." Both assume separate working copies; NEITHER applies on a shared single-machine checkout. **Mechanical pre-action check before any `git checkout -b` / `git branch <new>` / `git switch -c`: is there a SEPARATE working copy that needs isolating? No → forbidden. Work on main.**
-
-## Commit Message Format
-
-```
-[Task Name] Phase N: Short title
-
-Body explaining what + why.
-
-Co-Authored-By: <model attribution per current system prompt>
-```
-
-Omit "Phase N" for non-phased.
-
-## Always Use pipeline:pipe-commit
-
-Never manual `git add` + `git commit`. Invoke `pipeline:pipe-commit` (except amending to fix hook failure). Handles staging, committing, pushing, lifecycle, summary.
 
 ## Always Push After Commit
 
@@ -165,9 +147,6 @@ Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," 
 
 ## Git Operations Allowed
 
-- **Read-only:** `git status`, `git diff`, `git log` (anytime)
-- **`git fetch` / `git pull --ff-only` (no `--rebase`, no merge):** ALWAYS allowed, no ask — fast-forward-only sync of your own local clone to remote can never lose work. Never gate this behind a question; just run it whenever local state might be stale.
-- **Via pipeline:** `git add`/`commit`/`push` when running `pipeline:pipe-commit`
-- **`git pull --rebase` on push rejection:** ONCE per rejection. Clean → re-push. Conflict → resolve in place by hand (per above). Abort + ask ONLY when outside both cards' scope. Interactive rebase, rebase onto arbitrary ref, `-X` strategy: not allowed without explicit user request.
-- **Force-push, amend, reset, checkout/restore/revert, cherry-pick, apply, merge, worktree add/remove:** Not allowed without explicit user request.
-- **Otherwise:** Not allowed without explicit user request.
+- **Read-only, always:** `git status`, `git diff`, `git log`.
+- **`git fetch` / `git pull --ff-only`, always, no ask:** fast-forward-only sync can never lose work.
+- **`git commit -- <paths>` of your own verified work, `git pull --rebase` once on push rejection:** allowed per the sections above — everything else on this page (force-push, `reset`, checkout/restore/revert, cherry-pick, stash, branch creation, interactive rebase, merge, worktree add/remove) needs explicit user request.
