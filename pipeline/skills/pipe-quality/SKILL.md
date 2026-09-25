@@ -81,5 +81,4 @@ Before proceeding to `/pipe-commit`, answer honestly:
 ## Rules
 
 - **This step is NOT optional.** Skipping it is a pipeline violation.
-- **Be honest with yourself.** The whole point is catching your own rationalizations.
 - **The table in Step 1 is required output.** Show it so the user can see your decision-making.

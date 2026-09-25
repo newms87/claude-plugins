@@ -20,7 +20,7 @@ Commit + push FIRST. Code review AFTER as a separate commit. Why: durability, re
 0. **Dispatched worker (`DANXBOT_DISPATCH_ID` set)** — do not use this skill; `agent-finalize.sh` owns the terminal merge (CP4/DX-944).
 1. Run `git status` and `git diff --name-only` in parallel to identify changed files
 2. **Check for other agents' staged work** — see `dev:git-discipline` "Check for Other Agents' Staged Work"; not restated here.
-3. Output the **Summary Table** and **Overview** (see format below)
+3. Output a summary table (`File | Type | Description`, one row per changed file — use ✏️ M / ➕ A / 🗑️ D so a reviewer can spot an accidental deletion) and the **Overview** (see format below)
 4. Commit with the safe single-command form — `git commit -- <file1> <file2> ... -m "..."` — never a separate `git add` (shared-index hazard: see `dev:git-discipline`)
 5. **Push to remote** immediately after the commit succeeds — part of every commit, not optional. Push-failure / rejection handling → `dev:git-discipline`; not restated here.
 6. Show commit and push result
@@ -29,16 +29,6 @@ Commit + push FIRST. Code review AFTER as a separate commit. Why: durability, re
 **Everything happens in one continuous response. Stage, commit, and push are always a single sequence.**
 
 ---
-
-## Summary Table Format
-
-**Output as actual markdown (not in a code block):**
-
-| File | Type | Description |
-|------|------|-------------|
-| `path/to/file.php` | ✏️ M | Brief description |
-| `path/to/new.ts` | ➕ A | Brief description |
-| `path/to/old.vue` | 🗑️ D | Why removed |
 
 ## Overview Format
 
