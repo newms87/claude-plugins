@@ -57,7 +57,7 @@ export function denyReason(crossings) {
   return `BLOCKED: sub-agents do not cross from Windows into WSL.
 ${crossings.map((c) => `  - this call ${c}`).join("\n")}
 
-On 2026-09-15 a builder sub-agent improvised a "WSL rsync scratch-copy" for Linux verification. Its destination reached rsync as \`/\`, and rsync --delete spent thirteen minutes deleting everything the user could write under the WSL root and on Windows through /mnt/c: three repos and every Windows Claude transcript.
+An improvised WSL rsync copy has previously deleted content across the WSL root and, through /mnt/c, on Windows too — the risk this guard exists to close.
 
 Do Linux work in a throwaway container with an explicit mount instead, e.g. \`docker run --rm -v "C:/path/to/worktree:/work" -w /work <image> <command>\`, using the image and test services the repo's own docs name.
 

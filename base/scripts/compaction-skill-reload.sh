@@ -41,7 +41,7 @@ EVENT="${1:-SessionStart}"
 read -r -d '' MANDATE <<'EOF' || true
 ⚠ POST-COMPACTION SKILL RELOAD GATE — you just resumed from a compaction. Act on THIS text alone; do not wait to load anything first.
 
-EVERY skill body now in your context is a FRAGMENT, not a loaded skill. Compaction truncates skill bodies in place and leaves behind text that reads convincingly like the real thing — headers, rule names, the shape of a checklist — while dropping the gates, the ordering constraints, and the exact mechanical checks that are the entire reason the skill exists. A summary of a gate is not the gate. Seeing a gate's NAME is not running it.
+EVERY skill body now in your context is a FRAGMENT, not a loaded skill. Compaction truncates skill bodies in place and leaves behind text that reads convincingly like the real thing — headers, rule names, the shape of a checklist — while dropping the gates and the exact mechanical checks that are the entire reason the skill exists. A summary of a gate is not the gate. Seeing a gate's NAME is not running it.
 
 The ONLY proof a skill is loaded is a `Skill(<name>)` call YOU made AFTER this message. Anything above this line is pre-compaction residue and does not count.
 

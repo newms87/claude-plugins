@@ -156,8 +156,8 @@ describe("hook process contract", () => {
     assert.equal(out.hookSpecificOutput.hookEventName, "PreToolUse");
     assert.equal(out.hookSpecificOutput.permissionDecision, "deny");
     assert.match(out.hookSpecificOutput.permissionDecisionReason, /find/);
-    assert.match(out.hookSpecificOutput.permissionDecisionReason, /14 concurrent/);
-    assert.match(out.hookSpecificOutput.permissionDecisionReason, /13 CPU-hours/);
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /specific, named directory/);
+    assert.match(out.hookSpecificOutput.permissionDecisionReason, /Glob and Grep/);
   });
 
   test("prints nothing and exits 0 for an allowed command", () => {

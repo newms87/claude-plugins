@@ -172,7 +172,7 @@ export function denyReason(findings) {
   return `BLOCKED: recursive delete or mirror-sync with an unsafe target.
 ${list}
 
-On 2026-09-15 a builder agent ran an rsync --delete "scratch copy" whose destination reached rsync as \`/\`. For thirteen minutes it deleted everything the user could write under the WSL root and, through /mnt/c, the Windows side too: three repos, every Windows Claude transcript, and the transcript holding the command itself. The destination was almost certainly a variable that expanded empty.
+An rsync --delete run with a destination that silently expanded to \`/\` has previously deleted content across the WSL root and, through /mnt/c, on Windows too — the risk this guard exists to close.
 
 A recursive delete or mirror-sync must name its target as a LITERAL, specific path — never a filesystem, drive or mount root, a home directory, or an ancestor of one. If the path must come from a variable, use the fail-loud form \`"\${NAME:?}/specific-folder"\`: bash aborts on an empty NAME instead of collapsing to \`/\`. For scratch copies use a dedicated folder such as \`/tmp/<task>-<id>\` or the session scratchpad, spelled out in full.
 

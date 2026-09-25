@@ -18,9 +18,9 @@ set -euo pipefail
 read -r -d '' MANDATE <<'EOF' || true
 CONVEY — default for every report/commit/PR/comment/Slack/hand-off/investigation. Full skill: base:convey.
 
-LEAD WITH THE CONCLUSION. Every output stands alone to a reader with ZERO session context — never make them scroll up or re-derive. Default depth = high-level (what + impact + next step); defer deep mechanism (internals, evidence chains) until asked — at most a one-line offer to expand. Gate: "would someone who just opened the chat get this without scrolling up?" No → cut detail, restate the conclusion.
+LEAD WITH THE CONCLUSION. Every output stands alone to a reader with ZERO session context — never make them scroll up or re-derive. Default depth = high-level (what + impact + next step); defer deep mechanism until asked. Gate: "would someone who just opened the chat get this without scrolling up?" No → cut detail, restate the conclusion.
 
-Plain English (no codebase knowledge needed); concepts before paths (identifiers/paths in Verify line only); tables/diagrams over prose; drop fillers; reports ~30 lines.
+Plain English; concepts before paths (identifiers/paths in Verify line only); tables/diagrams over prose; drop fillers; reports ~30 lines.
 
 Scaffold: ## headline (≤12w) → Goal (1 sentence) → Behavior diff table → Flow (ASCII, multi-actor only) → Caveats → Verify (`cmd` → ✅ N/N). Per-channel budgets + anti-patterns in the full skill.
 

@@ -208,7 +208,7 @@ export function denyReason(findings) {
   return `BLOCKED: whole-disk or whole-home tree-walking scan.
 ${list}
 
-On 2026-09-17 sub-agents left 14 concurrent \`find /\` processes running on this machine. The oldest had been running since 01:08 and had accumulated over 13 CPU-hours; every one of them was consuming close to a full core, and every dispatch brief that day already said "never run a whole-disk find". Every answer those scans were hunting for — a component file, a design-system directory, a specific package under node_modules — was sitting in the project tree and would have taken milliseconds to find there.
+Whole-disk scans have previously left over a dozen concurrent \`find /\` processes running for hours, burning CPU to hunt for a file that was sitting in the project tree the whole time.
 
 A tree-walking scan (find, grep -r/-R, rg, ls -R, du, dir /s, Get-ChildItem -Recurse) must start at a specific, named directory — never a filesystem, drive, or mount root, never a home directory. Search the project tree, the relevant \`node_modules\` package, or another specific directory you can name. Prefer the Glob and Grep tools over shelling out to find/grep at all — they are faster and already scoped.
 

@@ -25,7 +25,8 @@ Hard MANDATORY triggers — match any one, load the skill immediately. Only inst
 (6) base:docs-first: TRIGGER: asserting behavior of an external product (Claude Code, Anthropic API, Trello, Docker, Vite, npm); designing a hook/wrapper around one; grepping local install to figure out behavior.
 (7) base:convey: TRIGGER: drafting any report / commit / PR / comment / Slack reply / hand-off / investigation longer than one line.
 (8) base:fail-loudly: TRIGGER: fix-options list; error-handling design on a critical path; adding a fallback / retry / graceful-degradation branch.
-(9) danxbot:plan-workflow: TRIGGER: any task with a human in the loop that goes beyond a quick cleanup — starting a multi-step plan or build; ANY question whose answer affects a plan; monitoring anything over time; context nearly exhausted mid-task; about to /compact; operator says "hand off" / "wrap up so we can continue later"; resuming work after a restart or compaction; any session-end where work is unfinished. The connected danxbot Plan is the ONLY planning record — goals/rules/caveats as plan records, design in its architecture document, work and operator questions as attached cards. No plan file, no `~/.claude/plans/*.md`, no repo `.md`, no HTML page, no chat summary, and no separate handoff document: the next session resumes by reading the plan with `plan_get`.
+
+Other installed plugins carry their own equivalent mandate for their own skills — this list covers base's 8 only.
 
 NO rationalization. "I already know the rule" / "just one quick X" / "skill is overkill" / "load it after I orient and act" are violations, not reasoning. Load now, then act. "Forgot to load" is never an explanation — load it and redo the step.
 EOF

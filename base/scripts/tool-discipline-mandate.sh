@@ -28,11 +28,9 @@ PRE-WRITE CHECK (every Bash invocation, mechanical, no exceptions):
 
 5. About to ask the operator which of two arms to run? → Price running BOTH first. Cheaper than the round-trip of the question? → run both, report both, don't ask. A question you could have answered by testing is micromanagement you inflicted on them.
 
-ANTI-RATIONALIZATIONS: "user authorized the launch" (scopes WHAT, not HOW) / "I'll background it real quick" / "I want a logfile to tail" / "I'll do one first to see if it works" (that IS the serial failure — batch it) / "this needs a decision" (only if BOTH arms cost more than asking) — these are the failure mode, not reasoning.
+ANTI-RATIONALIZATIONS: "user authorized the launch" (scopes WHAT, not HOW) / "I'll background it real quick" / "I want a logfile to tail" / "I'll do one first to see if it works" (that IS the serial failure — batch it) / "this needs a decision" (only if BOTH arms cost more than asking) — failure mode, not reasoning.
 
-FILE OPS: Read/Edit/Write, NOT cat/head/tail/sed/awk. Bash for shell-only operations.
-
-MCP CALLS: load schema via ToolSearch BEFORE calling unknown MCP tool. Calling without schema = InputValidationError.
+FILE OPS: Read/Edit/Write, NOT cat/head/tail/sed/awk. MCP CALLS: load schema via ToolSearch before calling an unknown tool — calling without one = InputValidationError.
 EOF
 
 printf '%s\n' "$MANDATE"
