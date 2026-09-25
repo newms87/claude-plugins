@@ -19,10 +19,10 @@ it and leave a pointer.
 ## Hook scripts must never depend on `jq` — it is not installed
 
 Verified 2026-09-05 with a live probe hook: hooks execute under **Git Bash** (`MINGW64_NT`, bash
-5.3.15) and `jq` is **absent** from the hook runtime PATH, from PowerShell's PATH, and from WSL.
-Every mandate script that piped its text through `jq -n ... additionalContext` therefore emitted
-nothing and injected nothing — installed, silent, useless — for as long as it existed on this
-machine. All of them were converted to plain stdout on 2026-09-05.
+5.3.15) and `jq` is **absent** from the hook runtime PATH and from PowerShell's PATH. Every
+mandate script that piped its text through `jq -n ... additionalContext` therefore emitted
+nothing and injected nothing — installed, silent, useless — for as long as it existed. All of
+them were converted to plain stdout on 2026-09-05.
 
 - **To INJECT context:** `printf '%s\n' "$MANDATE"` and `exit 0`. Claude Code adds plain-text
   stdout to the model's context for `SessionStart`, `UserPromptSubmit`, `UserPromptExpansion`
