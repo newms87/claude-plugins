@@ -68,11 +68,6 @@ FOUR HARD RULES:
    satisfy the literal request." When the two diverge, build to the former
    and say so.
 
-WHEN WRITING A PLAN (a danxbot Plan's architecture document or records): state
-these standards explicitly (a short banner naming zero-tech-debt /
-fully-responsive / real-chrome / go-all-out) so how this is built is never
-ambiguous to whoever reads it next.
-
 THE TELL: you scoped something out with reasoning like "not required here,"
 "minimal is fine," "keep it simple for now," or "there's no contract for X" —
 and nobody asked you to cut it. That is you inventing a lowered bar, not the

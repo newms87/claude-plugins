@@ -89,10 +89,6 @@ Canonical section names (bold) stay stable for skimming. Caveats = world as-is. 
 
 (Scaffold owns headline ≤12w, `✅ N/N` one-liner, caveats/next-actions shape — not repeated here.)
 
-## Word compression
-
-Replace: "in order to" → "to" | "make sure that" → "ensure"/drop | "the following" → give it | "essentially/basically/just/simply" → drop | "is dependent upon" → "needs" | "We/I/Let me" → (drop) | "It should be noted" → (drop) | "In terms of" → ":" | "due to the fact" → "because"
-
 ## Self-containment + progressive disclosure
 
 Same "stands alone, zero session context, lead with the conclusion" rule the always-on `convey-mandate.sh` hook already states every session — not restated here. Additional: deep mechanism (memoization, scheduling, mock/internal wiring, evidence chains) is OMITTED unless the user asked to "explain further" / "why", at most a one-line offer to expand, never front-loaded.
@@ -113,10 +109,6 @@ Draft >40 lines for single action = convey not applied. Re-shape.
 - **Jargon-first:** `SG-135 waiting_on + In Progress → DX-212 invariant (waiting_on != null ⟹ status=ToDo) fires...` → Lead with real-world, then internals. "Card waiting on SG-134 finished. Agent picked up + flipped to In Progress. Validator sees note-pinned + status-not-waiting → screams." Then field (`waiting_on`), ID (`DX-212`), path (`yaml.ts:941`) in Verify.
 - **Code-path options:** `1. Thread byId into validateBlocked. 2. Move forceWaitingOnToDo. 3. Drop invariant.` → Frame as behavior + trade, no symbols. "1. Validator smarter (keeps history, medium effort). 2. Picker clears note (cheap, loses history). 3. Drop rule (one-line, loses guardrail)."
 - **Section padding:** Three commas, one idea. `Same-file overlap ≠ conflict — git auto-merges. Only heavy structural overlap earns stamp.`
-
-## Cheap-to-verify facts — read, never estimate
-
-Full rule (read the clock, don't trust a stale timestamp): `current-time-mandate.sh` (always-injected). Applies to every fact convey writes into a report — elapsed time, a row's status, a branch/HEAD — read it fresh before stating it; a checked value beats a remembered one.
 
 ## Length budgets
 

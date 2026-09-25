@@ -53,7 +53,3 @@ Use language tools for cross-file renames (auto-update refs). Manual find-replac
 - TS/JS: `ts-morph`, IDE refactoring
 - Go: `gorename`, `gopls rename`
 - Python: `rope`, `jedi`
-
-## CLI tables
-
-Keep row width <140 chars. Abbreviate + icons. More rows > wide rows.
