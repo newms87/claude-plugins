@@ -7,17 +7,7 @@ description: 'User-invokable audit of rules/skills/agents/CLAUDE.md surface — 
 
 ## What this does
 
-Scans always-loaded surfaces in CURRENT repo + global `~/.claude/`. Reports prioritized punch list:
-
-- **Bloat** — sections bigger than load-bearing invariant needs
-- **Duplication** — same concept across rule/rule, rule/skill, CLAUDE.md/rule
-- **Skillify candidates** — content only needed during specific edits
-- **Machine-specific refs** — paths/hostnames/ports/IDs breaking portability
-- **Dead pointers** — refs to deleted/renamed files/skills
-- **Missing skill triggers** — repo CLAUDE.md missing skill-invocation pointers
-- **Plugin set audit** — enabled plugins mismatched to workflow
-
-Read-only. User approves fixes, follow-up turn applies.
+Scans always-loaded surfaces in CURRENT repo + global `~/.claude/`. Reports a prioritized punch list — Bloat, Duplication, Skillify candidates, Machine-specific refs, Dead pointers, Missing skill triggers, Plugin set audit — see Report format below for what each one covers. Read-only. User approves fixes, follow-up turn applies.
 
 ## TodoWrite checklist — ordered, early findings inform later
 
@@ -72,8 +62,6 @@ Output: `concept | locations[] | recommended single home`.
 | Trello board/list/label IDs | high | repo config or generalize |
 | Repo-specific Make targets outside that repo's plugin | medium | move to plugin |
 
-Distinguish operational (the path IS the rule) from illustrative.
-
 ### Phase 5 — Dead pointers
 
 For every `.claude/rules/*.md` referenced in CLAUDE.md or any rule:
@@ -112,7 +100,7 @@ For each MANDATORY-triggered skill in enabled plugins: confirm pointer in CLAUDE
 ## Report format
 
 1. **Token spend snapshot** — `<file>: <lines> ≈ <tokens>`, sum at bottom
-2. **Top 5 wins** — `[<savings>] <description> → <action>`
+2. **Top 5 wins** — `[<savings>] <description> → <action>`, e.g. `[~5k] CLAUDE.md duplicates Trello-bg in agent-dispatch.md → trim CLAUDE.md`
 3. **Bloat findings** (Phase 2)
 4. **Duplication findings** (Phase 3)
 5. **Machine-ref findings** (Phase 4)
@@ -124,9 +112,9 @@ For each MANDATORY-triggered skill in enabled plugins: confirm pointer in CLAUDE
 
 End: "Pick which findings to execute. I will NOT apply any fix without per-finding approval."
 
-## After the user picks targets — file cards
+## After the user picks targets
 
-The punch list is approval scratch, not the durable record. Once the user picks targets to execute, file them as tracker card(s) before doing the work (card-first rule, `danxbot:issue-card-workflow`) — one card per target, or an Epic + phase children when several are related. The audit report itself is never the home of the work; the cards are. (Exception: the user explicitly says to just fix inline without cards.)
+File them as tracker card(s) before doing the work (card-first rule, `danxbot:issue-card-workflow`) — one card per target, or an Epic + phase children when several are related; the report is approval scratch, never the home of the work. (Exception: the user explicitly says to just fix inline without cards.)
 
 ## Hard rules
 
@@ -136,20 +124,6 @@ The punch list is approval scratch, not the durable record. Once the user picks 
 - Surface global findings even when scope is repo — `~/.claude/` affects this session.
 - Quote, don't paraphrase — first 1-2 lines verbatim.
 - Respect plugin source-of-truth — recommend plugin edit not repo-local copy.
-
-## Example output
-
-```
-Token spend: 36k always-loaded
-Top 5 wins:
-1. [~5k] CLAUDE.md duplicates Trello-bg in agent-dispatch.md → trim CLAUDE.md
-2. [~3k] settings-file.md schema → <plugin>:settings-deep skillify
-3. [~2k] production-access.md duplicates prod-access plugin → delete
-4. [~1k] 4 rules reference deleted host-mode-interactive.md → repoint
-5. [~700/session globally] @thehammer publish in ~/.claude/CLAUDE.md → skillify
-
-Pick targets to execute.
-```
 
 ## When NOT to use
 
