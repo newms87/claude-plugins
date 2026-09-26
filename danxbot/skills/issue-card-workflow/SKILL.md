@@ -5,16 +5,14 @@ description: 'The one "work a card" workflow: claim, load context, TDD build, ti
 
 # Issue Card Workflow
 
-One card, from claim to merge — the same flow whether you are a dispatched danxbot
-worker or an operator-session sub-agent working a card someone handed you by id.
-**Dashboard Postgres DB is the sole source of truth**; the `mcp__danx-dashboard__issue_*`
-(or `mcp__danx_dashboard__issue_*` in an operator session — resolve your actual tool
-prefix from your own tool list once, at the start, never copy a prefix on faith) tools
-are the entire surface for card state. Never read/write card state via file operations.
+One card, claim to merge — same flow for a dispatched worker or an operator-session
+sub-agent given a card by id. **Dashboard Postgres is the sole source of truth** —
+`mcp__danx-dashboard__issue_*` (`mcp__danx_dashboard__issue_*` for an operator; resolve
+your real prefix once, never assume) is the entire surface for card state; never touch
+it via file operations.
 
-Creating a NEW card (type/effort/slicing/gates/triage) and detailed field/tool shapes
-are a separate concern from WORKING one — see `references/card-creation-and-reference.md`.
-Load it before any `issue_create`; this file does not repeat it.
+Creating a card (type/effort/slicing/gates/triage) is separate —
+`references/card-creation-and-reference.md`; load before any `issue_create`.
 
 ## Context: what differs between the two callers
 
@@ -26,38 +24,31 @@ Load it before any `issue_create`; this file does not repeat it.
 | Merge | per your profile instruction | commits, pushes to main, removes its worktree, proves nothing unpushed |
 | End | per your profile instruction | `issue_transition({action:'complete'})` + `issue_retro`, then reports to the orchestrator |
 
-Dispatched-only mechanics (`danxbot_complete` statuses, `critical_failure`/halt, `agent-finalize.sh`,
-the pre-synced worktree, database resets) are named here only as "per your profile instruction" —
-they live in danxbot's own dispatched `work` profile instruction, never in this plugin (a plugin
-reaches operator sessions too, and none of that is an operator's business to invoke).
+Dispatched-only mechanics (`danxbot_complete`, halt, `agent-finalize.sh`, pre-synced
+worktree, DB resets) live only in danxbot's `work` profile — this plugin reaches
+operator sessions too.
 
-## The flow (decision 175)
+## The flow
 
-1. **Load the full context.** `issue_get({id, fields:["description","ac","comments","dependencies"]})`.
-   Read the parent (Epic/Feature) if `parent_id` is set. If connected to a plan, read its
-   architecture and note any overlapping sibling cards named in comments/dependencies.
-2. **Claim it** before the first work action — see "Claiming" below.
-3. **Build with TDD.** Sub-agents for complex work, inline for simple work — orchestrate rather
-   than digging in yourself once a piece is genuinely independent. Always the correct, ideal
-   build; never the fast or simpler one.
-4. **Tick every AC and checklist item** (`issue_checklist`), get all tests passing, test in the
-   browser where the change is user-facing.
-5. **Run the quality gates through their gate reviewer sub-agents** (architecture-reviewer /
-   code-reviewer / test-reviewer, or the equivalent your profile names) and record a verdict —
-   `issue_quality_gate_verdict({id, gate, status, message: "<real finding, >=20 chars>"})` — per
-   gate the card carries. A gate that genuinely doesn't apply is removed
-   (`issue_quality_gate({action:'remove'})`), never rubber-stamped.
-6. **Complete.** `issue_transition({action:'complete', summary})` then `issue_retro` (both REQUIRED,
-   retro last — it 409s until terminal), then finish per your profile instruction.
+1. `issue_get({id, fields:["description","ac","comments","dependencies"]})`. Read the
+   parent if `parent_id` is set; on a plan, read its architecture and note overlapping
+   siblings.
+2. **Claim it** before any work — see "Claiming" below.
+3. Build with TDD — sub-agents for complex work, inline for simple; always the correct,
+   ideal build.
+4. Tick every AC/checklist item (`issue_checklist`), pass all tests, browser-test
+   user-facing changes.
+5. Run the quality gates through their reviewer sub-agents (architecture-reviewer /
+   code-reviewer / test-reviewer, or your profile's equivalent); record
+   `issue_quality_gate_verdict({id, gate, status, message: "<real finding, >=20 chars>"})`
+   per gate. A gate that doesn't apply is removed (`issue_quality_gate({action:'remove'})`),
+   never rubber-stamped.
+6. `issue_transition({action:'complete', summary})` then `issue_retro` (both required,
+   retro last — it 409s until terminal); finish per your profile instruction.
 
-No superfluous instructions beyond this — reminders live in MCP tool responses and the janitor,
-not in this skill body.
-
-**Never wait on a human you don't have to.** Decide unilaterally when the choice is reversible —
-pick a reasonable default, do the work, and note the decision in a comment. When it genuinely
-needs a human (irreversible, architectural, credentials, design intent you don't have), escalate
-by opening a problem (below) — never `AskUserQuestion`, never a plan-mode pause, never sit idle
-waiting for a reply.
+**Never wait on a human you don't have to.** Reversible → decide, do the work, note it
+in a comment. Genuinely needs one → open a problem (below), never `AskUserQuestion` or
+a plan-mode pause.
 
 ### Question versus action — decide before you file (DX-3313)
 
@@ -78,73 +69,61 @@ action — it is the sentence that stops the operator reading your escalation
 as laziness. Full parameter contract → `issue_problem`'s own `type` and
 `summary` descriptions.
 
-There is no separate "requires human" flag — a card needs a human exactly when
-`open_problem_count > 0` (read via `issue_get({id, fields:['problems']})`). Escalation IS opening
-the problem; there is no second step. Removing a card's last open problem is always allowed and is
-how a card stops needing a human.
+No separate "requires human" flag — a card needs one exactly when
+`open_problem_count > 0`. Escalation IS opening the problem. Removing a card's last
+open problem always closes that need.
 
 ## Claiming a card (pickup)
 
-A card in `ToDo` is an open dispatch request — leaving it there while you work it yourself races
-a second worker onto the same card. Before your first work action:
+A `ToDo` card is an open dispatch request — working it unclaimed races a second worker
+onto it.
 
 1. `issue_transition({id, action:'pickup', manual:true, assigned_agent:'<your identity>'})`.
-   **`manual:true` is mandatory for self-pickup** — it marks the card operator-owned so nothing
-   auto-transitions it. Read `assigned_agent` back OUT OF THE RESPONSE: anything other than you
-   (including `null`) means the claim did not land — re-issue it, and stop if it fails twice.
-2. A manual hold is released only by an explicit transition from your session (`complete` /
-   `cancel` / `block` / `rollback_pickup`) — nothing auto-clears it.
-3. A sub-agent under YOUR control working a card is still YOUR card: pickup before you launch it,
-   keep it `In Progress` the whole time, and you drive the terminal transition when it finishes.
+   `manual:true` is mandatory — it marks the card operator-owned so nothing
+   auto-transitions it. Read `assigned_agent` back: anything but you (incl. `null`)
+   means the claim failed — re-issue, stop after two failures.
+2. A manual hold clears only via an explicit transition from your session
+   (`complete`/`cancel`/`block`/`rollback_pickup`).
+3. A sub-agent under your control is still your card: pickup first, keep it
+   `In Progress` throughout, drive the terminal transition yourself.
 
-## AC, checklists, comments, dependencies — the mechanics both callers use
+## Mechanics
 
-- **AC / checklists** — `issue_get` returns each item's `check_item_id` under `checklists[].items[]`.
-  Flip each as it's genuinely satisfied: `issue_checklist({action:'update_item', checklist_id,
-  item_id, status:'passing'})`. `issue_transition complete` refuses (409 `unresolved_items`) while
-  any item is `incomplete` — this is a hard gate, not bookkeeping.
-- **Comments** — `issue_comment({id, action:'add', text})`, markdown with `##` headers. Narrative
-  only; durable decisions and follow-up work go on a card (`issue_create`, `issue_retro`), never a
-  comment alone.
+- **AC/checklists** — `issue_get` returns each item's `check_item_id` under
+  `checklists[].items[]`; flip via `issue_checklist({action:'update_item',
+  checklist_id, item_id, status:'passing'})`. `complete` refuses (409
+  `unresolved_items`) on any `incomplete` item — a hard gate.
+- **Comments** — `issue_comment({id, action:'add', text})`, markdown `##` headers,
+  narrative only; durable decisions go on a card, never a comment alone.
 - **Dependencies** — `issue_dependency({id, action:'add', kind:'depends_on'|'conflict_on',
-  target_id})` for a related card you already know about; never a discovery scan.
-- **Problems** — `issue_problem({id, action:'add', statement, type?, summary?, solutions?})` is the
-  only way to escalate; see "Question versus action" above.
+  target_id})` for a card already known, never a discovery scan.
+- **Problems** — `issue_problem({id, action:'add', statement, type?, summary?,
+  solutions?})` is the only way to escalate; see "Question versus action" above.
 - **Retro** — `issue_retro({good, bad, correctable_danxbot_problem,
-  correctable_danxbot_problem_description, action_item_ids[], commits[], tests[]})`. All of
-  `tests[]` (empty array OK, omitting the key fails) and the `correctable_danxbot_problem` pair are
-  REQUIRED on every call — answer honestly; a `true` starts an automated repair.
-- Agents never write `status:` literals — every lifecycle change goes through `issue_transition`,
-  which derives and stamps it.
-
-## MCP server disconnected ≠ board unreachable
-
-The dashboard MCP server drops connection fairly often (`CONNECTION_CLOSED`). That is not a loss of
-board access — the same dashboard exposes a plain HTTP API (`src/issues/routes.ts` +
-`src/issues/write/*.ts`) that does everything the MCP tools do. Never tell the operator the board is
-unreachable on an MCP error alone; drive it over HTTP instead (bearer token from the per-target
-dashboard token file).
-
-## Issue-ref comments (default mode)
-
-`// CARD-ID: <reason>` on any non-obvious decision the card's AC/description forced; grep
-comment-anchored refs (`grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>`) and
-load each referenced card's `description`/`ac`/`comments` BEFORE editing code that carries one.
-Full protocol (writing/reading/lifecycle rules, examples) → `references/card-creation-and-reference.md`.
+  correctable_danxbot_problem_description, action_item_ids[], commits[], tests[]})`.
+  `tests[]` (empty OK, omitting fails) and the `correctable_danxbot_problem` pair are
+  required every call, answered honestly — `true` starts an automated repair.
+- Never write `status:` literals; `issue_transition` derives and stamps it.
+- **MCP disconnected ≠ board unreachable.** It drops often (`CONNECTION_CLOSED`); the
+  dashboard's plain HTTP API (`src/issues/routes.ts` + `src/issues/write/*.ts`) does
+  everything the MCP tools do — use it (bearer token from the per-target token file)
+  rather than calling the board unreachable on an MCP error alone.
+- **Issue-ref comments** — `// CARD-ID: <reason>` on any non-obvious decision the AC
+  forced; grep anchored refs
+  (`grep -rnE '(//|#|--|<!--|/\*|\*)[[:space:]]*[A-Z]+-[0-9]+' <files>`) and load each
+  referenced card before editing code that carries one.
 
 ## General rules
 
-- One card at a time when working as a dispatched worker — no orchestrator, no sub-agents in that
-  path. An operator-session sub-agent orchestrates its own sub-agents per its own session's rules.
-- `type:` ∈ `Epic`|`Feature`|`Story`|`Bug`|`Chore`; taxonomy/slicing/effort/gate/triage decisions
-  at creation time → `references/card-creation-and-reference.md`.
-- AC lives in `ac[]` (`issue_edit`), never inline in the description. Phases/sub-cards in
-  `children[]`; each child is its own card, set via `issue_edit({parent_id})`.
-- Never manually append `## Retro` in a comment — use `issue_retro`. Never escape markdown.
-- Durable work-records (findings, designs, handoffs, specs meant to survive the session) live on a
-  card — never a standalone repo `.md` or in-session TaskCreate/TaskList as a substitute.
+- One card at a time as a dispatched worker — no orchestrator, no sub-agents. An
+  operator-session sub-agent orchestrates its own per its own session's rules.
+- `type:` ∈ `Epic`|`Feature`|`Story`|`Bug`|`Chore`; slicing/effort/gate/triage →
+  `references/card-creation-and-reference.md`.
+- AC lives in `ac[]`, never inline. Phases/sub-cards are their own cards in
+  `children[]`, via `issue_edit({parent_id})`.
+- Never manually append `## Retro` — use `issue_retro`. Never escape markdown.
+- Durable work-records live on a card, never a repo `.md` or TaskCreate/TaskList.
 
-See `references/lifecycle-states.md` for the full state machine, derivation rules, triage cadence
-and gate contracts, `references/phases-epics.md` for the `children[]`/container mechanics, and
-`references/card-creation-and-reference.md` for card-creation taxonomy, the DB schema and the full
-MCP tool reference.
+See `references/lifecycle-states.md` (state machine, triage, gates),
+`references/phases-epics.md` (`children[]` mechanics), and
+`references/card-creation-and-reference.md` (taxonomy, DB schema, MCP reference).
