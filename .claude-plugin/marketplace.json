@@ -29,7 +29,7 @@
     {
       "name": "human-collaboration",
       "source": "./human-collaboration",
-      "description": "Human-in-the-loop discipline: read-only-default (human-loop skill), host-environment, docs/explain. Install only where a human drives prompts. Do NOT install on autonomous dispatched workers (diagnostic-mode-on-question would deadlock)."
+      "description": "Human-in-the-loop discipline: read-only-default (human-loop skill), diagnostic behaviour-fix skill (docs). Install only where a human drives prompts. Do NOT install on autonomous dispatched workers (diagnostic-mode-on-question would deadlock)."
     },
     {
       "name": "danxbot",

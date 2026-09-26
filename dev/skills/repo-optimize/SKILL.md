@@ -58,7 +58,7 @@ Output: `concept | locations[] | recommended single home`.
 | Personal repo names where skill claims generic | medium | `<connected-repo>` |
 | `@<scope>/*` outside owner-skill | medium | confirm intentional |
 | Author email in `plugin.json` | low | leave |
-| Windows paths outside dedicated host-environment skill | high | move to global settings |
+| Windows paths outside the user's global `~/.claude/CLAUDE.md` | high | move to global settings |
 | Trello board/list/label IDs | high | repo config or generalize |
 | Repo-specific Make targets outside that repo's plugin | medium | move to plugin |
 

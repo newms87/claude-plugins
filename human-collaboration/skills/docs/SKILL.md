@@ -1,95 +1,55 @@
 ---
 name: docs
-description: 'Stop current work and improve CLAUDE.md / rules / agent files based on what was done incorrectly.'
+description: 'Diagnose a wrong agent action, then fix it by briefly refining an existing rule/skill/hook/MCP description, expanding documentation, or escalating — never by adding a new skill.'
 ---
 
-# Documentation Update Workflow
+# Diagnose, Then Fix (Never Add a Skill)
 
-Stop what you're doing. The user identified something done incorrectly that needs documentation.
+Triggered when the operator flags something done wrong. Stop other work.
 
-## Step 1: Understand the Problem
+## 1. Explain first (read-only)
 
-From the conversation context and user's `/docs` message:
-1. What was done wrong?
-2. What is the correct approach?
-3. Is this a pattern that could recur?
+- **What:** one line, the wrong action.
+- **Why:** one or two lines, the reasoning that produced it.
 
-## Step 2: Choose the Right Location
+No code edits, no investigation in the project codebase yet.
 
-**MANDATORY gate — run this BEFORE picking any row in the table below.** Ask: would this same
-rule help a DIFFERENT repo, a different machine, a dispatched worker, or another agent — not
-just this one project? If YES, plugin source is the ONLY place it goes. Do not also restate it
-in `CLAUDE.md`, a project rule file, or the assistant's own per-project memory system as a
-"just in case" copy — a second copy is not a safety net, it drifts the moment the plugin version
-bumps, and whichever copy the next agent finds first is the one it trusts, possibly the stale
-one. **Memory (the assistant's private per-project memory files) is NEVER a place for a
-behavioral rule or standing instruction** — it holds facts about the project/user/history, not
-agent behavior, and it reaches no other agent, session, machine, or repo. If a generalizable rule
-somehow already exists ONLY in memory or a project file, that is itself the bug: move it to the
-plugin and delete the local copy, don't leave both standing.
+## 2. Resolve with the ladder, in order
 
-Both `CLAUDE.md` and `.claude/rules/*.md` are loaded automatically with the same priority. The difference is organizational.
+1. **Missing context** (the agent didn't know a fact it needed) → expand the documentation
+   agents reference. Never a rule or skill change.
+2. **No rule exists for this behaviour** → add it BRIEFLY to the existing skill, rule, hook, or
+   MCP tool description that owns the subject. First read every related item as a whole so
+   nothing is duplicated.
+3. **The rule exists and was still broken** → sharpen it with ONE concise, generalised example.
+   Never a bullet list of cases.
+4. **Text can't fix it** → say so plainly and escalate to the operator with a proposed system
+   change (an MCP tool response reminder, the janitor, or code) instead of writing more prose.
 
-| Location | What Goes There | Audience |
-|----------|-----------------|----------|
-| `CLAUDE.md` | Project overview, key commands, core principles. Keep concise. | Any agent loading the project |
-| `.claude/rules/*.md` | Domain-specific procedures (git, debugging, planning, TDD). | Any agent loading the project |
-| `~/.claude/rules/*.md`, `~/.claude/CLAUDE.md` | Operator's main-thread Claude Code session ONLY. | **Main session only** — does NOT load for dispatched-agent contexts (danxbot worker dispatches running as a different user / different HOME, agent-SDK subagents, container workers). |
-| Plugin source (`<PLUGINS_REPO>/<plugin>/{rules,skills}/`) | Universal rules + skills shared across projects, agents, dispatched contexts. Loaded via the marketplace + `autoUpdate`. | All instances that consume the plugin. |
-| Workspace inject path (`<ORCHESTRATOR_REPO>/src/poller/inject/workspaces/<workspace>/.claude/{rules,skills}/`) | Rules that fire INSIDE danxbot dispatched agents specifically. The poller mirrors this tree into every connected repo's workspace dir each tick. | Dispatched danxbot agents. |
-| `.claude/agents/*.md` | Instructions for specialized subagents only. | Subagents |
+**Never create a new skill.** A persisting bad behaviour is cheaper than another skill nobody
+needed — that habit is what bloated this plugin set before.
 
-**`<PLUGINS_REPO>` / `<ORCHESTRATOR_REPO>` are placeholders — resolve them, never hardcode them.** They sit at different paths per machine/context and get moved; a literal path goes stale the moment the operator reorganizes. Never write a resolved path back into a rule, skill, or comment.
+## 3. Locate the target and edit it
 
-Resolve at the moment you need it:
+Fix the surface that actually produced the behaviour — an already-loaded skill body, an injected
+description/frontmatter, a hook, or an MCP tool's response text. Editing a body that was never
+loaded doesn't change the no-load path; if the failure came from a description/frontmatter, fix
+that, not just the body.
 
-1. **Already inside the repo?** `git rev-parse --show-toplevel`.
-2. **Plugin marketplace repo:** read `~/.claude/plugins/known_marketplaces.json` — each entry carries `source.url` (the repo) and `installLocation` (a real checkout of that same repo on this machine).
-3. **Any other sibling repo:** search by REMOTE, not by assumed path:
-   ```bash
-   find ~ -maxdepth 4 -type d -name .git 2>/dev/null | while read -r g; do
-     d="$(dirname "$g")"
-     git -C "$d" remote get-url origin 2>/dev/null | grep -q '<repo-name>' && echo "$d"
-   done
-   ```
-4. **Found one? Use it. Do not clone.** A second clone silently drifts from the checkout the operator actually edits and publishes from. Clone only after the search comes back empty, and say so when you do.
-5. **Nothing resolves?** Report that you could not locate the repo. Do not guess a path and do not report a negative finding ("the rule isn't there") from a lookup that never ran.
+Resolve the plugin source checkout (never `~/.claude/plugins/cache/`, read-only) by remote, not
+by guessing a path: check `~/.claude/plugins/known_marketplaces.json` first, then search sibling
+repos by `git remote get-url origin`. Use what you find; never clone a second copy.
 
-**Decision flow:**
-- Will a danxbot dispatched agent run this rule? → Plugin source OR workspace inject path. **NEVER `~/.claude/`** — dispatched agents don't load it.
-- Universal across all projects + main + dispatched contexts? → Plugin source (`<PLUGINS_REPO>`).
-- Operator's main session only (no dispatched-agent audience)? → `~/.claude/rules/` or `~/.claude/CLAUDE.md`.
-- Project-level domain rule already exists? → Add to that file.
-- New project domain? → Create `.claude/rules/{domain}.md`.
-- Project overview / quick reference? → `CLAUDE.md`.
-- Subagent-specific? → `.claude/agents/`.
+- Reaches every project, machine, and dispatched context → plugin source.
+- This machine's main session only → `~/.claude/CLAUDE.md`.
+- One repo only → that repo's `.claude/CLAUDE.md` or `.claude/rules/`.
 
-**Anti-pattern:** dropping a generalized rule (applies to dispatched agents OR cross-project) into `~/.claude/` because it's the easiest path. Dispatched agents never read it; the rule won't fire where it's needed.
+Apply the edit yourself (`Edit`/`Write`). A plugin edit is not done until published: bump the
+version and push (`scripts/publish.sh` if the repo has one) — publishing is standing,
+pre-authorized, never needs approval.
 
-**Path-specific rules:** Add YAML frontmatter with `paths` to scope rules to specific files:
-```yaml
----
-paths: ["src/api/**", "routes/**"]
----
-```
+## 4. End state
 
-## Step 3: Write Succinct Documentation
-
-**Rules for writing:**
-- State the rule directly. No preamble.
-- Show the correct way. One example maximum.
-- Only show a "bad" example if the mistake is non-obvious from the good example alone.
-- No dissertations. Keep entries concise.
-
-### Step 3a: Domain-Neutrality Gate (MANDATORY for plugin source edits)
-
-Before writing into ANY plugin under `<PLUGINS_REPO>/<plugin>/` — except the one plugin that owns the named domain — STOP and scrub the draft for domain-specific vocab. The plugin's audience is every consumer of the marketplace, not just the repo where the failure surfaced.
-
-Mechanical pre-write check — answer YES to all FOUR before saving:
-
-1. **No repo names** in prose or examples (`danxbot`, `gpt-manager`, `<my-project>`, etc.). Use "this system" or drop the example.
-2. **No app-specific nouns** (e.g. `dispatch row`, `settings file`, `worker`, `poller`, `Trello`, `Slack listener`). Replace with the generic primitive ("source-of-truth record", "queue entry", "background process").
-3. **No tool / make-target / file-path names from a single repo.** Replace with the action they perform ("the registry lookup", "the cron entry").
-4. **Lead with the principle, not the trigger.** The failure that produced this edit is one instance of a class — write the class. The repo-specific trigger goes in the COMMIT MESSAGE, not the skill body.
-
-If any answer is NO → rewrite or relocate. Domain-specific rules belong in the plugin that owns the domain (e.g. `danxbot:*`), or in the project's own `.claude/rules/`, never in a base/dev/pipeline/human-collaboration plugin.
+Every run ends in exactly one of two states — say which:
+- **Resolved:** name the file and the brief edit (or doc expansion) made and published.
+- **Escalated:** name the proposed system change and ask the operator to confirm it.
