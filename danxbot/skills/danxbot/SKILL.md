@@ -67,7 +67,7 @@ The dispatched-agent runtime is what the dispatch API hands work to. The worker 
 
 "Deploy the X danxbot" ALWAYS means `make deploy TARGET=<x> COMMIT=<sha>` from the danxbot repo. NEVER means `make launch-worker` (that's local). NEVER means deploying the connected repo's own app.
 
-Production IS reachable from the dev shell — proxy / SSH / `docker exec` recipes → `danxbot:prod-access` skill. Don't claim "I can't reach production from here."
+Production IS reachable from the dev shell — proxy / SSH / `docker exec` recipes → the danxbot repo's own `.claude/rules/production-deploy.md` (R-17, moved out of the plugins as repo-operation conduct). Don't claim "I can't reach production from here."
 
 ## Per-Repo Configuration
 
@@ -150,7 +150,7 @@ Each MCP server consumed by a danxbot dispatch has an owner repo with a `make pu
   "Plan" feature (goals/rules/caveats/architecture/attached cards): connecting a session,
   hash-guarded writes, operator questions as Task cards with solutions, tables, routes,
   MCP tools, and the production Plans UI
-- `danxbot:prod-access` skill — proxy / SSH / `docker exec` recipes for deployed targets
+- the danxbot repo's own `.claude/rules/production-deploy.md` — proxy / SSH / `docker exec` recipes for deployed targets, and who may launch/deploy (R-17)
 - `danxbot:dispatch-deep` skill — resume protocol, staged_files, multi-block usage dedup, claude-auth diagnostic
 - `danxbot:docker-deep` skill — root `.mcp.json` inject, `.env.<target>` overlays, Laravel `.env.{APP_ENV}` trap
 - `danxbot:settings-deep` skill — per-repo `settings.json` schema + ownership matrix

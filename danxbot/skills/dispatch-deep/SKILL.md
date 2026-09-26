@@ -249,7 +249,7 @@ Status enum carries `"recovered"` as a TERMINAL state (separate from `"failed"`)
 
 ## Launching a worker — two live footguns (DX-1763 / DX-1801)
 
-Both bite AFTER authorization is granted (see `no-unauthorized-worker-launch`) — they're about getting the launch command itself right, not about whether you're allowed to run it.
+Both bite AFTER authorization is granted (see the target repo's own `.claude/rules`, R-17) — they're about getting the launch command itself right, not about whether you're allowed to run it.
 
 ### 1. `export VAR=...; make target` does NOT reliably override — use `make VAR=... target`
 

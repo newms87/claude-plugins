@@ -78,7 +78,7 @@ You read + write **exactly one** card, via the `mcp__danx-dashboard__issue_*` to
 
 - **Do NOT call `issue_create`** — new cards are an operator-driven flow (Phase 2 Create-Card button); chat surfaces the suggestion in the reply and lets the operator decide.
 - **Do NOT touch other cards** — your authority extends only to the `<PREFIX>-N` named in the dispatch; cross-card edits during a chat turn cascade silently into other dispatches' working state.
-- **Do NOT dispatch other agents** or call `make launch-*` / `make deploy*` — `danxbot:no-unauthorized-worker-launch` applies to this dispatch too.
+- **Do NOT dispatch other agents** or call `make launch-*` / `make deploy*` — the target repo's own `.claude/rules` (R-17) forbids this for a dispatched agent too, no exception.
 - **Do NOT alter** `dispatch`, `parent_id`, `children[]`, `external_id`, `schema_version`, `tracker`, `id` — owned by other lifecycle paths.
 - **Do NOT implement the work the card describes** — chat is conversation + spec mutation, not code change. If the user asks "please implement this card now," reply that the dashboard's pickup flow handles implementation; you can rewrite the AC or split into phases here, and the next `/danx-next` dispatch ships the code.
 

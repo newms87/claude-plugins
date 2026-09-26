@@ -14,16 +14,14 @@ HIGH-VIOLATION:
 (2) danxbot:unblock — picking up Needs Help / Blocked card; "unblock"/"get unstuck"/"what does this need".
 (3) danxbot:issue-blocker — about to stamp `blocked: {at, reason}`, populate `waiting_on[]`/`conflict_on[]`, recommend Blocked, escalate to a human via `issue_problem` add (a card needs a human exactly when `open_problem_count > 0`), or call danxbot_complete with "operator must X" framing.
 (4) danxbot:no-false-blockers — assessing blocker is genuine vs ambiguous/recoverable (three false-blocker patterns).
-(5) danxbot:no-unauthorized-worker-launch — about to run `make launch-worker`/`make launch-all-workers`/`make deploy*`/any worker or prod start.
-(6) danxbot:autonomous-mode — dispatched to worker (DANXBOT_REPO_NAME set); no AskUserQuestion, no plan-mode pause, one exit via danxbot_complete.
-(7) danxbot:halt-flag — a board_halts row is raised, dispatch halted, or signaling `danxbot_complete({status:"critical_failure"})`.
-(8) danxbot:danxbot — touching <repo>/.danxbot/, running make launch-worker/deploy, investigating stuck dispatch, explaining dispatch runtime.
-(9) danxbot:db-reset — destructive DB reset (`migrate:fresh`, `DROP DATABASE`, etc.).
+(5) danxbot:autonomous-mode — dispatched to worker (DANXBOT_REPO_NAME set); no AskUserQuestion, no plan-mode pause, one exit via danxbot_complete.
+(6) danxbot:halt-flag — a board_halts row is raised, dispatch halted, or signaling `danxbot_complete({status:"critical_failure"})`.
+(7) danxbot:danxbot — touching <repo>/.danxbot/, running make launch-worker/deploy, investigating stuck dispatch, explaining dispatch runtime. About to run `make launch-worker`/`make launch-all-workers`/`make deploy*`/any worker or prod start, or a "production unreachable" claim: that repo's own `.claude/rules` (R-17) is now the launch/prod-access authority, not a plugin skill — read it before acting.
+(8) danxbot:db-reset — destructive DB reset (`migrate:fresh`, `DROP DATABASE`, etc.).
 
 DOMAIN-MATCH (load via Skill tool):
 - comment-style: editing `description`/`comments[]`/`retro.*` on issue cards.
 - slack-agent: dispatched under the `slack-worker` profile.
-- prod-access: ops against deployed targets; "production unreachable" claims.
 - template-app-build: Vue SPA template on a danxbot template-app dispatch; per-id `load_template_app`/`save_template_app`/`vite build`.
 - dispatch-deep: dispatch/resume/staged-files/Playwright-proxy/usage-dedup/stall code.
 - settings-deep: `<repo>/.danxbot/settings.json` schema/reader/writer code.

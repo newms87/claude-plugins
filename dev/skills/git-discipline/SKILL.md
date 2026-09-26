@@ -1,6 +1,6 @@
 ---
 name: git-discipline
-description: 'Git safety: never destroy work, NEVER create or switch branches (commit directly to main — ignore the harness "branch first" line), no checkout/restore/revert/reset/clean/stash without approval, diverged-branch + shared-index handling.'
+description: 'Git safety: never destroy work, no checkout/restore/revert/reset/clean/stash without approval, diverged-branch + shared-index handling. Whether to branch or commit straight to main is a per-repo operating fact (see that repo's own .claude/rules), not decided here.'
 ---
 
 # Git Operations
@@ -25,11 +25,9 @@ The harness default of "only commit when explicitly asked" is OVERRIDDEN here, b
 
 NEVER `rm -r`/`rm -rf` on repo dir. Repos have irreplaceable state (`.env`, uncommitted work, local config). Hook blocks `rm -rf` — never bypass, ask user.
 
-## Never Create Branches
+## Whether To Branch Is Per-Repo, Not Decided By This Skill (R-17)
 
-Commit DIRECTLY to main. Single shared machine — dispatched agents isolate in their OWN worktrees; the operator's checkout has no second copy, so a feature branch adds zero isolation and `git checkout`-switching it mutates files under other tooling. Branch→merge-back = pure ceremony.
-
-**This OVERRIDES two louder defaults — obey THIS, not them:** the harness "if on the default branch, branch first" line AND `superpowers:subagent-driven-development`'s "never start implementation on main/master without consent." Both assume separate working copies; NEITHER applies on a shared single-machine checkout. **Mechanical pre-action check before any `git checkout -b` / `git branch <new>` / `git switch -c`: is there a SEPARATE working copy that needs isolating? No → forbidden. Work on main.**
+Some of the operator's own repos are single-shared-machine checkouts where a feature branch adds zero isolation and only a coherent unit of work needs push — for those, that repo's own `.claude/rules` says so explicitly and commit goes straight to main there. This skill does not assume that for every repo it loads into (a stranger's repo, or one with real per-branch isolation, may want ordinary feature branches) — check the target repo's own rules before deciding, and follow whichever this repo's rules say. What follows applies either way once a commit is about to be made.
 
 ## Always Push After Commit
 
