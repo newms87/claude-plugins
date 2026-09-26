@@ -48,9 +48,29 @@ resolving a hold you can resolve yourself.
 | symptom | correct mechanism | cleared by |
 |---|---|---|
 | The card must not auto-dispatch until a blocker is resolved, and an agent (this one, or the next dispatch) can resolve it (a card-specific tool failure the next dispatch re-checks, a hold with a named release condition) | `blocked: {at, reason}` — a dispatch GATE, not one of `deriveStatus`'s six status rules (CLAUDE.md CP2); it blocks `pickup` without changing `status_derived` | Whoever resolves the blocker — often the next agent — via `issue_transition({action: 'unblock'})`. Answering a problem never clears it. |
-| A human must *decide or supply information* the agent cannot derive (a design call only the operator can make, scope or authority, a spec only the operator can settle) OR *take external action on a system the agent has zero programmatic reach into* (3rd-party token rotation, vendor dashboard click-through, manual deploy of external infra, restart of infrastructure the agent cannot launch) | Open a problem — `issue_problem({id, action: 'add', statement, solutions[]})` — the ONLY way a card reaches the operator | The operator answers it in the dashboard. Answering the LAST open problem is what makes the card stop needing a human — automatic, nothing else to clear. The operator can also remove the problem directly. |
+| A human must *decide or supply information* the agent cannot derive (a design call only the operator can make, scope or authority, a spec only the operator can settle) | Open a problem, `type: "question"` (default) — `issue_problem({id, action: 'add', statement, solutions[]})` — the ONLY way a card reaches the operator | The operator answers it in the dashboard. Answering the LAST open problem is what makes the card stop needing a human — automatic, nothing else to clear. The operator can also remove the problem directly. |
+| A human must *take external action* on a system the agent has zero programmatic reach into (3rd-party token rotation, vendor dashboard click-through, manual deploy of external infra, restart of infrastructure the agent cannot launch) | Open a problem, `type: "action"` — `issue_problem({id, action: 'add', statement, summary, solutions[]})` — `summary` is REQUIRED and must say why the action is needed and why you cannot do it yourself (omitted → refused 400). See "Question versus action" below. | Same as above. |
 | This card waits for ONE+ specific other card(s) to terminate (semantic dep declared up-front on the card — phase sibling, action-item card, separately-scoped task) | `waiting_on: {reason, by: [ISS-N, ...], timestamp}` | Picker auto-dispatches the moment every id in `by[]` reaches Done/Cancelled. The `waiting_on` record itself stays as durable dep-history note. |
 | File-overlap / in-flight race with sibling card(s) detected by the Dependency PRE quality gate (DX-1180) | `conflict_on: [{id, reason}, ...]` | Re-derived each dispatch from partner CURRENT status; partner leaving In Progress clears the gate (edge stays set — DX-810) |
+
+### Question versus action — decide before you file (DX-3313)
+
+Before opening a problem, apply the test: **could I do this myself if I tried
+harder, and is the only thing missing a decision?** Yes → `type: "question"`
+(default). No — the blocker is access, credentials, hardware, a human's
+authority, or a system genuinely out of reach → `type: "action"`.
+
+| | Question | Action |
+|---|---|---|
+| `statement` | the question, one plain sentence | what is to be done — the deed itself, never phrased as a question |
+| `summary` | optional, why it matters | **REQUIRED** — why it is needed, and why you cannot do it yourself (an action `add` with no summary is refused 400) |
+| `solutions[]` | candidate answers, each with its own pro/con | the possible routes, each carrying its own steps |
+| Ends when | a decision is recorded | the steps are actually done |
+
+The why-I-cannot-do-this-myself sentence in `summary` is REQUIRED for an
+action — it is the sentence that stops the operator reading your escalation
+as laziness. Full parameter contract → `issue_problem`'s own `type` and
+`summary` descriptions.
 
 ### Coexistence is the normal case, not the rare case
 
@@ -252,8 +272,9 @@ Only then are you authorized to take ONE of the two paths below (Step 10 of `dan
 3. Call `danxbot_complete({status: "failed", summary: "..."})`.
 
 **Escalate — a human must decide or act:**
-1. Call `issue_problem({id, action: 'add', statement, solutions})`:
-   - `statement` — the question or flaw, one plain sentence.
+1. Call `issue_problem({id, action: 'add', statement, type?, summary?, solutions})` — set
+   `type` per "Question versus action" above (an action REQUIRES `summary`):
+   - `statement` — the question, or the deed itself for an action, one plain sentence.
    - `solutions[]` — one entry per viable option, each with `title`, `body`, `pro` and `con`.
      Exactly one entry has `recommended: true`. Put the concrete numbered actions the operator
      would run in the recommended solution's `body` — there is no separate `steps[]` field.
