@@ -305,7 +305,7 @@ non-dispatchable until <TARGET-CARD-ID> is terminal.
   here if it now fits, or re-block / re-delegate).
 ```
 
-Use Step 10 ONLY when blocker is genuinely one of (route in parentheses). Before treating anything as a blocker, run it against the NOT-a-blocker list first — `issue-blocker` checklist item 5 + the `no-false-blockers` skill cover deploy/prod-smoke ACs, pre-existing flaky tests, manual-UI-smoke ACs, and post-`danxbot_complete` behavior; none of those are valid blockers.
+Use Step 10 ONLY when blocker is genuinely one of (route in parentheses). Before treating anything as a blocker, run it against the NOT-a-blocker list first — `issue-blocker`'s Part A, checklist item 5, covers deploy/prod-smoke ACs, pre-existing flaky tests, manual-UI-smoke ACs, and post-`danxbot_complete` behavior; none of those are valid blockers.
 
 - **Credentials / secrets** human must rotate / push to SSM (→ Escalate).
 - **External repo / file worker has no write access** AND no other agent fixes it — but ONLY after the cross-repo DELEGATE pre-check above fails (i.e. the target repo has NO danxbot board). If it has a board, delegate, don't block (→ Escalate).

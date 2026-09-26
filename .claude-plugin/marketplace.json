@@ -34,7 +34,7 @@
     {
       "name": "danxbot",
       "source": "./danxbot",
-      "description": "Danxbot orchestrator: dispatch architecture, runtime modes, deploy, issue-card workflow (YAML schema, tracker contract, danx-issue MCP), autonomous issue-worker skills (danx-start, danx-next, danx-ideate, danx-triage-card, danx-epic-link), unblock, halt-flag, comment-style. Single home for everything danxbot-related — install on every danxbot-aware instance + workspace."
+      "description": "Danxbot orchestrator: dispatch architecture, runtime modes, deploy, issue-card workflow (YAML schema, tracker contract, danx-issue MCP), autonomous issue-worker skills (danx-start, danx-next, danx-ideate, danx-triage-card, danx-epic-link), issue-blocker, halt-flag, comment-style. Single home for everything danxbot-related — install on every danxbot-aware instance + workspace."
     }
   ]
 }
