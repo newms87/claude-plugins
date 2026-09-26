@@ -61,13 +61,13 @@ Columns: `plugin · skill · LOC · domain · current trigger surface · propose
 | danxbot | autonomous-mode | 81 | dispatched worker discipline | frontmatter only (audience:worker) | danxbot | 100 | keep | mirror inverse of human-loop |
 | danxbot | comment-style | 45 | issue YAML markdown style | frontmatter only | danxbot | 80 | keep | |
 | danxbot | danx-chat | 155 | per-card chat agent | frontmatter only (slash cmd) | danxbot | 160 | keep | dispatched-by-dashboard |
-| danxbot | danx-epic-link | 206 | epic ↔ phase linkage | frontmatter only | danxbot | 200 | keep + trim | |
+| danxbot | danx-epic-link | 206 | epic ↔ phase linkage | frontmatter only | danxbot | — | **deleted (DX-3334)** | never fired — an Epic can't be created without children, and `children[]` derives from `parent_id` (`listChildren`, `src/issues/db/repo.ts`); the skill-load mandate's "auto-fires on Epic with empty children[]" trigger never existed |
 | danxbot | danx-flesh-out | 464 | card flesh-out agent | frontmatter only (slash cmd) | danxbot | 300 | keep + split | OVER CAP — split into `danx-flesh-out` (workflow, ~250) + `danx-flesh-out-reference` (zero-context-test rubric, examples, ~150) |
 | danxbot | danx-ideate | 93 | ideator launch | frontmatter only | danxbot | 100 | keep | |
 | danxbot | danx-next | 807 | autonomous card workflow | frontmatter + base SessionStart hook | danxbot | 300 | keep + heavy split | OVER CAP 2.7x — split into `danx-next` (core 10-step flow, ~280), `danx-next-step10` (false-blocker decision tree, ~200), `danx-next-quality-gates` (test-reviewer + code-reviewer integration, ~200), `danx-next-reference` (worked examples, ~150). Highest priority Phase 2 target. |
 | danxbot | danx-start | 68 | batch ToDo processing | frontmatter only | danxbot | 80 | keep | |
 | danxbot | danx-triage-card | 413 | per-card triage agent | frontmatter only (slash cmd) | danxbot | 280 | keep + split | OVER CAP — split into `danx-triage-card` (workflow + decision tree, ~260) + `danx-triage-reference` (status-specific scoring rubrics, ~180) |
-| danxbot | danx-triage-orchestrator | 53 | triage fan-out | frontmatter only | danxbot | 80 | keep | |
+| danxbot | danx-triage-orchestrator | 53 | triage fan-out | frontmatter only | danxbot | — | **deleted (DX-3334)** | in no production profile; an operator fan-out nobody uses (PLN-11 R-14) |
 | danxbot | danxbot | 216 | runtime/dispatch overview | frontmatter + base SessionStart hook | danxbot | 220 | keep | hook reference moves from base to danxbot's own hook |
 | danxbot | db-reset | 179 | sanctioned DB reset path | frontmatter only (audience:worker) | danxbot | 180 | keep | pairs with base:deny-destructive-db PreToolUse hook |
 | danxbot | dispatch-deep | 281 | deep dispatch contracts | frontmatter only | danxbot | 280 | keep | |
@@ -82,7 +82,7 @@ Columns: `plugin · skill · LOC · domain · current trigger surface · propose
 | danxbot | settings-deep | 105 | settings.json deep contract | frontmatter only | danxbot | 110 | keep | |
 | danxbot | slack-agent | 71 | slack-worker MCP discipline | frontmatter only (audience:worker) | danxbot | 80 | keep | |
 | danxbot | unblock | 126 | blocker report contract | frontmatter + base SessionStart hook | danxbot | 130 | keep | hook reference moves from base to danxbot's own hook |
-| danxbot | template-app-build | 159 | Vue template-app build (per-id load/save) | frontmatter only (slash cmd) | danxbot | 160 | keep | renamed from vue-app-build (DX-892) |
+| danxbot | template-app-build | 159 | Vue template-app build (per-id load/save) | frontmatter only (slash cmd) | danxbot | — | **deleted (DX-3334)** | wired into NO production profile (a template-app dispatch was agentless — `agent-types.ts:262`); build loop moved into danxbot's own `template-app` DB profile baseInstruction |
 
 **Skill counts:** base 8 · dev 6 · investigate 1 · pipeline 6 · human-collaboration 5 · danxbot 24 → **50 skills, 8632 LOC**.
 
