@@ -140,6 +140,13 @@ Create via `danxbot:issue-card-workflow` (load before choosing type). Follow its
 
 ## Sub-agents
 
+**Delegate card work by card id, not by hand-written brief.** Each `danxbot:worker-*` agent already
+loads `danxbot:issue-card-workflow` and works the card end to end (claim, load context, TDD build,
+AC/gates, complete) on its own — `Agent({subagent_type: "worker-<tier>", prompt: "<CARD-ID>"})` is
+the whole brief. Add the zero-context mandate item 1 (worktree location, ownership, cleanup proof)
+only when the card's own instructions wouldn't already cover it — sub-agents never see session-start
+text.
+
 - Set card `effort_level` first, dispatch matching agent. Never `general-purpose` or unspecified (inherits session model).
 
 | effort | subagent_type |
@@ -153,7 +160,16 @@ Create via `danxbot:issue-card-workflow` (load before choosing type). Follow its
 | above max | `danxbot:worker-fable-high` |
 
 - Before each `Agent` call: name card effort + subagent_type.
-- Brief that may create worktree/clone/scratch/patch → paste zero-context mandate item 1 (worktree location, ownership, cleanup proof) verbatim. Sub-agents never see session-start text.
+- **Non-overlapping files only** — two agents must never edit the same file concurrently; partition
+  by file before fanning out, and dispatch independent cards in parallel (this session's own cap)
+  rather than serializing them.
+- **State a time-box in the brief** ("if this exceeds ~N minutes, stop and report partial
+  progress") and never let a dispatch background a long test run and end its turn to wait on it —
+  wait in the foreground, bounded, or release the card (`rollback_pickup`) and report what's left.
+- **Run tests once, after the sub-agent's edits land** — never inside multiple parallel dispatches
+  touching the same suite.
+- **Stop a dispatch once you've consumed its final report** (unless you expect a same-conversation
+  follow-up) — a "completed" `Agent()` spawn otherwise stays resumable and visible as still running.
 
 ## Liveness
 
