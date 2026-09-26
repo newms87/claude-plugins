@@ -23,12 +23,37 @@
 # full-body injection already satisfies that cadence for plan-workflow
 # specifically, so the per-turn pointer had nothing left to add. Its
 # suppression helper (lib/prompt-guard.sh) is deleted along with it.
+#
+# DX-3275 / PLN-11 R-10: before a plan is connected, the danxbot plugin's
+# ONLY session-start text is `mantra.sh`'s short nudge — this verbatim
+# skill-body dump stays silent (no output at all, on ANY source, including
+# `clear`) until the session's connection record exists. Detection is the
+# same local file stat `mantra.sh` and `plan-connect-mantra.mjs` use
+# (`scripts/lib/plan-connection.mjs`, a check against
+# `~/.config/danxbot/plan-sessions/<session>.json`) — never a second,
+# independent way of answering the same question.
 set -euo pipefail
 
 EVENT="${1:-SessionStart}"
 SKILL_FILE="${CLAUDE_PLUGIN_ROOT}/skills/plan-workflow/SKILL.md"
+CONNECTION_LIB="${CLAUDE_PLUGIN_ROOT}/scripts/lib/plan-connection.mjs"
 
 if [ "$EVENT" != "SessionStart" ]; then
+  exit 0
+fi
+
+PAYLOAD="$(cat)"
+
+CONNECTED="0"
+if [ -f "$CONNECTION_LIB" ]; then
+  CONNECTED="$(printf '%s' "$PAYLOAD" | node "$CONNECTION_LIB" 2>/dev/null || true)"
+fi
+
+if [ "$CONNECTED" != "1" ]; then
+  # Not connected: stay completely silent. `mantra.sh` (same cadence
+  # decision, DX-3052 problem 1602) owns the one nudge the plugin shows
+  # before a plan is connected — this hook adding its own text here would
+  # duplicate it.
   exit 0
 fi
 

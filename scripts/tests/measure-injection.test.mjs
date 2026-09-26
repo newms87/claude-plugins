@@ -99,6 +99,15 @@ test("AC 32508: an unset CLAUDE_PLUGIN_ROOT under-reports a real hook — the ha
   // measure-injection.mjs always does. The unset run must silently emit
   // ZERO stdout bytes — proving that without this harness discipline, a
   // real hook reads as "emits nothing" rather than failing loudly.
+  //
+  // DX-3275: mantra.sh's output size now depends on plan-connection state
+  // (unconnected -> the short nudge, connected -> the full mantra), and the
+  // harness's own freshSessionId() is by construction never connected — so
+  // its measured row is the nudge size, not the mantra size. The nudge is
+  // still nonzero, which is exactly what this AC needs proof of (CLAUDE_PLUGIN_ROOT
+  // being set is what stands between 0 bytes and SOME bytes); the "does the full
+  // mantra actually print" behavior is covered separately by
+  // danxbot/tests/mantra.test.mjs's "connected" case.
   const stdin = JSON.stringify({ session_id: "cpb-test-unset", source: "startup" });
 
   const envWithoutRoot = { ...process.env };
@@ -119,19 +128,27 @@ test("AC 32508: an unset CLAUDE_PLUGIN_ROOT under-reports a real hook — the ha
   }
   assert.equal(unsetBytes, 0, "expected an unset CLAUDE_PLUGIN_ROOT to under-report to 0 bytes");
 
-  const setBytes = execFileSync("bash", [MANTRA_SCRIPT], {
+  const unconnectedBytes = execFileSync("bash", [MANTRA_SCRIPT], {
     input: stdin,
     env: { ...process.env, CLAUDE_PLUGIN_ROOT: MANTRA_PLUGIN_ROOT },
     cwd: REPO_ROOT,
   }).length;
-  assert.ok(setBytes > 3000, `expected the real mantra.md byte count with CLAUDE_PLUGIN_ROOT set, got ${setBytes}`);
+  assert.ok(
+    unconnectedBytes > 0,
+    `expected the plan-workflow nudge's nonzero byte count with CLAUDE_PLUGIN_ROOT set, got ${unconnectedBytes}`,
+  );
 
-  // And the harness itself (which always sets CLAUDE_PLUGIN_ROOT) must
-  // report the non-zero figure for this same hook, in its own output.
+  // And the harness itself (which always sets CLAUDE_PLUGIN_ROOT, but never
+  // connects its fresh per-row session id to a plan) must report that same
+  // nonzero nudge figure for this hook, in its own output — never 0.
   const { rows } = run();
   const mantraRow = rows.find((r) => r.command.includes("mantra.sh"));
   assert.ok(mantraRow, "expected mantra.sh to be measured");
-  assert.ok(mantraRow.bytes > 3000, "the harness must report mantra.sh's real byte count, not 0");
+  assert.equal(
+    mantraRow.bytes,
+    unconnectedBytes,
+    "the harness must report mantra.sh's real (unconnected/nudge) byte count, not 0",
+  );
 });
 
 test("perSession includes a SessionStart hook whose matcher still fires at startup (DX-3347's mantra.sh)", () => {

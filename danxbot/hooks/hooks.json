@@ -1,5 +1,5 @@
 {
-  "description": "DX-3347: prints the mantra.md file on SessionStart, matcher startup|resume|compact ONLY (no other per-turn injection). Separately auto-loads the full danxbot:plan-workflow skill body on every SessionStart source (unchanged — not mantra text), runs the plan event bridge (relays a connected Plan's dashboard events into the session inbox) plus its watchdog, a plan-link auto-connect hook (fires only when the prompt contains a plan URL), and captures the plan tab id on connect. Each script's own header comment documents its exact trigger and behavior.",
+  "description": "DX-3275 / PLN-11 R-10: before a plan is connected, SessionStart shows only mantra.sh's short plan-workflow nudge — plan-workflow-autoload.sh's full skill-body dump stays silent until the session's connection record exists. Once plan_connect succeeds, plan-connect-mantra.mjs surfaces the full mantra immediately (PostToolUse), and the next SessionStart brings in the full mantra + skill-body autoload. Also runs the plan event bridge (relays a connected Plan's dashboard events into the session inbox) plus its watchdog, a plan-link auto-connect hook (fires only when the prompt contains a plan URL), and captures the plan tab id on connect. Each script's own header comment documents its exact trigger and behavior.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -54,6 +54,10 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-tab-watch.mjs\" capture"
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-connect-mantra.mjs\""
           }
         ]
       },
