@@ -5,9 +5,9 @@ description: Concept-first scaffold for reports/commits/PRs/comments/Slack/hand-
 
 # convey — Concept-First Information Transfer
 
-Default agent output is code-first: file paths, symbols, prose. Reader reverse-engineers concept. Fast to dump, slow to read.
-
-`convey` flips it. Concept-first, fixed shape, tables + diagrams over prose, paths in Verify line only. Reader decides in <30s whether to dig further.
+Default agent output is code-first: paths, symbols, prose — reader reverse-engineers the
+concept. `convey` flips it: concept-first, fixed shape, tables/diagrams over prose, paths
+only in Verify, so the reader decides in <30s whether to dig further.
 
 ## When to apply
 
@@ -16,36 +16,25 @@ Default agent output is code-first: file paths, symbols, prose. Reader reverse-e
 | End-of-turn report, commit body, PR, issue card, Slack, code-review, findings, unblock, hand-off | YES |
 | Inline narration ("running test now"), code itself | NO |
 
-Finished artifact someone reads to decide → convey applies.
+Any finished artifact someone reads to decide → applies.
 
-## Where the artifact lives — NEVER in the consumer repo
+## Where the artifact lives — NEVER the consumer repo
 
-Plans, handoffs and decisions are never files: in a human-driven session they
-are written into the connected danxbot Plan (`danxbot:plan-workflow`); work
-records live on cards (`danxbot:issue-card-workflow`). Agent-authored transient
-scratch — probe output, investigation notes, multi-step working files — goes
-under `/tmp/`, **NEVER into the consumer repo's `docs/` tree** (or any other
-in-repo path). The repo is production source; agents dropping handoffs into
-`docs/handoffs/` clutters git, forces every future contributor's `git status`
-to ignore-list dance over the path, and leaves stale prose nobody owns the
-moment the receiving agent finishes.
+Plans, handoffs, decisions are never files: write them to the connected danxbot Plan
+(`danxbot:plan-workflow`); work records live on cards (`danxbot:issue-card-workflow`).
+Transient scratch goes under `/tmp/`, never the repo's `docs/` or any in-repo path —
+clutters git, leaves stale prose nobody owns.
 
 | Artifact | Path |
 |---|---|
 | Plan, handoff, operator question | the connected danxbot Plan — no file |
 | Multi-file scratch / investigation notes | `/tmp/<topic>/` |
-| One-shot inline report (the convey scaffold above) | emit in chat — no file |
+| One-shot inline report (scaffold below) | chat — no file |
 
-Only commit a doc to the consumer repo when the user **explicitly** asks for
-something durable in vc (canonical guides under `docs/guides/`, runbooks,
-contracts the team co-owns). "It's a long output" is not a reason to write to
-the repo — `/tmp/` is the default home for everything an agent writes that
-isn't code or a user-requested-durable doc.
-
-Mechanical pre-Write check: about to `Write` a `.md` under `<repo>/docs/` (or
-anywhere in the consumer tree) that wasn't on the user's explicit request
-list → STOP, retarget to `/tmp/`. The same rule blocks an agent from making a
-mess in `<repo>/scratch/`, `<repo>/notes/`, or any other ad-hoc dump dir.
+Only commit a doc to the repo when the user **explicitly** asks for something durable
+(canonical guides, runbooks, shared contracts) — "it's a long output" isn't a reason.
+Before writing a `.md` under `<repo>/docs/`, `scratch/`, `notes/`, or any in-repo path
+that wasn't explicitly requested: stop, retarget to `/tmp/`.
 
 ## The scaffold
 
@@ -65,50 +54,52 @@ mess in `<repo>/scratch/`, `<repo>/notes/`, or any other ad-hoc dump dir.
 
 **Why non-obvious.** ≤2 lines. Skip if goal covers it.
 
-**Caveats.** (omit if none — limitations, gotchas, surprises)
+**Caveats.** (omit if none)
 - Item 1
 
-**Next actions.** (omit if none — checkboxes for operator chores)
+**Next actions.** (omit if none — operator checkboxes)
 - [ ] Action 1
 
 **Verify.** `cmd` → ✅ N/N | optional `path:line` pointers.
 ```
 
-Canonical section names (bold) stay stable for skimming. Caveats = world as-is. Next actions = world that must change. Never collapse. Omit empty sections.
+Section names (bold) stay stable for skimming; never collapse them; omit only empty ones.
 
 ## Rules — do / don't
 
 | ✅ Do | ❌ Don't |
 |---|---|
-| Lead with conclusion; concepts in body, paths in Verify only | Paths/symbols above Verify; reader re-derives |
-| Plain English (zero codebase knowledge) | Framed by code path / symbol / `TICKET-212` / `validateBlocked` |
-| Tables for "A vs B"/matrix; ASCII diagrams for flow | Prose comparing states; numbered prose paragraphs |
-| System-actor verbs (skips, stamps, rebuilds) | Personal actor (I added, We refactored) |
+| Conclusion first; paths in Verify only | Paths/symbols above Verify; reader re-derives |
+| Plain English, zero codebase knowledge | Framed by code path / symbol / ticket id |
+| Tables for "A vs B"; ASCII for flow | Prose comparing states; numbered paragraphs |
+| System-actor verbs (skips, stamps, rebuilds) | Personal actor (I added, we refactored) |
 | Backticks for identifiers/commands only | Backticks on plain English |
-| Omit empty sections; drop Why if goal covers | Forced entries; padding / restatement |
-
-(Scaffold owns headline ≤12w, `✅ N/N` one-liner, caveats/next-actions shape — not repeated here.)
+| Omit empty sections; drop Why if goal covers | Forced entries; padding |
 
 ## Self-containment + progressive disclosure
 
-Same "stands alone, zero session context, lead with the conclusion" rule the always-on `convey-mandate.sh` hook already states every session — not restated here. Additional: deep mechanism (memoization, scheduling, mock/internal wiring, evidence chains) is OMITTED unless the user asked to "explain further" / "why", at most a one-line offer to expand, never front-loaded.
+Same "stands alone, zero session context" rule the always-on session hook already
+states. Deep mechanism (memoization, scheduling, wiring, evidence chains) is omitted
+unless the user asks "why" — at most a one-line offer to expand, never front-loaded.
 
 ## Self-trigger gate
 
-Before sending ANY response with: "Summary", "What shipped", "Report", "Findings", wall of paths, 3+ paragraphs on one change → confirm loaded + apply scaffold.
+Before sending "Summary", "What shipped", "Report", "Findings", a wall of paths, or 3+
+paragraphs on one change — confirm the scaffold applies. A draft >40 lines for a single
+action means it wasn't applied; reshape.
 
-Draft >40 lines for single action = convey not applied. Re-shape.
-
-**Terminal MCP calls:** when previous tool = terminal signal (`danxbot_complete`, etc.), emit NO text. Process being SIGTERM'd; tokens wasted. Tool's `summary` arg + issue card `retro` ARE the report.
+**Terminal MCP calls:** after a terminal signal (`danxbot_complete`, etc.), emit no text
+— the process is being terminated. The tool's `summary` and the card `retro` ARE the
+report.
 
 ## Anti-patterns
 
-- **Wall of paths:** `What shipped: src/A.ts — foo | src/B.ts — bar | ...` → Can't tell what WORKS. Use Goal + Behavior diff.
-- **Code-shape leakage:** `ConflictVerdict is tagged union with kind: "ok"|"conflict"|...` → Move type signature to Verify; in body say "three decisions".
-- **Prose flow:** `Picker calls runConflictCheck, awaits verdict, invokes applyConflictVerdict, writes the card...` → Use arrow: `picker → check → verdict → apply → DB`.
-- **Jargon-first:** `TICKET-135 waiting_on + In Progress → TICKET-212 invariant (waiting_on != null ⟹ status=ToDo) fires...` → Lead with real-world, then internals. "Card waiting on another card finished. Agent picked up + flipped to In Progress. Validator sees note-pinned + status-not-waiting → screams." Then field (`waiting_on`), ID (`TICKET-212`), path (`yaml.ts:941`) in Verify.
-- **Code-path options:** `1. Thread byId into validateBlocked. 2. Move forceWaitingOnToDo. 3. Drop invariant.` → Frame as behavior + trade, no symbols. "1. Validator smarter (keeps history, medium effort). 2. Picker clears note (cheap, loses history). 3. Drop rule (one-line, loses guardrail)."
-- **Section padding:** Three commas, one idea. `Same-file overlap ≠ conflict — git auto-merges. Only heavy structural overlap earns stamp.`
+- **Wall of paths** (`src/A.ts — foo | src/B.ts — bar`) → Goal + Behavior diff instead.
+- **Code-shape leakage** (type signature in prose) → move to Verify; say "three decisions."
+- **Prose flow** ("X calls Y, awaits Z, invokes W...") → arrow chain instead.
+- **Jargon-first** (field names/IDs leading) → real-world first, ID/`path:line` in Verify.
+- **Code-path options** ("1. Thread X into Y...") → behavior + tradeoff, no symbols.
+- **Section padding** — three commas, one idea; say it once.
 
 ## Length budgets
 
@@ -122,6 +113,10 @@ Draft >40 lines for single action = convey not applied. Re-shape.
 | Investigation | 20 |
 | Subagent prompt | 30 |
 
-Over budget = re-read for fluff.
+Over budget → re-read for fluff.
 
-**Carve-out — an ask directed at the user is measured per ask, not per turn.** A decision/approval/clarification brief owes the reader a problem statement, a recommendation, numbered options, and pros/cons per option (contract: `human-collaboration:human-loop`). Those four are the LAST things to cut. Trim evidence and mechanism to fit; never trim the ask into an unreadable fragment, and never merge multiple asks to save lines.
+**Carve-out — an ask directed at the user is measured per ask, not per turn.** A
+decision/approval/clarification brief owes the reader a problem statement, a
+recommendation, numbered options, and pros/cons per option (contract:
+`human-collaboration:human-loop`). Those four are the last things to cut; trim evidence
+and mechanism first, never merge multiple asks to save lines.
