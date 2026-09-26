@@ -38,12 +38,12 @@
 EVENT="${1:-SessionStart}"
 
 # Drain stdin unconditionally into INPUT. UserPromptSubmit/SessionStart hooks are handed
-# a JSON payload; not reading it can leave the writer blocked on a full pipe. (DX-3051 also
-# needs this JSON parsed below, on UserPromptSubmit, to detect a machine-relayed turn.)
+# a JSON payload; not reading it can leave the writer blocked on a full pipe. (This JSON is
+# also parsed below, on UserPromptSubmit, to detect a machine-relayed turn.)
 INPUT="$(cat 2>/dev/null || true)"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
-    # DX-3051 + DX-3235: a relayed danxbot dashboard event, or a background
+    # A relayed danxbot dashboard event, or a background
     # sub-agent's task-notification report, is not new operator intent — the
     # session already holds this contract from SessionStart, so re-asserting
     # even the short pointer on either kind of machine-authored turn is pure

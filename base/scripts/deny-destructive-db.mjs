@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 // PreToolUse Bash deny hook — destructive database operations are NEVER permitted for any agent.
 //
-// Background: on 2026-05-15 an autonomous issue-worker (harry) ran
-//   docker exec -w /var/www/html/.danxbot/worktrees/harry gpt-manager-laravel.test-1 \
-//     php artisan migrate:fresh --drop-views --drop-types
-// without --database / --env scoping. The worktree .env is a symlink to the
-// primary repo .env (DB_DATABASE=laravel), so migrate:fresh dropped every table
-// in the primary development database. Months of historical data lost.
+// Rationale: an unscoped migrate-fresh / drop / reset can silently target the
+// wrong database (e.g. a worktree whose env resolves to the primary one),
+// destroying real data with no way back.
 //
 // Rule: agents NEVER reset, refresh, drop, wipe, or roll back databases.
 // This is a HUMAN-ONLY operation. No exceptions — not "just the test DB", not
@@ -18,22 +15,20 @@
 // accomplish the same effect by another route (raw psql DROP, TRUNCATE loops,
 // delete-then-migrate, container volume recreation, etc.).
 //
-// DX-3226 — rewritten from a bash script that ran one regex over the RAW
-// command TEXT. That blocked `grep -rn "DROP DATABASE" .` and
-// `echo "never run DROP DATABASE here"` — searching for the string, or writing
-// it into text, was refused as though the database were being dropped. Both
-// reproduced against the live hook.
+// A naive rule that runs one regex over the raw command TEXT is too broad: it
+// blocks `grep -rn "DROP DATABASE" .` and `echo "never run DROP DATABASE here"`
+// as though the database were being dropped, since the string appears either
+// way.
 //
-// WHY THIS IS NOT THE DX-3223 FIX. That card fixed the sibling git hook by
-// matching only in COMMAND POSITION. Copying that here would break this guard
-// outright, because SQL is never in command position — it is always inside an
-// argument:
+// A rule that only matches in COMMAND POSITION is too narrow here — unlike a
+// git-hook equivalent that can key on the invoked program alone, SQL is never
+// in command position; it is always inside an argument:
 //
 //   psql -c "DROP DATABASE laravel"   →  argv[0]="psql"  args=["-c","DROP DATABASE laravel"]
 //   grep -rn "DROP DATABASE" .        →  argv[0]="grep"  args=["-rn","DROP DATABASE","."]
 //
 // Structurally identical. A command-position rule stops seeing the real `psql`
-// case and silently stops denying genuine DROPs — the exact 2026-05-15 failure.
+// case and silently stops denying genuine DROPs.
 //
 // The signal that separates them is WHICH PROGRAM is being invoked: one that
 // will execute the text, or one that will only search or print it. So this hook
@@ -46,8 +41,8 @@
 // Listing database CLIENTS and denying only those looks tidier, and fails by
 // letting an unlisted client execute a DROP unblocked. This fails by giving an
 // unlisted text tool a false positive — irritating, immediately visible, and
-// recoverable. Given the incident in this file's own header, only one of those
-// is an acceptable way to be wrong. Unrecognised means DENY.
+// recoverable. Only one of those is an acceptable way to be wrong. Unrecognised
+// means DENY.
 //
 // `simpleCommands()` unwraps `sudo`, `env`, `xargs`, `sh -c`, `docker exec`,
 // `wsl.exe` and `$( … )` before any of this runs, so a destructive command
@@ -143,7 +138,7 @@ export function findDestructiveDbCommand(command, toolName = "Bash") {
 }
 
 export function denyReason(match) {
-  return `BLOCKED: destructive database operation detected ("${match}"). Direct destructive commands are NEVER permitted at the Bash boundary. DO NOT try to accomplish the same effect by another route (raw psql DROP, TRUNCATE loops, delete-then-migrate, recreating the docker volume, chmod-ing or editing the sanctioned script, copying its body into your own command, etc.) — every workaround is also forbidden and will be blocked. The sanctioned path for resetting the WORKTREE'S OWN database is the \`danxbot:db-reset\` skill — invoke it via the Skill tool. The skill loads the contract and points you at \`<worktree>/.danxbot/safe-reset-db.sh\`, the only command authorized to reset a worktree DB (safe because Phase 1 / DX-571 guarantees the worktree role cannot reach primary). If no \`safe-reset-db.sh\` exists at that path for this consumer repo, STOP and report to the human operator — do not invent a workaround. Continue your task without bypassing this guard.`;
+  return `BLOCKED: destructive database operation detected ("${match}"). Direct destructive commands are NEVER permitted at the Bash boundary. DO NOT try to accomplish the same effect by another route (raw psql DROP, TRUNCATE loops, delete-then-migrate, recreating the docker volume, chmod-ing or editing a sanctioned reset script, copying its body into your own command, etc.) — every workaround is also forbidden and will be blocked. Instead, stop and ask the operator for this repo's sanctioned database reset procedure. Continue your task without bypassing this guard.`;
 }
 
 function main() {

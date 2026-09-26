@@ -30,7 +30,7 @@
 // reset` without --hard (soft/mixed leave the working tree intact); `git
 // checkout -b` / `git switch -c` (creating a branch); `git clean -n`/`--dry-run`.
 //
-// DX-3223 — rewritten from a bash script that matched a regex against the RAW
+// Rewritten from a bash script that matched a regex against the RAW
 // command TEXT (`grep -oiE "$PATTERN"`). That fired wherever a denied form's
 // words appeared adjacent in the string — inside a commit message, an `echo`,
 // a `grep` PATTERN argument, or a string literal in a file being written —
@@ -52,7 +52,7 @@
 // tests/deny-destructive-git.test.mjs reads these lines straight out of this
 // file and runs each one through the real hook, so a bullet claiming coverage
 // this file does not actually have fails the test instead of drifting
-// silently (DX-3094's original root cause, still guarded after this rewrite).
+// silently.
 //  - reset --hard        (soft/mixed keep the working tree, so they are allowed)
 //    FORM: git reset --hard origin/main
 //    ALLOWED-FORM: git reset origin/main
@@ -72,14 +72,14 @@
 //    FORM: git switch -f other-branch
 //    ALLOWED-FORM: git checkout -b new-branch
 //    ALLOWED-FORM: git switch -c new-branch
-//  - checkout with a STARTING POINT named before the discard marker — the
-//    shape DX-3094 found uncaught, and the one that actually ran in the
-//    2026-09-21 incident (DX-3091/DX-3089)
+//  - checkout with a STARTING POINT named before the discard marker — a shape
+//    an earlier version of this guard left uncaught, and the one that
+//    actually ran in a real incident
 //    FORM: git checkout origin/main -- file.txt
 //    FORM: git checkout HEAD~1 -- src/agent/launcher.ts
 //  - restore, the newer plain-verb equivalent of `checkout -- <path>` that the
 //    refusal message below already tells an agent not to reach for — added
-//    here so the pattern actually backs that claim (DX-3094 AC2)
+//    here so the pattern actually backs that claim
 //    FORM: git restore file.txt
 //    FORM: git restore --worktree file.txt
 //    FORM: git restore --source=HEAD~1 file.txt
@@ -121,7 +121,7 @@ function deniedForm(rest) {
     // contradict that contract.
     const first = argText[0] ?? "";
     if (/^-[a-z]*[fxd]$/.test(first)) return `git clean ${first}`;
-    // DX-3227 — the long form, which BOTH this hook's bash predecessor and its
+    // The long form, which BOTH this hook's bash predecessor and its
     // first ES-module version let through: the old regex needed `-[a-z]*[fxd]`
     // immediately after `clean `, and in `--force` the leading `-` is followed
     // by another `-`, so the character class never matched. Purely additive —

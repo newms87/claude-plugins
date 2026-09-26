@@ -46,7 +46,7 @@ Cheapest, most direct first. No fanout before commit.
 
 ### 4. Gather evidence
 
-Capture verbatim — file contents (cite line numbers), command output (exit code per `bash-exit-capture`), HTTP shape, DB row shape.
+Capture verbatim — file contents (cite line numbers), command output (exit code per `base:shell-discipline`), HTTP shape, DB row shape.
 
 **Hard rule: zero edits.** No Edit, Write, git checkout, kill, restart, deploy, MCP write tool. Only read tools + Bash read-only + WebFetch.
 

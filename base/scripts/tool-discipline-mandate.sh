@@ -6,7 +6,7 @@
 # compression and stay top-of-context for the action-time decision
 # (Bash invocation, MCP call shape, file op tool selection).
 #
-# Deep contract lives at base/skills/tool-discipline/SKILL.md. This hook
+# Deep contract lives at base/skills/shell-discipline/SKILL.md. This hook
 # surfaces the mechanical pre-write checks that get violated most.
 #
 # Argv: $1 = "SessionStart".
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 read -r -d '' MANDATE <<'EOF' || true
-TOOL DISCIPLINE — always-on. Full skill: base:tool-discipline.
+TOOL DISCIPLINE — always-on. Full skill: base:shell-discipline.
 
 PRE-WRITE CHECK (every Bash invocation, mechanical, no exceptions):
 

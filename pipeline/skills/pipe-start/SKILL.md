@@ -75,7 +75,7 @@ Pipeline-specific: this pipeline's own review/investigation agents return **hypo
 
 ### 4. Fail Loud — No Silent Fallbacks
 
-`base:fail-loudly`. Not restated here.
+`dev:ideal-solution-mindset` #2c. Not restated here.
 
 ### 5. TDD for Every Bug Fix
 
@@ -91,7 +91,7 @@ Pipeline-specific: this pipeline's own review/investigation agents return **hypo
 
 ### 8. Use Dedicated Tools
 
-`base:tool-discipline`. Not restated here.
+`base:shell-discipline`. Not restated here.
 
 ### 9. Issue Card IS the Plan
 
@@ -103,7 +103,7 @@ Never silently drop parts of a plan. Verify every acceptance criterion before co
 
 ### 11. Never Cancel Running Processes
 
-`base:process-kill`. Not restated here.
+`base:shell-discipline`. Not restated here.
 
 ### 12. Never Substitute Your "Better" Approach
 

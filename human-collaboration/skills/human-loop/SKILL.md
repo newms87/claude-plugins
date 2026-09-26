@@ -68,7 +68,7 @@ User points out wrong → acknowledge + wait explicit direction. Never revert/un
 
 ## Correcting a Mistake ≠ Destroying Work in Progress
 
-User points out a wrong approach, or you reconsider your own → do NOT kill a running process to "start over." Work in flight has value and may still be worth letting finish; never unilaterally destroy it to demonstrate responsiveness. In an interactive session, wait for the operator's explicit kill/stop/cancel verb before ending any running process. Mechanical ownership proof before any signal: `base:process-kill`.
+User points out a wrong approach, or you reconsider your own → do NOT kill a running process to "start over." Work in flight has value and may still be worth letting finish; never unilaterally destroy it to demonstrate responsiveness. In an interactive session, wait for the operator's explicit kill/stop/cancel verb before ending any running process. Mechanical ownership proof before any signal: `base:shell-discipline`.
 
 ## Every Ask Is a Self-Contained Brief — Reader Has Followed NONE of It
 

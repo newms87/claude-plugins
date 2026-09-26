@@ -81,7 +81,7 @@ Canonical section names (bold) stay stable for skimming. Caveats = world as-is. 
 | ✅ Do | ❌ Don't |
 |---|---|
 | Lead with conclusion; concepts in body, paths in Verify only | Paths/symbols above Verify; reader re-derives |
-| Plain English (zero codebase knowledge) | Framed by code path / symbol / `DX-212` / `validateBlocked` |
+| Plain English (zero codebase knowledge) | Framed by code path / symbol / `TICKET-212` / `validateBlocked` |
 | Tables for "A vs B"/matrix; ASCII diagrams for flow | Prose comparing states; numbered prose paragraphs |
 | System-actor verbs (skips, stamps, rebuilds) | Personal actor (I added, We refactored) |
 | Backticks for identifiers/commands only | Backticks on plain English |
@@ -106,7 +106,7 @@ Draft >40 lines for single action = convey not applied. Re-shape.
 - **Wall of paths:** `What shipped: src/A.ts — foo | src/B.ts — bar | ...` → Can't tell what WORKS. Use Goal + Behavior diff.
 - **Code-shape leakage:** `ConflictVerdict is tagged union with kind: "ok"|"conflict"|...` → Move type signature to Verify; in body say "three decisions".
 - **Prose flow:** `Picker calls runConflictCheck, awaits verdict, invokes applyConflictVerdict, writes the card...` → Use arrow: `picker → check → verdict → apply → DB`.
-- **Jargon-first:** `SG-135 waiting_on + In Progress → DX-212 invariant (waiting_on != null ⟹ status=ToDo) fires...` → Lead with real-world, then internals. "Card waiting on SG-134 finished. Agent picked up + flipped to In Progress. Validator sees note-pinned + status-not-waiting → screams." Then field (`waiting_on`), ID (`DX-212`), path (`yaml.ts:941`) in Verify.
+- **Jargon-first:** `TICKET-135 waiting_on + In Progress → TICKET-212 invariant (waiting_on != null ⟹ status=ToDo) fires...` → Lead with real-world, then internals. "Card waiting on another card finished. Agent picked up + flipped to In Progress. Validator sees note-pinned + status-not-waiting → screams." Then field (`waiting_on`), ID (`TICKET-212`), path (`yaml.ts:941`) in Verify.
 - **Code-path options:** `1. Thread byId into validateBlocked. 2. Move forceWaitingOnToDo. 3. Drop invariant.` → Frame as behavior + trade, no symbols. "1. Validator smarter (keeps history, medium effort). 2. Picker clears note (cheap, loses history). 3. Drop rule (one-line, loses guardrail)."
 - **Section padding:** Three commas, one idea. `Same-file overlap ≠ conflict — git auto-merges. Only heavy structural overlap earns stamp.`
 

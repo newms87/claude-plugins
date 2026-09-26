@@ -60,7 +60,7 @@ All three agents are MANDATORY. They have distinct, non-overlapping roles — do
 - Work through each phase sequentially
 - Every finding from every reviewer MUST be addressed — either fixed or documented with a valid skip reason (see `/pipe-quality` for the 3 valid skip reasons); record the disposition in the card comment, not a file
 
-**Fallback/legacy/dead-code findings** (`dev:ideal-solution-mindset` #2; not restated here) go to the TOP of Phase 1, PRIORITY 0, never skippable — see `/pipe-quality`'s Hard Block. Every reviewer runs the `base:fail-loudly` grep recipes against the diff and surfaces every match; authors delete every fallback before the review-fixes commit ships.
+**Fallback/legacy/dead-code findings** (`dev:ideal-solution-mindset` #2; not restated here) go to the TOP of Phase 1, PRIORITY 0, never skippable — see `/pipe-quality`'s Hard Block. Every reviewer runs `dev:ideal-solution-mindset`'s fail-loudly (#2c) grep recipes against the diff and surfaces every match; authors delete every fallback before the review-fixes commit ships.
 
 ## Step 5: Create Action Items for Pattern-Worthy Findings
 

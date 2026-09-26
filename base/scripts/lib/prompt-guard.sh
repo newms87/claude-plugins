@@ -7,7 +7,7 @@
 # investigation-gate.sh, danxbot's plan-workflow-autoload.sh /
 # zero-context-mandate.sh): each plugin installs independently into its own
 # cache dir under a distinct `${CLAUDE_PLUGIN_ROOT}`, so a script in one
-# plugin cannot `source` a file that ships with another (DX-3235 decision —
+# plugin cannot `source` a file that ships with another (a deliberate decision —
 # danxbot carries its own identical copy at
 # danxbot/scripts/lib/prompt-guard.sh for its own two consumers;
 # human-collaboration and investigate each have exactly one consumer of this
@@ -25,10 +25,10 @@
 # Literal["UserPromptSubmit"]`, `prompt: str`): there is no message-source /
 # isSidechain / notification-type field on this event. `prompt` is the only
 # carrier, so both discriminators below must live inside its text.
-#   - RELAY_MARKER (DX-3051): a relayed danxbot dashboard event (a card
+#   - RELAY_MARKER: a relayed danxbot dashboard event (a card
 #     comment/title acted on in the dashboard), stamped by danxbot's own
 #     plan-event-bridge.mjs.
-#   - TASK_NOTIFICATION_MARKER (DX-3235): a background sub-agent's completion
+#   - TASK_NOTIFICATION_MARKER: a background sub-agent's completion
 #     report, delivered as a turn by the harness's own task-notification
 #     mechanism. Matched as a WHOLE LINE reading exactly `<task-notification>`:
 #     a real notification turn's text opens with that tag on its own line

@@ -2,19 +2,10 @@
 // PreToolUse Bash|PowerShell deny hook — recursive deletes and mirror-syncs
 // whose target is not a literal, specific path.
 //
-// Background: on 2026-09-15 at 23:29:39Z a danxbot builder agent (card
-// DX-2869) ran a background "WSL rsync scratch-copy for Linux verification"
-// meant to land in ~/dx2869. The destination reached rsync as `/`. `rsync
-// --delete` makes the destination an exact mirror of the source, so for
-// thirteen minutes it deleted everything under the WSL root the user could
-// write: gpt-manager, danx and danxbot's repos in WSL, and — through /mnt/c —
-// every Windows Claude Code transcript and several Windows project trees
-// (mutagen then synced the WSL-side deletions into the Windows mirrors). Its
-// own output read `rsync: [generator] delete_file: unlink(mnt/c/Users/...)
-// failed: Permission denied`; a sandbox run of `rsync -a --delete src/ <root>/`
-// reproduced that output line for line. The exact command text is unknown
-// because the rsync deleted the transcript that held it — the likeliest shape
-// is a destination built from a variable that expanded empty (`$DEST/` -> `/`).
+// Rationale: a recursive delete or mirror-sync (rsync --delete, rm -r, ...)
+// whose destination is built from a variable can silently expand to a
+// filesystem/drive/mount root when that variable is empty, deleting far more
+// than intended with no way back.
 //
 // Rule: a command that deletes recursively (rm -r, find -delete, rsync
 // --delete*, Remove-Item -Recurse, rd /s, robocopy /MIR|/PURGE) must name its
@@ -172,7 +163,7 @@ export function denyReason(findings) {
   return `BLOCKED: recursive delete or mirror-sync with an unsafe target.
 ${list}
 
-An rsync --delete run with a destination that silently expanded to \`/\` has previously deleted content across the WSL root and, through /mnt/c, on Windows too — the risk this guard exists to close.
+An empty destination variable once deleted a whole filesystem root — the risk this guard exists to close.
 
 A recursive delete or mirror-sync must name its target as a LITERAL, specific path — never a filesystem, drive or mount root, a home directory, or an ancestor of one. If the path must come from a variable, use the fail-loud form \`"\${NAME:?}/specific-folder"\`: bash aborts on an empty NAME instead of collapsing to \`/\`. For scratch copies use a dedicated folder such as \`/tmp/<task>-<id>\` or the session scratchpad, spelled out in full.
 

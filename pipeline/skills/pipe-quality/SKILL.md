@@ -25,7 +25,7 @@ Go through each reviewer agent's output (test-reviewer, code-reviewer, architect
 
 For each finding marked SKIPPED, DEFERRED, or NOT FIXED, run it through this checklist:
 
-**Hard Block, check first:** a fallback/legacy/dead/obsolete-code finding (`dev:ideal-solution-mindset` #2; pattern grep: `base:fail-loudly`; not restated here) is PRIORITY 0 — fix immediately, none of the 3 valid skip reasons below ever apply. Only override: explicit per-merge user authorization quoted verbatim in the PR body.
+**Hard Block, check first:** a fallback/legacy/dead/obsolete-code finding (`dev:ideal-solution-mindset` #2 / #2c; pattern grep: same skill's fail-loudly principle; not restated here) is PRIORITY 0 — fix immediately, none of the 3 valid skip reasons below ever apply. Only override: explicit per-merge user authorization quoted verbatim in the PR body.
 
 ### The Allowlist Gate
 

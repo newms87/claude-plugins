@@ -90,6 +90,34 @@ Not on that list, and each one is a rationalization this gate exists to block: "
 
 When a fix genuinely cannot land now: ship it behind the narrowest switch that makes it safe and say so explicitly. Still forward, never backward. Leave the diagnosis **in the source, beside the code it explains** — never in a report standing where the code used to be.
 
+### #2c — Fail Loudly: No Fallbacks for Critical-Path Errors
+
+A critical failure (a save fails, an MCP call is unreachable, a sub-agent contract breaks,
+state comes back corrupted) must abort loud, immediately, at the point of failure. This is
+principle #2 applied to error handling specifically: a fallback here is legacy-shape thinking
+in disguise — masking the bug, cascading drift into whichever surface absorbed it, and
+turning one visible failure into a silent, harder-to-find class of failure.
+
+Forbidden patterns reviewers grep for: a try-A-then-B chain (`try { http.post() } catch {
+writeDb() }` — two surfaces now hold partial truth); a default returned on error (`catch {
+return DEFAULT }` — corrupted input becomes valid-looking output); an optional discriminator
+defaulted when missing (`obj.kind ?? "unknown"` — missing IS the bug); a swallow-and-log with
+no rethrow (the caller believes the op succeeded); anything named `bestEffortX`/`tryX`/
+`safeX` on a critical path (the name admits the failure is tolerated); a ready/minimal
+graceful-degrade branch that state never leaves; a retry-with-different-mechanism chain
+(HTTP → DB → filesystem queue → ...) where each tier is a partial surface and truth lives
+nowhere.
+
+Not a fallback: boundary/user-input validation, pagination or optional-arg defaults, a bounded
+timeout on an external call (the timeout firing loud IS the failure surface), or a bounded
+Tier-4 retry on transient infra used as insurance rather than the primary correctness path.
+
+Before writing the handler: name the upstream invariant being guarded; if it can break,
+recover only if the failure is genuinely recoverable at this layer, otherwise surface it
+(throw) as close to the producer as possible — louder there than downstream. A fallback that
+reaches `main` is treated as an emergency; the fix is to correct the failure upstream and
+delete the fallback in the same change, never to leave both in place "just in case."
+
 ### #3 — Reduce Complexity
 
 Complexity and over-engineering are the same failure. Whenever a design starts to feel complex, stop:

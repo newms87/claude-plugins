@@ -21,14 +21,14 @@ EVENT="${1:-SessionStart}"
 
 if [ "$EVENT" = "UserPromptSubmit" ]; then
     INPUT="$(cat 2>/dev/null || true)"
-    # DX-3051 + DX-3235: a relayed danxbot dashboard event, or a background
+    # A relayed danxbot dashboard event, or a background
     # sub-agent's task-notification report, is not new operator intent — this
     # mandate is already in context from SessionStart, so re-asserting it on
     # either kind of machine-authored turn is pure per-event tax with nothing
     # new to say. Shared with operating-contract.sh (this plugin's only other
     # UserPromptSubmit consumer of this guard) via lib/prompt-guard.sh — see
     # that file's header for why this is NOT shared across plugin boundaries.
-    # This does NOT touch the full-vs-pointer cadence question (DX-3008) — it
+    # This does NOT touch the full-vs-pointer cadence question — it
     # only suppresses output entirely on a machine-authored turn, whatever
     # this branch would otherwise emit. Do not delete this as dead code.
     source "${CLAUDE_PLUGIN_ROOT}/scripts/lib/prompt-guard.sh"
