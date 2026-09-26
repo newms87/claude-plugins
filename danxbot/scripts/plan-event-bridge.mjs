@@ -180,13 +180,18 @@ export const RELAY_QUEUE_CAP = CURSOR_ID_MEMORY;
  * already reads. A bash hook in another plugin cannot `import` this module (a plugin
  * never reads another plugin's source), so it copies this literal string instead, the
  * same way two independently-deployed services agree on a header value. Consumers as of
- * DX-3347 (base and danxbot's own per-turn suppression consumers were deleted this card —
- * every remaining consumer lives in a DIFFERENT plugin, each with exactly one UserPromptSubmit
- * gate of its own): human-collaboration/scripts/human-loop-mandate.sh,
- * dev/scripts/debugging-gate.sh (moved from the retired `investigate` plugin, DX-3331).
+ * DX-3347 (base and danxbot's own per-turn suppression consumers were deleted that card):
+ * human-collaboration/scripts/human-loop-mandate.sh, dev/scripts/debugging-gate.sh (moved
+ * from the retired `investigate` plugin, DX-3331) — DX-3235 deleted BOTH of these too (a
+ * per-turn gate can't tell a background task notification from an operator prompt; R-12
+ * removed per-turn injection outright rather than teaching the gate a new discriminator),
+ * so this marker has ZERO live consumers as of DX-3235. Left in place rather than deleted:
+ * RELAY_PREFIX/FAILURE_PREFIX still use it to mark a relayed message as machine-authored in
+ * the transcript (useful independent of hook suppression), and it remains the sanctioned
+ * mechanism for any future per-turn hook that needs the identical suppression treatment.
  * CHANGING THIS STRING IS A BREAKING CROSS-PLUGIN CONTRACT CHANGE: grep every plugin's
  * scripts/ directory for the literal token before editing it, and update every consumer
- * listed above in the SAME commit.
+ * in the SAME commit.
  */
 export const RELAY_MARKER = "[danxbot-relayed-event]";
 

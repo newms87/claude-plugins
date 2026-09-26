@@ -1,5 +1,5 @@
 {
-  "description": "Ideal-solution-mindset mandate (SessionStart) + debugging-trigger gate (UserPromptSubmit, DX-3331: moved from the retired `investigate` plugin). Surfaces the four core dev principles + self-trigger gates for debugging / testing / git-discipline, and forces Skill(dev:debugging) on diagnostic language in the prompt.",
+  "description": "Ideal-solution-mindset mandate (SessionStart) — surfaces the four core dev principles. DX-3235: the per-turn debugging-trigger gate (UserPromptSubmit, DX-3331: moved here from the retired `investigate` plugin) is removed — a per-turn gate can't tell a background task notification from an operator prompt (R-12); dev:debugging's own skill description now carries the load trigger instead.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,16 +7,6 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ideal-solution-mandate.sh SessionStart"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/debugging-gate.sh"
           }
         ]
       }
