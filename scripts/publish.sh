@@ -158,6 +158,20 @@ if ! node "${REPO_ROOT}/scripts/lint-frontmatter.js" "${REPO_ROOT}"; then
   exit 1
 fi
 
+# --- Pre-flight: injection budget ---------------------------------------
+#
+# DX-3053 — same shape as the frontmatter lint above: one shared check
+# (scripts/check-injection-budget.mjs, real hook execution via
+# scripts/measure-injection.mjs) run against the WHOLE repo before any
+# bump, so a publish that pushes the per-turn or session-start injection
+# total over the DX-3347-derived ceiling is refused before it ships.
+
+info "Checking injection budget..."
+if ! node "${REPO_ROOT}/scripts/check-injection-budget.mjs"; then
+  err "Injection budget check failed (above). Trim the offending hook(s), then re-run publish."
+  exit 1
+fi
+
 # --- Pre-flight: working tree must NOT have unrelated changes ----------
 #
 # We want a clean commit per plugin. If the operator has uncommitted

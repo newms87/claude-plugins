@@ -44,8 +44,11 @@
 // ---------------------------
 // Reported separately, never summed together:
 //   - per-turn      = UserPromptSubmit, unconditional (plain-prompt) bytes
-//   - per-session    = SessionStart, the no-matcher group (fires on every
-//                       source: startup/resume/clear/compact/fork)
+//   - per-session    = SessionStart, every hook whose matcher fires at an
+//                       ordinary session startup (no matcher, or a matcher
+//                       that names "startup" — DX-3347's mantra.sh is the
+//                       first hook to combine a real matcher with firing
+//                       at startup; see matchesSource())
 //   - per-tool-call  = PostToolUse, hooks with NO matcher or a ".*" matcher
 //                       (fire on literally every tool call)
 //
@@ -95,6 +98,24 @@ function loadHooksJson(pluginDir) {
 // needed. Kept as a named step so the shape is documented once.
 function commandsForGroup(group) {
   return (group.hooks || []).map((h) => h.command);
+}
+
+// Does a SessionStart hook group fire for a given `source` value
+// ("startup" | "resume" | "clear" | "compact" | "fork")? No matcher (or a
+// wildcard) means "every source" — DX-3053: matcher=null used to be the
+// ONLY shape a session-start hook took, so summarize() originally treated
+// "no matcher" as the entire per-session-start bucket. DX-3347 introduced
+// mantra.sh with an explicit matcher ("startup|resume|compact") that STILL
+// fires at ordinary session start — a hook with a matcher is not the same
+// thing as a hook that never fires at startup. Without this check,
+// summarize()'s perSession total silently dropped mantra.sh's 3,709 bytes
+// (22,664B measured vs the real 26,373B DX-3347 itself reported) — the
+// exact "under-report" failure mode AC 32508 already guards for
+// CLAUDE_PLUGIN_ROOT, now shown up again one layer higher, in how a
+// matcher is read rather than in whether the process aborts.
+function matchesSource(matcher, source) {
+  if (!matcher || matcher === ".*" || matcher === "*") return true;
+  return matcher.split("|").includes(source);
 }
 
 // Representative tool_name for a matcher regex — first `|`-delimited
@@ -236,7 +257,7 @@ function summarize(rows) {
     .reduce((sum, r) => sum + r.bytes, 0);
 
   const perSession = rows
-    .filter((r) => r.event === "SessionStart" && !r.matcher)
+    .filter((r) => r.event === "SessionStart" && matchesSource(r.matcher, "startup"))
     .reduce((sum, r) => sum + r.bytes, 0);
 
   const perToolCall = rows

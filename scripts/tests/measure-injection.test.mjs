@@ -24,6 +24,8 @@ import test from "node:test";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SCRIPT = path.join(REPO_ROOT, "scripts", "measure-injection.mjs");
+const MANTRA_SCRIPT = path.join(REPO_ROOT, "danxbot", "scripts", "mantra.sh");
+const MANTRA_PLUGIN_ROOT = path.join(REPO_ROOT, "danxbot");
 
 function run() {
   const out = execFileSync("node", [SCRIPT, "--json"], {
@@ -88,4 +90,67 @@ test("reproduces the DX-3049 baseline (4438 / 46369) at the exact commit those f
 
   assert.equal(totals.perTurnUnconditional, 4438);
   assert.equal(totals.perSession, 46369);
+});
+
+test("AC 32508: an unset CLAUDE_PLUGIN_ROOT under-reports a real hook — the harness must always set it", () => {
+  // mantra.sh (DX-3347) references ${CLAUDE_PLUGIN_ROOT} directly under
+  // `set -euo pipefail`. Run it two ways: with the env var absent (as a
+  // naive harness would), and with it set the way runCommand() in
+  // measure-injection.mjs always does. The unset run must silently emit
+  // ZERO stdout bytes — proving that without this harness discipline, a
+  // real hook reads as "emits nothing" rather than failing loudly.
+  const stdin = JSON.stringify({ session_id: "cpb-test-unset", source: "startup" });
+
+  const envWithoutRoot = { ...process.env };
+  delete envWithoutRoot.CLAUDE_PLUGIN_ROOT;
+
+  let unsetBytes;
+  try {
+    const out = execFileSync("bash", [MANTRA_SCRIPT], {
+      input: stdin,
+      env: envWithoutRoot,
+      cwd: REPO_ROOT,
+    });
+    unsetBytes = out.length;
+  } catch (err) {
+    // A non-zero exit is also acceptable proof of the failure mode, as
+    // long as stdout itself carried nothing.
+    unsetBytes = err.stdout ? err.stdout.length : 0;
+  }
+  assert.equal(unsetBytes, 0, "expected an unset CLAUDE_PLUGIN_ROOT to under-report to 0 bytes");
+
+  const setBytes = execFileSync("bash", [MANTRA_SCRIPT], {
+    input: stdin,
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: MANTRA_PLUGIN_ROOT },
+    cwd: REPO_ROOT,
+  }).length;
+  assert.ok(setBytes > 3000, `expected the real mantra.md byte count with CLAUDE_PLUGIN_ROOT set, got ${setBytes}`);
+
+  // And the harness itself (which always sets CLAUDE_PLUGIN_ROOT) must
+  // report the non-zero figure for this same hook, in its own output.
+  const { rows } = run();
+  const mantraRow = rows.find((r) => r.command.includes("mantra.sh"));
+  assert.ok(mantraRow, "expected mantra.sh to be measured");
+  assert.ok(mantraRow.bytes > 3000, "the harness must report mantra.sh's real byte count, not 0");
+});
+
+test("perSession includes a SessionStart hook whose matcher still fires at startup (DX-3347's mantra.sh)", () => {
+  // Regression test for the bug this card's extension fixed: mantra.sh has
+  // matcher="startup|resume|compact" — a real matcher, but one that still
+  // fires at ordinary session start. summarize()'s old "no matcher" test
+  // silently excluded it from perSession (22,664B measured instead of the
+  // real 26,373B DX-3347 itself reported).
+  const { rows, totals } = run();
+  const mantraRow = rows.find((r) => r.event === "SessionStart" && r.command.includes("mantra.sh"));
+  assert.ok(mantraRow, "expected mantra.sh to be measured under SessionStart");
+  assert.ok(mantraRow.matcher, "expected mantra.sh to carry a real matcher (not null)");
+
+  const noMatcherSum = rows
+    .filter((r) => r.event === "SessionStart" && !r.matcher)
+    .reduce((sum, r) => sum + r.bytes, 0);
+
+  assert.ok(
+    totals.perSession >= noMatcherSum + mantraRow.bytes,
+    "perSession must include mantra.sh's bytes, not just the no-matcher group"
+  );
 });
