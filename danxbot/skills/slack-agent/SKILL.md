@@ -27,7 +27,7 @@ fitting the content).
 
 ## Editing code in this dispatch → read issue-refs first
 
-If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent — load `danxbot:issue-card-workflow` → "Issue-Ref Comment Protocol" for the grep pattern, the `issue_get` call, and the comment format before editing.
+If this dispatch touches code, the issue-ref comment convention applies exactly as for any agent — load `danxbot:issue-card-workflow` → `references/card-creation-and-reference.md` "Issue-Ref Comment Protocol" for the grep pattern, the `issue_get` call, and the comment format before editing.
 
 ## Required tool calls
 

@@ -14,7 +14,7 @@ Same derived status as parent epic at creation. Epic derives Review → phase ca
 
 ## After Completing Each Phase Card
 
-Same two-step termination sequence as any other card (`danxbot:issue-card-workflow` § "DX-835 — two-step termination is MANDATORY"), then `issue_retro` — `issue_retro` REFUSES 409 until the card is terminal, so it comes after the transition, never before. Do NOT edit the epic — the poller propagates the parent's triggers from children's derived statuses automatically. Next phase card's notes go in `comments[]` per the rule below; once all phases derive Done, the server stamps the epic's `completed_at` automatically.
+Same two-step termination sequence as any other card (the two-step termination table in `danxbot:danx-next` Step 11 (dispatched workers)), then `issue_retro` — `issue_retro` REFUSES 409 until the card is terminal, so it comes after the transition, never before. Do NOT edit the epic — the poller propagates the parent's triggers from children's derived statuses automatically. Next phase card's notes go in `comments[]` per the rule below; once all phases derive Done, the server stamps the epic's `completed_at` automatically.
 
 ## CRITICAL: Update Next Phase Card Before Ending Session
 

@@ -113,7 +113,7 @@ Cancelled children excluded from rules 4–5 — single non-cancelled child shif
 Parent rollup ignores an open problem on a child — checked only at dispatch, not propagated. Dashboard surfaces a child-count subscript on epic children when any phase has `open_problem_count > 0`.
 
 **Implications for agents (container = Epic OR Feature):**
-- When you finish a child card, use the two-step termination sequence (`danxbot:issue-card-workflow` § "DX-835 — two-step termination is MANDATORY") — `issue_transition` FIRST, THEN `danxbot_complete`. The poller propagates the parent container on the next tick. Do NOT touch the container — edit overwritten.
+- When you finish a child card, use the two-step termination sequence (the two-step termination table in `danxbot:danx-next` Step 11 (dispatched workers)) — `issue_transition` FIRST, THEN `danxbot_complete`. The poller propagates the parent container on the next tick. Do NOT touch the container — edit overwritten.
 - When a child stamps `blocked.at`, the container's `blocked` synthesized by poller. Operator triages from container view.
 - The container stays at whatever derivation produces. Stamping `completed_at` on an Epic OR Feature with one child `In Progress` is no-op, cleared next tick.
 - Parents with `waiting_on != null` skipped by parent-status derivation — parent's own dep-chain note takes precedence. Set parent's `waiting_on` explicitly when needed.
