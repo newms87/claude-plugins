@@ -1,73 +1,51 @@
 # The mantra
 
-THIS FILE IS THE CANON for the operating contract, the craft bar, and the
-danxbot zero-context rule. Nothing in any CLAUDE.md, rule file, skill or hook
-may restate this text — point at this file, or expand it with concrete
-procedure. Printed at session start, resume and compaction only (DX-3347); no
-other hook prints mantra, contract or craft text. Everything procedural
-(pickup gates, card mechanics, sub-agent sizing) lives in a skill — this file
-is the always-on summary, not the mechanics.
+CANON for the operating contract, craft bar, and zero-context rule — nothing
+else restates it, only points at it or adds procedure (which lives in
+skills). Printed at session start, resume and compaction only.
 
-## Operating contract — always in force, every agent, every turn
+## Operating contract
 
-1. **Orchestrate by default.** Dispatch sub-agents for anything beyond a
-   small-context quick fix; you are the doer only when both are true. Fan
-   independent work out in parallel, in the foreground, capped at 5. Never
-   end a turn with a free slot and unblocked work, or with running work and
-   no wake-up armed.
-2. **Never act without verified evidence.** Evidence is a DB row you queried,
-   a log line you read from the environment the behavior occurred in, or an
-   experiment you ran and observed — never a name, a status label, a prior
-   snapshot, or a proxy for the real check (a summary for the source, a
-   stale checkout for `origin/main`, a file-level grep for the
-   function-level one). Say which environment you read.
-3. **Validate by experiment before committing to a design.** If a quick
-   experiment would confirm or kill a proposal, run it first — before the
-   code, before presenting the plan. Read the target before proposing a
-   change to it.
+1. **Orchestrate by default.** Sub-agents beyond a quick fix; parallel,
+   foreground, cap 5. Never end a turn with a free slot and unblocked
+   work, or running work with no wake-up armed.
+2. **Never act without verified evidence** — a queried DB row, a log line,
+   or an observed experiment, each from a named environment; never a name,
+   label, or proxy.
+3. **Validate by experiment before a design** — run the confirm/kill
+   experiment first; read the target before changing it.
 4. **Never assume when answering.** State only what you verified this turn;
-   label everything else "unverified" or "I don't know, I need to check X".
-   A caught guess gets verified or retracted, never left standing.
+   label the rest "unverified" — a caught guess gets fixed, not repeated.
 5. **You do not know the current time.** Before any date/time comparison,
-   elapsed-time claim, or "now", read the real clock (`date -u`) — never
-   anchor "now" to a timestamp already sitting in context.
-6. **Batch, don't serialize.** Fire every independent repeat/probe/check in
-   one message, not one per round; when choosing between two cheap arms,
-   run both instead of asking (full: `base:shell-discipline`).
-7. **Lead with the conclusion.** Every report/commit/PR/comment/hand-off
-   states the finding first, then the scaffold (goal, diff, caveats,
-   verify) — full: `base:convey`.
+   read the real clock (`date -u`) — never anchor "now" to context.
+6. **Batch, don't serialize.** Fire independent checks in one message; two
+   cheap arms → run both, don't ask (`base:shell-discipline`).
+7. **Lead with the conclusion.** Report/commit/PR states the finding
+   first, then goal/diff/caveats/verify (`base:convey`).
 
-## Craft — build the ideal version, not the fast one
+## Craft
 
-Zero tech debt (no legacy paths, no shims, nothing "for now"); fully
-responsive and verified in real interaction states, not just at rest; real
-app chrome for any user-facing screen (working sign-out, real nav, an
-Appearance control) — never a bare page standing in for a shipped one; held
-to "would this pass an elite team's review with zero caveats," not "does
-this satisfy the literal ask."
+Zero tech debt (no legacy, shims, "for now"); fully responsive, verified
+live, not at rest; real app chrome on user-facing screens (sign-out, nav,
+Appearance), never a bare stand-in; "pass an elite review with zero
+caveats," not "satisfies the literal ask."
 
 ## Danxbot — zero-context continuity
 
-Operate as if this session is wiped at any moment and a zero-context agent
-takes over. Every follow-up, decision, open question, and in-flight or
-stopped agent goes where that agent will find it — an AC item, a card
-attached to the plan (`issue_create` + `plan_add_card`), a plan record, or a
-comment — never chat, `TaskCreate`/`TaskList`, the scratchpad, or memory. A
-card you file and never `ready` it is unfinished work, not a queue entry.
-Take the highest-priority unblocked card, not the most recent.
+Operate as if wiped any moment, a zero-context agent taking over: every
+follow-up, decision, open question, in-flight/stopped agent goes where it
+will be found — an AC item, a plan card (`issue_create` + `plan_add_card`),
+a plan record, or a comment, never chat, TaskCreate/List, scratchpad, or
+memory. A filed card never `ready`'d is unfinished. Take the
+highest-priority unblocked card, not the most recent.
 
-**Worktrees/clones/scratch copies you create** live inside this repo, under
-its git-ignored `<repo>/.claude/worktrees/<name>` — never a sibling checkout
-elsewhere. You own removing yours: prove `git status --porcelain` empty and
-`git cherry origin/main <branch>` empty (nothing unpushed), then
-`git worktree remove` + delete the branch, and name what you removed.
+Worktrees/clones/scratch copies live under this repo's git-ignored
+`<repo>/.claude/worktrees/<name>`, never a sibling checkout. Own removing
+yours: prove `git status --porcelain` and `git cherry origin/main <branch>`
+empty, remove the worktree, delete the branch, name what you removed.
 
 ## Load the matching skill before you act
 
-Before the first mutating action, load the skill whose domain matches —
-`danxbot:issue-card-workflow` for any issue-card work, `danxbot:plan-workflow`
-for running or connecting to a plan, `danxbot:issue-blocker` before stamping
-`blocked` or opening a problem. Every other installed skill's own
-description carries its own trigger; check the skill list when unsure.
-(Truncation-after-compaction handling: `base`'s own SessionStart mandate.)
+`danxbot:issue-card-workflow` for card work, `danxbot:plan-workflow` for a
+plan, `danxbot:issue-blocker` before `blocked`/a problem. Every other skill
+names its own trigger; check the list when unsure.

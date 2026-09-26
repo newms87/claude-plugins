@@ -62,7 +62,10 @@ describe("plan-connect-mantra.mjs", () => {
     const r = run({ session_id: "sess-underscore", tool_name: "mcp__danx_dashboard__plan_connect", tool_input: {} });
     assert.equal(r.status, 0, r.stderr);
     const out = JSON.parse(r.stdout);
-    assert.ok(out.hookSpecificOutput.additionalContext.length > 3000);
+    // DX-3351: length threshold tracks the live mantra.md size (brevity pass shrank it
+    // from ~4235 to ~2.5KB) rather than a hardcoded magic number that goes stale on edit.
+    const mantraLen = readFileSync(MANTRA_FILE, "utf8").length;
+    assert.ok(out.hookSpecificOutput.additionalContext.length > mantraLen);
   });
 
   test("never crashes on malformed or empty stdin", () => {
