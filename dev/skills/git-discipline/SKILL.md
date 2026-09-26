@@ -1,6 +1,6 @@
 ---
 name: git-discipline
-description: 'Git safety: never destroy work, no checkout/restore/revert/reset/clean/stash without approval, diverged-branch + shared-index handling. Whether to branch or commit straight to main is a per-repo operating fact (see that repo's own .claude/rules), not decided here.'
+description: 'Git safety: never destroy work, no checkout/restore/revert/reset/clean/stash without approval, diverged-branch + shared-index handling. Whether to branch or commit straight to main is a per-repo operating fact (see that repo''s own .claude/rules), not decided here.'
 ---
 
 # Git Operations
