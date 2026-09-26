@@ -19,9 +19,9 @@
 # UserPromptSubmit/PostToolUse hook that survived the cut. Judgment: it is a
 # clock reading the model has no other way to get (no ambient wall-clock
 # sense between tool calls, and calling `date -u` itself costs a real tool
-# round-trip current-time-mandate.sh already tells the agent to make before
-# any date comparison) — not a restated reminder, and at 33/13 bytes it costs
-# nothing like the ~3.7 KB the deleted mandates did.
+# round-trip the danxbot mantra already tells the agent to make before any
+# date comparison, DX-3350) — not a restated reminder, and at 33/13 bytes it
+# costs nothing like the ~3.7 KB the deleted mandates did.
 #
 # NOT wired on Stop: a Stop hook that emits additionalContext re-wakes the
 # turn ("conversation continues so Claude can act on the feedback"), which

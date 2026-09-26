@@ -1,6 +1,6 @@
 ---
 name: debugging
-description: 'Investigation + bug-fix discipline: hypothesis → evidence → findings, read-only by default until an explicit instruction to fix (a dispatched card counts as that instruction). Read-only mode reports and stops; fix mode continues through TDD to a verified fix, with the Phase-12 bug-report format for user-facing bugs. Load before investigating a bug or asserting how something behaves — DX-3235: this replaces the retired per-turn debugging-gate hook, which could not tell a background task notification from an operator prompt.'
+description: 'Investigation + bug-fix discipline: hypothesis → evidence → findings, read-only by default until an explicit instruction to fix (a dispatched card counts as that instruction). Read-only mode reports and stops; fix mode continues through TDD to a verified fix, with the Phase-12 bug-report format for user-facing bugs. Load before investigating a bug or asserting how something behaves.'
 ---
 
 # Debugging Skill

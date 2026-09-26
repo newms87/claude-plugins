@@ -28,6 +28,15 @@ is the always-on summary, not the mechanics.
 4. **Never assume when answering.** State only what you verified this turn;
    label everything else "unverified" or "I don't know, I need to check X".
    A caught guess gets verified or retracted, never left standing.
+5. **You do not know the current time.** Before any date/time comparison,
+   elapsed-time claim, or "now", read the real clock (`date -u`) — never
+   anchor "now" to a timestamp already sitting in context.
+6. **Batch, don't serialize.** Fire every independent repeat/probe/check in
+   one message, not one per round; when choosing between two cheap arms,
+   run both instead of asking (full: `base:shell-discipline`).
+7. **Lead with the conclusion.** Every report/commit/PR/comment/hand-off
+   states the finding first, then the scaffold (goal, diff, caveats,
+   verify) — full: `base:convey`.
 
 ## Craft — build the ideal version, not the fast one
 
@@ -60,6 +69,5 @@ Before the first mutating action, load the skill whose domain matches —
 `danxbot:issue-card-workflow` for any issue-card work, `danxbot:plan-workflow`
 for running or connecting to a plan, `danxbot:issue-blocker` before stamping
 `blocked` or opening a problem. Every other installed skill's own
-description carries its own trigger; check the skill list when unsure. A
-skill body visible in context after a compaction is a truncated fragment,
-not a loaded skill — a fresh `Skill(<name>)` call is the only proof.
+description carries its own trigger; check the skill list when unsure.
+(Truncation-after-compaction handling: `base`'s own SessionStart mandate.)
