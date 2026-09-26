@@ -7,9 +7,7 @@ description: 'Git safety: never destroy work, no checkout/restore/revert/reset/c
 
 ## Commit Proactively — Don't Wait to Be Asked
 
-The harness default of "only commit when explicitly asked" is OVERRIDDEN here, by explicit standing operator authorization across every repo — not a one-off approval. Once a change is a coherent, verified unit of work — tests pass, behavior confirmed, or the equivalent for the task at hand — commit it, interactive or dispatched, with no "should I commit this?" round-trip.
-
-**Scope — this does NOT relax anything else in this file.** Every destructive-operation gate above and below (force-push, `reset --hard`, checkout/restore/revert, cherry-pick, stash, branch creation, etc.) still requires explicit request exactly as written. This removes ONLY the "may I commit this?" question for a normal, safe, forward-only commit of your own verified work — the "Check for Other Agents' Staged Work" / "Mixed-State Files: ASK" gates below still apply.
+Standing operator authorization, every repo: once a change is a coherent, verified unit of work (tests pass, behavior confirmed), commit it, no round-trip. Only the "may I commit?" question is relaxed — every destructive-op gate and the staged-work/mixed-state gates below still apply in full.
 
 ## Never Destroy Work
 
@@ -27,26 +25,26 @@ NEVER `rm -r`/`rm -rf` on repo dir. Repos have irreplaceable state (`.env`, unco
 
 ## Whether To Branch Is Per-Repo, Not Decided By This Skill (R-17)
 
-Some of the operator's own repos are single-shared-machine checkouts where a feature branch adds zero isolation and only a coherent unit of work needs push — for those, that repo's own `.claude/rules` says so explicitly and commit goes straight to main there. This skill does not assume that for every repo it loads into (a stranger's repo, or one with real per-branch isolation, may want ordinary feature branches) — check the target repo's own rules before deciding, and follow whichever this repo's rules say. What follows applies either way once a commit is about to be made.
+Some repos are single-shared-machine checkouts where a branch adds zero isolation, and say so explicitly in their own `.claude/rules` — commit straight to main there. Otherwise (a stranger's repo, or real per-branch isolation), check that repo's rules and follow them. What follows applies either way once a commit is about to be made.
 
 ## Always Push After Commit
 
 Every commit → `git push` same flow. Exceptions:
 
-- **Pre-push diverged** (`git status` "diverged, N ahead M behind" BEFORE push) — `git pull --rebase` directly. Do NOT menu-ask. Rebasing unpushed local commits onto fetched origin is NOT destructive — no published history rewritten, no force push, reflog-recoverable. Conflicts → resolve in place per below.
-- **Push rejected non-fast-forward** — `git pull --rebase` ONCE. Clean → re-push. Conflicts → **resolve in place by hand**: read BOTH sides of every `<<<<<<<`/`=======`/`>>>>>>>`, merge keeping both intents (do NOT pick one wholesale unless semantically identical), `git add`, run tests + typecheck, `git rebase --continue`. Repeat. Re-push after. Conflict resolution is YOUR job — "don't know which wins" is research, not operator question. Abort + ask ONLY when conflict outside both cards' scope. **Forbidden shortcuts:** `-Xtheirs`/`-Xours`, `git checkout HEAD -- <path>`, `git restore <path>`, any wholesale overwrite.
-- **Push fails (no upstream, auth, network)** — report + stop. Never force-push to recover. **A push that hangs or fails against an authentication PROMPT — signatures like "User cancelled dialog", "/dev/tty: No such device", "could not read Username for 'https://..."' — means the remote needs interactive credentials that don't exist in a headless tool session. Never retry the same push, never disable the sandbox to get a GUI, never ask the user to "click the popup." Report exactly which remote is misconfigured (URL, protocol, the error signature) and stop — fixing the remote's credential setup is the user's call, not yours.**
-- **User says "don't push"**.
+- **Pre-push diverged** — `git pull --rebase` directly, no menu-ask: rebasing unpushed local commits onto fetched origin isn't destructive (no rewritten published history, no force push, reflog-recoverable).
+- **Push rejected non-fast-forward** — `git pull --rebase` once; clean → re-push; conflicts → resolve by hand (read both sides of every `<<<<<<<`/`=======`/`>>>>>>>`, merge keeping both intents unless semantically identical, `git add`, tests + typecheck, `git rebase --continue`, repeat, re-push). Conflict resolution is your job; abort + ask only when the conflict is outside both cards' scope. **Forbidden shortcuts:** `-Xtheirs`/`-Xours`, `git checkout HEAD -- <path>`, `git restore <path>`, any wholesale overwrite.
+- **Push fails** (no upstream, auth, network) — report + stop, never force-push. An auth-prompt failure headless ("User cancelled dialog", "/dev/tty: No such device", "could not read Username for...") means the remote needs interactive credentials that don't exist here — never retry, never disable the sandbox for a GUI. Report the remote/error signature and stop; fixing credentials is the user's call.
+- **User says "don't push."**
 
 Force-push requires explicit user auth.
 
 ## Stage a New File Right After Creating It (dispatched worker, own worktree only)
 
-In a dispatched agent's own worktree (not a shared-index checkout — see the shared-index rule below), `git add` a newly-created file (`Write`, or any tool creating a new path) in the same turn, right after the create — don't defer staging to a later cleanup pass. The worktree-only periodic autosave (`commitWipIfDirty`) stages via `git add -u`, which only covers already-tracked files' modifications/deletions, deliberately never `git add -A` (so it never sweeps up scratch/temp files nobody meant to commit). A newly-created file that isn't staged yet is invisible to both autosave layers (the periodic timer and the SIGTERM-drain commit) — if the session is killed before it's staged, that file's contents are lost even with autosave running.
+In a dispatched agent's own worktree (not shared-index — see below), `git add` a newly-created file the same turn, right after the create. Worktree autosave stages via `git add -u`, which covers only already-tracked files, never `git add -A` — an unstaged new file is invisible to both autosave layers, and is lost for good if the session is killed before it's staged.
 
 ## Check for Other Agents' Staged Work
 
-Before commit: `git status` → check already-staged you didn't create. Found → another agent mid-commit. Poll every 5s up to 30s. Persists → ask user. Never commit on top, never unstage theirs.
+Before commit: `git status` → check for already-staged work you didn't create. Found → another agent mid-commit. Poll every 5s up to 30s. Persists → ask user. Never commit on top, never unstage theirs.
 
 ### Never stage at all when another agent shares the index — `git commit -- <paths>`
 
@@ -64,46 +62,29 @@ The failure this prevents is quiet and permanent: nothing is lost and nothing co
 
 ## Own Work Is Never The Question
 
-Your own work commits separately, no questions. Mixed-state = some file has BOTH your edits AND foreign edits — question resolves on FOREIGN only. NEVER ask user about your own work. NEVER gate own-work commit on foreign attribution.
+Your own work commits separately, no questions. Mixed-state = a file has BOTH your edits AND foreign edits — the question resolves on the foreign part only.
 
-Order:
-1. Identify YOUR files/hunks (this session, traceable in tool history)
-2. Stage + commit + push YOUR files — no question
-3. Then look at remaining foreign drift. Ask only about foreign: "Files X, Y modified outside this session — active sibling (leave) or orphaned (commit-along / ask owner)?"
-
-"ASK" rule below applies ONLY to isolating foreign hunks FROM yours inside one file.
+Order: (1) identify your files/hunks (traceable in session history); (2) stage + commit + push yours, no question; (3) only then ask about remaining foreign drift: "Files X, Y modified outside this session — active sibling (leave) or orphaned (commit-along / ask owner)?" This ASK applies only to isolating foreign hunks FROM yours inside one file.
 
 ## Mixed-State Files: ASK, Never Surgically Isolate
 
-After own-work committed: if file has BOTH your edits AND pre-existing foreign drift you can't cleanly separate by path → STOP. Single round-trip:
+After your own work is committed: a file with BOTH your edits and pre-existing foreign drift you can't cleanly separate by path → STOP, one round-trip: *"Working tree mixed (yours + pre-existing in <files>). Commit-all in one, or split? If split: which paths are yours?"* Wait, then `git add <named-paths>` + commit.
 
-> "Working tree mixed (yours + pre-existing in <files>). Commit-all in one, or split? If split: which paths are yours?"
+**Exception — background-system drift never asks.** Files auto-mutated by a running system (poller/triage/heartbeat/TTL timer) ride along every dispatch (e.g. `.trello-retry/`, `dispatch-stops/`, `CRITICAL_FAILURE`) — stage into the same commit or a sibling `chore: mid-session drift` commit; rebase conflicts on these are your job.
 
-Wait for answer. `git add <named-paths>` + commit.
-
-**Exception — background-system drift never asks.** Files auto-mutated by running system (poller / triage / heartbeat / TTL timer) ride along on every dispatch. Paths under `.trello-retry/`, `dispatch-stops/`, `CRITICAL_FAILURE`. Stage into same commit (or a sibling `chore: mid-session drift` commit). Rebase conflicts on these = YOUR job — operator can't answer schema questions.
-
-**Forbidden rationalizations:**
-
-- "Back up to /tmp, revert to HEAD, replay only my edits" — uses `git show HEAD:file > file` = wholesale overwrite
-- "stash forbidden but cp/`git show`/Write-original is just isolating" — same overwrite, different verb
-- "Pre-existing don't overlap mine, replay safe" — can't prove non-overlap
-
-**Denied primitive = STOP, not escalation cue.** `git stash` blocked, `git add -p` non-interactive, no per-hunk → ASK. One question beats four steps that may corrupt.
+**Forbidden:** "back up, revert to HEAD, replay only my edits" or "cp/Write-original is just isolating" — both are the same wholesale overwrite as `git show HEAD:file > file`; "pre-existing don't overlap mine" — can't be proven. A denied primitive (`git stash` blocked, no per-hunk `git add -p`) is a STOP, not an escalation cue — one question beats four steps that may corrupt.
 
 ## Never Reset or Remove Other Changes
 
-`git reset` forbidden (bare/non-`--hard` form is NOT hook-enforced — this is on you). Stage ONLY your changes (`git add <specific-files>`); never unstage what's already staged.
+`git reset` forbidden (the bare/non-`--hard` form is not hook-enforced — this is on you). Stage only your changes (`git add <specific-files>`); never unstage what's already staged.
 
 ## Never Use git stash
 
-Forbidden — mechanically blocked by base's `deny-destructive-git.mjs` hook; destroys uncommitted work and corrupts multi-agent state. Investigate the code itself instead. Never stash "to check baseline" (was this broken before?) — you own every failing test regardless of origin; skip that check and fix it. Exception: another agent has uncommitted active changes, verifiable via `git status` showing files you didn't touch.
+Forbidden — mechanically blocked by base's `deny-destructive-git.mjs` hook; destroys uncommitted work and corrupts multi-agent state. Investigate the code itself instead. Never stash "to check baseline" — you own every failing test regardless of origin; fix it. Exception: another agent has uncommitted active changes, verifiable via `git status` showing files you didn't touch.
 
 ## Before Deleting Any File: Grep for Consumers First
 
-Before `rm` / Edit-to-empty / Write-empty: **grep entire tree** for imports, requires, includes, textual refs. ANY consumer → STOP. Either delete wrong or consumers must migrate first.
-
-**Never trust card "only used by X" — verify yourself.** Parenthetical "(verify with grep first)" = load-bearing, not optional. Skipping grep + fixing broken compile with `git checkout` = exact failure mode next section prevents.
+Before `rm` / Edit-to-empty / Write-empty: grep the entire tree for imports, requires, includes, textual refs. Any consumer → STOP; delete is wrong, or consumers must migrate first. Never trust a card's "only used by X" — verify yourself.
 
 ## Never Use git checkout / restore / revert
 
@@ -139,10 +120,8 @@ Most common rationalization into forbidden `git checkout`. Reasoning wrong:
 
 ## Fetch Before Asserting Remote State
 
-Local `main` is not current — it moves only when YOU fetch/pull; other agents, workers, and pushes advance `origin/main` without your clone knowing, for hours or across a whole session. **Before any claim that a file/feature "exists," "is missing," or "isn't merged" on a branch — `git show HEAD:<path>`, `git log`, a bare existence check — run `git fetch origin` first and check `origin/<branch>`, never local `HEAD` alone.** This generalizes the cherry-pick staleness check above to EVERY remote-state assertion, not just before cherry-pick/rebase/merge. Local-only reads are fine for inspecting your own uncommitted work; never for asserting what is or isn't on a remote.
+Local `main` moves only when YOU fetch/pull — other agents/workers/pushes advance `origin/main` without your clone knowing. Before any claim a file/feature "exists," "is missing," or "isn't merged" on a branch — `git fetch origin` first, then check `origin/<branch>`, never local `HEAD` alone. This generalizes the cherry-pick staleness check to every remote-state assertion. Local-only reads are fine for your own uncommitted work; never for asserting remote state.
 
 ## All Code Is Your Code
 
-Wrote 100% of everything. You = sum of all Claude sessions. No "not my change," "pre-existing," "out of scope." Every line your responsibility.
-
-**Exception for uncommitted:** Another agent may be actively working uncommitted outside session. Only commit YOUR session's changes. See foreign uncommitted: acknowledge, explain, ask user. Never ignore, never commit without instruction.
+You wrote 100% of everything — no "not my change," "pre-existing," "out of scope." Exception: another agent may be actively working uncommitted outside this session — only commit YOUR changes; for foreign uncommitted work, acknowledge and ask, never ignore or commit without instruction.

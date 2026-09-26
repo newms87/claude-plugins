@@ -5,31 +5,31 @@ description: 'Execution-level code-quality checklist: comments-are-authoritative
 
 # Code Quality
 
-See `dev:ideal-solution-mindset` for the quality bar (ideal solution, no legacy/fallbacks, refactor first, reuse-first) — this skill covers execution-level specifics below.
+See `dev:ideal-solution-mindset` for the quality bar (ideal solution, no legacy/fallbacks, reuse-first) — this skill covers execution-level specifics below.
 
 ## Legacy Imports ≠ Delete
 
-Module imports deleted symbol = migrate it, don't delete module. Rewrite ~90% of time. Before deleting: (1) capability in one sentence, (2) does capability apply to new system?, (3) unilateral decision? Surface to user if module has consumers (UI, test, Makefile). Deletion requires capability obsolete, not impl outdated.
+A module import that's deleted a symbol needs migrating, not deleting the whole module — rewrite ~90% of the time. Before deleting: (1) state the capability in one sentence, (2) does it still apply to the new system? (3) is this unilateral? Surface to the user if the module has consumers (UI, test, Makefile). Deletion requires the capability being obsolete, not just its implementation being outdated. Before removing the file itself, `dev:git-discipline`'s grep-for-consumers gate applies.
 
 ## Vue Data-Flow — Composables, Props/Emits, Scalars, Instance State
 
 - **Composables directly, no wrappers:** call a composable at its point of use. A function whose body is a single composable call is dead weight. Exception: generic components (SelectField, Button) that can't import domain composables — use emits + props.
 - **Props/emits as last resort:** >4 props or >2 emits on a specialized component is suspicious — it can usually import the composable directly instead of threading data through the tree.
-- **Scalar values live on the parent:** never make a child component API-call for a single scalar (count, status, flag) the parent already has or could expose (computed column, cached attribute, resource field).
+- **Scalar values live on the parent:** never make a child component API-call for a single scalar (count, status, flag) the parent already has or could expose.
 - **Instance state over parameters:** the same context threaded through 3+ method signatures belongs on `$this`, not repeated params.
 
 ## Never Guess — Verify
 
-Read source before using a prop/component/code. Reading = seconds; fixing a guess = minutes. Comments on a class/method are authoritative — **when read, not self-updating after.** A docblock was true the moment it was written; nothing marks the moment it stopped being. Before trusting one: (1) when it names a producer, caller, or mechanism, confirm that thing still exists — naming one you haven't checked manufactures evidence; (2) when you change a branch, re-read every docblock/constant describing that branch, including ones you didn't edit; (3) verifying the headline claim isn't verifying the docblock — check its examples too, they're what the next reader copies. A wrong docblock compounds: it gets copied, gets cited by other docblocks as corroboration (agreement between prose, not code), and survives symbol deletion since a typechecker doesn't see comments. Two cheap checks: grep for a deleted symbol in PROSE, not just imports; when a docblock cites another docblock, follow the citation to CODE — if the chain ends in more prose, you've corroborated nothing.
+Read source before using a prop/component/code — reading costs seconds, a guess costs minutes. A docblock is authoritative when read, not self-updating after: it was true when written, nothing marks when it stopped being. Before trusting one: confirm a named producer/caller/mechanism still exists; re-read every docblock/constant describing a branch you change, including ones you didn't edit; check its examples too, not just the headline — they're what the next reader copies. Cheap checks: grep a deleted symbol in PROSE, not just imports; when a docblock cites another docblock, follow the citation to CODE, since a chain ending in more prose confirms nothing. (Runtime-behavior claims beyond source reading are `dev:debugging`'s evidence discipline.)
 
-**A comment referencing a tracked work item (`// CARD-ID: reason` / `# TICKET-N: reason`) is authoritative on WHY** — it records a standing constraint the original work imposed. Before changing code that carries such a ref, consult the referenced item to recover the full intent; editing past it blind risks silently breaking the requirement that put it there. When you make a non-obvious decision driven by a tracked item, add the same ref.
+**A comment referencing a tracked work item (`// CARD-ID: reason`) is authoritative on WHY.** Consult it before changing code that carries the ref; add the same ref when a non-obvious decision is driven by a tracked item.
 
-**Before choosing WHERE to write persistent/config state** (DB row vs version-controlled file vs env), read the seed + load path and confirm which store is authoritative AT RUNTIME — does the dispatch/read path actually read it, and does the boot seeder overwrite/prune or only insert-missing? A file that merely seeds a DB once (insert-missing) is a default, not the source of truth. Never infer authority from a header comment; trace the read path.
+**Before choosing WHERE to write persistent/config state** (DB row vs file vs env), trace the seed + load path to confirm which store is authoritative AT RUNTIME — does the boot seeder overwrite/prune, or only insert-missing (a default, not the source of truth)? Never infer authority from a header comment.
 
 ## Domain Guides Mandatory
 
-Read domain guide before fixing tests/writing code. Don't infer from impl.
+Read the domain guide before fixing tests or writing code. Don't infer behavior from the implementation alone.
 
 ## Production Jobs Incremental
 
-"What when runs second time?" Redoes all = wrong design. Identify delta (updated_at, sync cursor), store high-water mark, process delta only. Test: cost of 10th run vs 1st — identical = redesign.
+Ask "what happens when this runs a second time?" — redoing all work is the wrong design. Identify the delta (updated_at, sync cursor), store a high-water mark, process the delta only. Test: cost of the 10th run vs the 1st should be identical; if not, redesign.

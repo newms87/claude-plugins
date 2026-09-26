@@ -9,196 +9,98 @@ description: 'Core dev principles: ideal correct solution, no legacy/fallbacks/d
 
 ## The Mission
 
-Build the system **correctly** every time. Cost, effort, and token usage are NEVER factors when choosing between a correct solution and a worse one. The system stays **lean and clean** — every line either earns its place under the principles below or it is deleted in the same change.
+Build the system **correctly** every time. Cost, effort, and token usage are never factors when choosing between a correct solution and a worse one. Every line either earns its place under the principles below or is deleted in the same change. This blocks two mirror-image failures: the fastest patch that leaves a legacy path running (below), and withdrawing your own imperfect new work instead of finishing it (#2b).
 
-The default failure mode this skill exists to block: reaching for the fastest patch, shipping a partial fix, leaving the legacy path running. Its mirror image is just as costly: hitting a defect in your own new work and WITHDRAWING it rather than finishing it (#2b).
-
-Reflect first. Decide. Execute.
-
-This skill is **principles-only and context-free** — it applies identically in autonomous workers, dispatched agents, and human-in-the-loop sessions. When and how to surface a decision to a human collaborator is a separate concern owned by `human-collaboration:human-loop`; nothing in this skill assumes a human is in the loop.
+**Principles-only and context-free** — applies identically to autonomous workers, dispatched agents, and human-in-the-loop sessions. Whether/how to surface a decision to a human is `human-collaboration:human-loop`'s concern.
 
 ## The Principles
 
 ### #1 — Ideal Correct Solution
 
-The architecturally correct, runtime-best, best-practice answer is the **only** answer. Dev time, effort, code size, repo count, "we'd have to touch the shared library" — these are anxieties, not constraints. They never reduce the bar.
+The architecturally correct, runtime-best answer is the **only** answer. Dev time, code size, repo count, "we'd have to touch the shared library" are anxieties, not constraints.
 
-Mechanical gate before committing to any approach:
+Gate: *"Is the only reason I prefer A over B that A is faster to write?"* Yes → drop A, choose B, don't mention it. **Disqualified** as a reason to prefer the worse approach: takes longer, touches another module/repo, needs new tests/types/abstractions — each is just what the ideal approach costs. Pay it.
 
-> "Is the only reason I prefer Approach A over Approach B that A is faster to write?"
-
-Yes → drop A. Don't mention it. Choose B and execute.
-
-**Disqualified** (never a reason to prefer the worse approach): takes longer to write, touches another module/repo/package, requires extending shared infra, needs new tests/types/abstractions. Each is just what doing the ideal approach costs — pay it.
-
-The only real trade-offs between approaches are those the **running system** would experience differently:
-- Two architecturally clean approaches with **different system invariants**.
-- Runtime trade (latency / memory / freshness / determinism / security posture).
-- Capability gap that cannot be filled in scope (third-party limit, hardware bound).
-
-When the only difference between options is **dev effort**, there is no decision — pick the ideal one and execute. Treat this as a load-bearing rule; violating it makes everything downstream worse.
+Real trade-offs are only ones the **running system** experiences differently: architecturally-clean approaches with different invariants; a runtime trade (latency/memory/freshness/determinism/security); or a capability gap that can't be filled in scope. Dev-effort-only difference → no decision, pick the ideal one.
 
 ### #2 — No Legacy, No Fallbacks, No Dead Code
 
-A legacy path that "still works" is **as dangerous as a known bug**. It propagates stale assumptions, hides the new contract, and trains future readers to expect both shapes. The system tolerates **one correct way** for every concept.
+A legacy path that "still works" is as dangerous as a known bug — it hides the new contract and trains readers to expect both shapes. One correct way per concept, always. Hard cuts are the default: touching an area → bring the rest of it to the new shape in the same change. Non-conforming out-of-scope callers **fail loudly**, never silently degrade.
 
-Hard cuts are the default. Touching the area for any other reason → bring the rest of it to the new shape in the same change. Out-of-scope callers that don't conform → **fail loudly** (typed error, hard assertion, deletion of the obsolete entry-point), never silently degrade.
-
-**Deleting a feature means erasing every trace of it.** The clean codebase reads as if the feature never existed — not "existed and was removed." A comment, test, or guard whose only purpose is to record that a feature is gone is itself dead weight: it adds tokens, cognitive load, and indirection for every future reader, and keeps the dead name searchable forever. The tombstone is deleted in the same change as the feature. Erasing the implementation but leaving its memorial is an incomplete delete, not a careful one.
+**Deleting a feature means erasing every trace of it** — the codebase must read as if it never existed. A comment/test/guard whose only purpose is recording a feature is gone is itself dead weight: delete it with the feature. (Guarding a *generic* anti-pattern class with no implementation to delete — "never write a back-compat reader" — is a standing rule, not a tombstone; the line is whether it names one specific dead feature.)
 
 Forbidden:
-- **Tombstones for a removed feature** — a comment naming the dead thing ("X retired / deprecated / removed", "used to live in Y", "replaced the old Z", "no longer has a W step"), a test that asserts a specific removed feature is ABSENT (`expect(out).not.toContain("oldThing")`), or a denylist / forbidden-pattern / "do not reintroduce" registry row that names one specific dead feature. The deletion is the enforcement; the absence is self-evident from the clean tree. (Guarding a *generic anti-pattern class* that has no implementation to delete — "never write a back-compat reader" — is a standing rule, not a tombstone; the line is whether it names a specific feature that once existed.)
-- "Old format" + "new format" handling in the same function.
-- `if (legacyShape) {…} else {…}` migration branches.
-- Fallback values papering over a missing required input.
-- A **new required scope / identity / key field** made `optional` + given a default (a `DEFAULT_*` constant, `?? defaultX`, "omit → the default one") so a migration stays transparent or existing callers don't break — the coalesce becomes a permanent silent fallback in the canonical key. Backfill existing rows explicitly in the migration; every new write supplies the field or **fails loud**. A repo/parent legitimately having **zero** of the new entity is a valid state, never a trigger to invent a default.
-- Shims, adapters, "for backwards compat" comments.
-- Dead exports, dead imports, dead routes, commented-out blocks, `# TODO: remove`.
-- Deprecated wrappers re-exporting the new name.
-- `try / except: pass` swallowing errors to keep an old caller alive.
+- "Old format" + "new format" handling in one function; `if (legacyShape) {…} else {…}` migration branches; fallback values papering over a missing required input.
+- A new required scope/identity/key field made `optional` with a default so a migration "stays transparent" — this becomes a permanent silent fallback. Backfill existing rows explicitly in the migration; every new write supplies the field or fails loud. A parent legitimately having zero of the new entity is a valid state, never a trigger to invent a default.
+- Shims, back-compat adapters, deprecated wrappers re-exporting the new name, dead exports/imports/routes, commented-out blocks, `# TODO: remove`, `try/except: pass` swallowing errors to keep an old caller alive.
 
-Mechanical gate before saving any file in a fix or refactor:
-
-> "Is there any code in this file made obsolete by my change that I left intact?"
-
-Yes → delete it in the same commit, update every caller, fail loudly at any remaining surface. "Out of scope" is the rationalization that ships dead code.
+Gate before saving any file in a fix or refactor: *"Is there any code here made obsolete by my change that I left intact?"* Yes → delete it in the same commit, update every caller, fail loudly at any remaining surface. "Out of scope" is the rationalization that ships dead code.
 
 ### #2b — Fix Forward: Never Revert Work That Is Merely Imperfect
 
-Principle #2 deletes code that is **wrong**. This one protects code that is **right and unfinished** — and the two get confused constantly, because "remove it" feels like the same tidy instinct in both cases.
+#2 deletes code that is **wrong**. This protects code that is **right and unfinished** — easily confused with #2, since "remove it" feels like the same tidy instinct.
 
-**When something you built does not work perfectly, FIX IT. Do not withdraw it.**
+**When something you built doesn't work perfectly, fix it. Do not withdraw it.** A revert costs the code AND the understanding that produced it, and a write-up left behind now describes a defect no longer in the tree, so nothing can check it — a confident explanation on top is worse than the defect.
 
-A revert is not a neutral, safe, or conservative choice. It costs the code AND the understanding that produced it: the next attempt pays again to rediscover what was already known, and any write-up left behind now describes a defect that is no longer in the tree — so it cannot be checked against anything. **A revert plus a confident explanation is worse than the defect**, because the explanation reads as settled knowledge and nothing can contradict it.
+Gate: *"Can this defect harm a person or destroy data TODAY, in something already shipped and depended on?"* **No** → fix it forward (cosmetic breakage, a wrong offset, 2/4 cases working, not yet fully understood — unreleased/consumer-less work can't harm anyone, so reverting only maximizes delay). **Yes** → removal is on the table, weighed against a forward hotfix, whichever reaches safety faster — otherwise only four reasons to remove instead of fix: (1) explicitly told to revert; (2) wrong and unwanted, not imperfect — #2's territory, tombstone included; (3) starting over is genuinely faster — say so and start over, don't remove-and-stop; (4) should be eliminated and forgotten, not deferred.
 
-Mechanical gate before removing anything you built:
-
-> "Can this defect harm a person or destroy data TODAY, in something already shipped and depended on?"
-
-**No** → fix it forward. Cosmetic breakage, a wrong offset, a feature working in two cases out of four, a thing you do not yet fully understand: all fixed, never withdrawn. Anything unreleased or with no consumers **cannot** harm anyone — the only cost it can impose is delay, and reverting maximises exactly that cost.
-
-**Yes** → removal is on the table, weighed against a forward hotfix. Pick whichever reaches safety faster.
-
-The only four reasons to remove instead of fix:
-
-1. You were **explicitly told** to revert.
-2. What is being built is **wrong and not wanted** — not imperfect, but the wrong thing. Continuing polishes something nobody asked for. (This is principle #2's territory: delete it completely, tombstone included.)
-3. **Starting over is genuinely faster** than repairing what exists. Say so plainly and start over — do not remove and stop.
-4. It should be **eliminated altogether and forgotten** — the idea is withdrawn, not deferred.
-
-Not on that list, and each one is a rationalization this gate exists to block: "it isn't finished", "it works in some cases but not others", "I'm not certain of the cause", "a checkpoint/handoff is coming", "I'll redo it properly next time". **A session or context boundary is not a deadline** — the work resumes either way, and it resumes cheaper with the code still there.
-
-When a fix genuinely cannot land now: ship it behind the narrowest switch that makes it safe and say so explicitly. Still forward, never backward. Leave the diagnosis **in the source, beside the code it explains** — never in a report standing where the code used to be.
+Rationalizations this gate blocks: "isn't finished," "works in some cases," "not certain of the cause," "a checkpoint/handoff is coming." A session boundary is not a deadline. Can't land now → ship behind the narrowest safe switch; leave the diagnosis in the source beside the code it explains, never in a report standing where the code used to be.
 
 ### #2c — Fail Loudly: No Fallbacks for Critical-Path Errors
 
-A critical failure (a save fails, an MCP call is unreachable, a sub-agent contract breaks,
-state comes back corrupted) must abort loud, immediately, at the point of failure. This is
-principle #2 applied to error handling specifically: a fallback here is legacy-shape thinking
-in disguise — masking the bug, cascading drift into whichever surface absorbed it, and
-turning one visible failure into a silent, harder-to-find class of failure.
+A critical failure (save fails, an MCP call unreachable, state comes back corrupted) aborts loud, immediately, at the point of failure — a fallback here is #2's legacy-shape thinking applied to error handling.
 
-Forbidden patterns reviewers grep for: a try-A-then-B chain (`try { http.post() } catch {
-writeDb() }` — two surfaces now hold partial truth); a default returned on error (`catch {
-return DEFAULT }` — corrupted input becomes valid-looking output); an optional discriminator
-defaulted when missing (`obj.kind ?? "unknown"` — missing IS the bug); a swallow-and-log with
-no rethrow (the caller believes the op succeeded); anything named `bestEffortX`/`tryX`/
-`safeX` on a critical path (the name admits the failure is tolerated); a ready/minimal
-graceful-degrade branch that state never leaves; a retry-with-different-mechanism chain
-(HTTP → DB → filesystem queue → ...) where each tier is a partial surface and truth lives
-nowhere.
+Forbidden: a try-A-then-B chain (two surfaces now hold partial truth); a default returned on error; an optional discriminator defaulted when missing (`obj.kind ?? "unknown"` — missing IS the bug); swallow-and-log with no rethrow; anything named `bestEffortX`/`tryX`/`safeX` on a critical path; a retry-with-different-mechanism chain (HTTP → DB → filesystem queue…) where truth lives nowhere.
 
-Not a fallback: boundary/user-input validation, pagination or optional-arg defaults, a bounded
-timeout on an external call (the timeout firing loud IS the failure surface), or a bounded
-Tier-4 retry on transient infra used as insurance rather than the primary correctness path.
-
-Before writing the handler: name the upstream invariant being guarded; if it can break,
-recover only if the failure is genuinely recoverable at this layer, otherwise surface it
-(throw) as close to the producer as possible — louder there than downstream. A fallback that
-reaches `main` is treated as an emergency; the fix is to correct the failure upstream and
-delete the fallback in the same change, never to leave both in place "just in case."
+Not a fallback: input validation, pagination/optional-arg defaults, a bounded timeout on an external call (the timeout firing loud IS the failure surface), or a bounded Tier-4 retry used as insurance. Name the invariant being guarded; recover only if genuinely recoverable at this layer, else throw as close to the producer as possible. A fallback reaching `main` is an emergency — fix upstream and delete it in the same change.
 
 ### #3 — Reduce Complexity
 
-Complexity and over-engineering are the same failure. Whenever a design starts to feel complex, stop:
+Complexity and over-engineering are the same failure. Design feels complex → ask "what's the simplest shape that could solve this?", then "is that shape also correct?" — yes → ship it; no → climb just far enough to be correct, no further.
 
-1. "What is the simplest shape that could solve this?"
-2. "Is that simple shape **also the correct shape**?" — yes → ship it; no → climb just far enough up the complexity ladder to make it correct, no further.
+Forbidden: a new abstraction layer "in case we need it later"; a config knob for a value with one correct setting; a generic helper with no current caller; unreachable state-machine branches; a wrapper class that only delegates to its single dependency.
 
-Correct and simple usually coincide. Complex usually means a worse model of the problem is hiding underneath. Pause and re-derive the problem before adding more code.
-
-Forbidden complexity sources:
-- New abstraction layer added "in case we need it later."
-- Configuration knob for a value that has exactly one correct setting.
-- Generic helper covering scenarios with no current caller.
-- State machine with branches that can't be reached.
-- Wrapper class with no behavior beyond delegating to its single dependency.
-
-Mechanical gate before adding any new file / class / abstraction:
-
-> "What would this look like if I refused to add the new {file, class, layer}?"
-
-If that shape is correct → ship that. If it is wrong, name the **specific invariant** the new layer is enforcing — that invariant is the only thing the new code is allowed to do.
+Gate: *"What would this look like if I refused to add it?"* Correct → ship that. Wrong → name the specific invariant the new layer enforces; that's the only thing it's allowed to do.
 
 ### #4 — DRY + SOLID — Reuse Before You Build
 
-Before adding any new utility, class, service, helper, or pattern, **prove there isn't already something doing this job**. Investigation is part of the design — skipping it means the codebase gets a duplicated concept and every future reader has to decide which copy is canonical.
+Before adding any new utility, class, service, helper, or pattern, prove nothing already does this job — skipping the audit means a duplicated concept and every future reader guessing which copy is canonical.
 
-Mandatory pre-add audit (search the codebase, do not guess):
+Audit (search, don't guess): same capability under a different name (grep the operation in plain English, the data shape, the directory siblings); same capability, partial coverage (extend it, don't fork); same capability, wrong location (move it, don't copy it). Only after the audit returns nothing usable, write the new thing; name what you searched for in your plan.
 
-1. **Same capability, different name.** Grep the operation in plain English (`merge`, `normalize`, `dispatch`, `resolve`), grep the data shape (the field names being touched), grep the directory siblings.
-2. **Same capability, partial coverage.** Existing helper that covers 80% → extend it cleanly, don't fork it.
-3. **Same capability, wrong location.** Right code in the wrong domain → move it, don't copy it.
+Forbidden: reimplementing date/id formatting, an error-envelope shape, or an event-bus call that already lives in a shared module; a new service class whose methods only delegate 1:1; copy-pasting a helper because "importing felt awkward."
 
-Only after the audit returns nothing usable do you write the new thing. Name what you searched for in your plan — leaves a record so the next reviewer can verify the audit happened.
+SOLID is the orthogonal half: single responsibility per class, depend on the abstraction the system already exposes, don't reach across domain boundaries.
 
-Forbidden:
-- Re-implementing date formatting / id formatting / error envelope shape / pagination contract / event bus call that already lives in a shared module.
-- New service class whose only methods delegate one-to-one to an existing service.
-- Copy-paste of a helper across two files because "importing felt awkward."
+## Pre-Plan Reflection Loop (before declaring any plan ready)
 
-SOLID is the orthogonal half: single responsibility per class, depend on the abstraction the existing system already exposes, don't reach across domain boundaries to inline another layer's internals.
+Mechanical, in order: (1) state the goal in one sentence, the system's own nouns; (2) name the ideal correct shape — *the* shape, not an option; (3) reuse audit — what already does part of this? cite paths; (4) legacy audit — what does this make obsolete? list paths, commit to deleting in scope; (5) complexity check — is the plan the simplest correct shape, or one layer above? (6) experiment check — could a quick one confirm/kill this? dispatch a sub-agent to RUN it, never one that re-implements the rule under test or reads a comment as confirmation; (7) removal audit — does the plan remove anything merely unfinished? that's #2b — fix forward or name the exception; (8) cost-only objections — did "faster to ship" shape the plan? re-evaluate without that filter.
 
-## Pre-Plan Reflection Loop (run before declaring any plan or proposal ready)
-
-Mechanical, in order:
-
-1. **State the goal in one sentence**, using the running system's nouns (not file paths).
-2. **Name the ideal correct shape.** Not "an option" — *the* shape that respects the four principles.
-3. **Reuse audit.** What in the codebase already does part of this? Cite paths.
-4. **Legacy audit.** What in the codebase will my change make obsolete? List paths; commit to deleting them in scope.
-5. **Complexity check.** What's the simplest shape that is still correct? Is the current plan that shape, or is it one layer above?
-6. **Experiment check.** Could a quick experiment confirm or kill this proposal? If yes — dispatch a sub-agent to RUN it and fold the real result into the plan, rather than reasoning about what the result would be. Not an experiment: one that re-implements the rule it is testing, and one that reads a constant, docblock or comment and declares the behavior confirmed.
-7. **Removal audit.** Does the plan remove anything I built that is merely unfinished or imperfect, rather than wrong? If yes — that is #2b; fix it forward instead, or name which of the four exceptions applies.
-8. **Cost-only objections audit.** Did any "we'd have to also change X" / "that's a bigger refactor" / "that's faster to ship" thought shape the plan? If yes — that branch was disqualified for the wrong reason. Re-evaluate without that filter.
-
-If any step changes the plan, restart from step 2. The plan is ready when one full pass produces no edits.
+Any step changes the plan → restart from (2). Ready when one full pass produces no edits.
 
 ## Red Flags — Stop Immediately
 
-| Thought | What it actually means |
+| Thought | Violation |
 |---|---|
-| "I'll just add a flag for now." | You're shipping principle #2 violation. Delete the legacy path. |
-| "It's faster to keep both shapes." | Principle #1 violation. Pick the ideal shape; convert callers. |
-| "This is getting complex but I think it's fine." | Principle #3 violation. Restart simplification loop. |
-| "I'll write a new helper for this." | Principle #4 violation until the reuse audit is in writing. |
-| "I'll leave the old function — something might still call it." | Principle #2 violation. Find every caller; remove or update; delete the function. |
-| "I'll leave a comment / test / guard noting the feature was removed so nobody re-adds it." | Principle #2 violation — a tombstone is dead code. Delete the trace with the feature; the clean tree reads as if it never existed. |
-| "I'll add a fallback so it doesn't break in the old case." | Principle #2 violation. Fail loudly instead. |
-| "Make the new field optional with a default so the migration stays transparent / existing callers don't break." | Principle #2 violation. A new scope/identity/key field is REQUIRED + fail-loud. Backfill existing rows in the migration; never add a default coalesce to the canonical key. |
-| "I'll come back and clean this up later." | Will not happen. Clean it up now. |
-| "I'll revert this and redo it properly later." | Principle #2b violation. Later is now — fix it in place. Reverting discards the diagnosis along with the code. |
-| "It is safer to back this out until I understand it." | Principle #2b violation unless it is shipped AND harmful today. Understanding comes from the code that reproduces the defect; removing it removes the evidence. |
-| "It works for some cases but not all, so I will pull it for now." | Principle #2b violation. Partial is not wrong — finish the remaining cases. |
-| "A handoff/compaction/checkpoint is coming, so I should leave the tree clean." | Principle #2b violation. A session boundary is not a deadline; work resumes cheaper with the code present. |
-| "I can't reuse the existing endpoint/capability because \<constraint\>." (token can't be in the agent env, it must be isolated, it needs its own hop, for safety) | The constraint is **unverified** until you cite the `file:line` that enforces it. A premise that justifies building a NEW bypass around an existing capability is disqualified until proven against the code — verify FIRST; a false/assumed constraint is the #1 over-engineering driver. An advisor's or handoff's rationale is a hypothesis, not a constraint. |
+| "I'll just add a flag for now" / "faster to keep both shapes" | #2 — delete the legacy path / pick the ideal shape |
+| "This is getting complex but I think it's fine" | #3 — restart the simplification loop |
+| "I'll write a new helper for this" | #4 — until the reuse audit is in writing |
+| "I'll leave the old function, something might still call it" | #2 — find every caller, remove or update, delete it |
+| "I'll leave a comment/test noting the feature was removed" | #2 — a tombstone is dead code; the clean tree is the record |
+| "I'll add a fallback so it doesn't break in the old case" | #2c — fail loudly instead |
+| "Make the new field optional with a default so migration stays transparent" | #2 — required + fail-loud; backfill in the migration |
+| "I'll come back and clean this up later" | Won't happen — clean it up now |
+| "I'll revert this and redo it properly later" / "safer to back out until I understand it" | #2b — later is now; understanding needs the code that reproduces the defect |
+| "Works for some cases but not all, pull it for now" | #2b — partial isn't wrong; finish the remaining cases |
+| "A handoff/checkpoint is coming, so leave the tree clean" | #2b — a session boundary is not a deadline |
+| "Can't reuse the existing endpoint because \<constraint\>" | Unverified until you cite the `file:line` that enforces it — a hypothesis, not a constraint |
 
 ## Composes With
 
-This skill owns the decision/principle; these own the mechanics — when in doubt, this skill wins on principle, they win on mechanics.
+This skill owns the decision/principle; these own the mechanics — this skill wins on principle, they win on mechanics.
 
-- `dev:git-discipline` — mechanics of destructive git ops (#2b: imperfect work is never a removal candidate, so how-to-remove-safely never arises).
-- `dev:code-quality` — file-level execution of these principles (refactor first, comments-are-authoritative).
-- `dev:debugging` — read-only-by-default investigation and bug-fix root-cause workflow (single merged skill, DX-3331); this skill adds "delete obsolete code in the same commit," and still applies the #4 reuse audit when surfacing read-only findings.
-- `danxbot:plan-workflow` — where a plan is recorded; this skill is what the plan must satisfy before leaving plan mode.
-- `human-collaboration:human-loop` — when/whether to surface a decision to a human; this skill is silent on that and applies regardless.
+- `dev:git-discipline` — mechanics of destructive git ops.
+- `dev:code-quality` — file-level execution (refactor first, comments-are-authoritative).
+- `dev:debugging` — read-only-by-default investigation and bug-fix workflow; this skill adds "delete obsolete code in the same commit" and the #4 reuse audit to its findings.
+- `danxbot:plan-workflow` — where a plan is recorded; this skill is what it must satisfy before leaving plan mode.
+- `human-collaboration:human-loop` — when/whether to surface a decision to a human; this skill applies regardless.
