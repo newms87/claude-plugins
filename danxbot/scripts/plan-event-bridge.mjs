@@ -180,34 +180,29 @@ export const RELAY_QUEUE_CAP = CURSOR_ID_MEMORY;
  * already reads. A bash hook in another plugin cannot `import` this module (a plugin
  * never reads another plugin's source), so it copies this literal string instead, the
  * same way two independently-deployed services agree on a header value. Consumers as of
- * DX-3051 (unchanged by DX-3056 — same literal, no new grep needed):
- * human-collaboration/scripts/human-loop-mandate.sh,
- * investigate/scripts/investigation-gate.sh, base/scripts/{operating-contract,
- * craft-mandate}.sh, danxbot/scripts/{zero-context-mandate,plan-workflow-autoload}.sh.
+ * DX-3347 (base and danxbot's own per-turn suppression consumers were deleted this card —
+ * every remaining consumer lives in a DIFFERENT plugin, each with exactly one UserPromptSubmit
+ * gate of its own): human-collaboration/scripts/human-loop-mandate.sh,
+ * dev/scripts/debugging-gate.sh (moved from the retired `investigate` plugin, DX-3331).
  * CHANGING THIS STRING IS A BREAKING CROSS-PLUGIN CONTRACT CHANGE: grep every plugin's
  * scripts/ directory for the literal token before editing it, and update every consumer
  * listed above in the SAME commit.
  */
 export const RELAY_MARKER = "[danxbot-relayed-event]";
 
-/** Every relayed message is prefixed with this, so the session never mistakes it for a peer session's request. */
+/** Every relayed message is prefixed with this, so the session never mistakes it for a peer session's request. Trimmed DX-3347 (was 323 bytes; RELAY_MARKER itself is unchanged — it's load-bearing for consumer suppression checks). */
 export const RELAY_PREFIX =
-  `${RELAY_MARKER} [danxbot dashboard event, relayed by the danxbot plugin's plan event bridge; this is not a message ` +
-  "from another Claude session. Someone acted on a card of the plan this session is connected to, in the " +
-  "danxbot dashboard. Treat it as operator input for that card, per the danxbot:plan-workflow skill.]";
+  `${RELAY_MARKER} [danxbot dashboard event — not from another session. ` +
+  "Treat as operator input for that card, per danxbot:plan-workflow.]";
 
 /**
  * Every failure notice is prefixed with this — same reason as RELAY_PREFIX, different
- * meaning. DX-3056: also carries RELAY_MARKER at the start, for the identical reason
- * RELAY_PREFIX does — this message reaches the session through the same
- * `postToInbox(type:"user")` path as a relayed dashboard event and must be suppressed by
- * the same six per-turn hooks, since a failure notice's free-form `reason`/`fix` text can
- * incidentally contain a "?" or an investigation trigger word (see RELAY_MARKER's own doc
- * comment above for the full rationale).
+ * meaning, also carrying RELAY_MARKER for the identical suppression reason. Trimmed
+ * DX-3347 (was ~280 bytes).
  */
 export const FAILURE_PREFIX =
-  `${RELAY_MARKER} [danxbot plan event bridge; this is not a message from another Claude session, and not a request for ` +
-  "permission. The plugin cannot deliver this plan's dashboard events to you.]";
+  `${RELAY_MARKER} [plan event bridge — not another session, not a permission request. ` +
+  "Events aren't reaching you.]";
 
 /**
  * DX-2862 — the ONE wording for a failure a session could not otherwise see.

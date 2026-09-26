@@ -18,7 +18,7 @@ Get this right before writing anything, because two of these are load-bearing an
 |---|---|
 | Wipes the model's context, replaced by a summary | Stop running sub-agents — see below |
 | Truncates skill bodies in place into convincing-looking fragments (`base`'s `compaction-skill-reload.sh` exists solely to force a re-`Skill()` call after) | Touch the working tree, staged/unstaged/untracked state |
-| Re-injects the operating contract's four principles via `base/scripts/operating-contract.sh` on `SessionStart` with no matcher, so it fires on `compact` too | Undo any commit, push, dispatch, or API call already made |
+| Re-injects the mantra (operating contract + craft + danxbot zero-context) via `danxbot/scripts/mantra.sh` on `SessionStart`, matcher `startup\|resume\|compact` (DX-3347) | Undo any commit, push, dispatch, or API call already made |
 | Re-fires `SessionStart` with `matcher: "compact"` — the only hook point whose stdout still reaches the model after a compaction | Preserve YOUR reasoning about *why* something is in flight — only what got written down survives |
 
 **Sub-agents keep running through a compaction.** A background `Agent()` spawn is a real

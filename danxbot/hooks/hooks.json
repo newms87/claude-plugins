@@ -1,24 +1,12 @@
 {
-  "description": "Injects the danxbot mantra + skill-load routing + the full plan-workflow skill on SessionStart (with per-turn pointers on UserPromptSubmit), and runs the plan event bridge (relays a connected danxbot Plan's dashboard events into the session inbox) plus its watchdog, a plan-link auto-connect hook, a plan-note milestone reminder, and a plan-tab-open reminder. Each script's own header comment documents its exact trigger and behavior.",
+  "description": "DX-3347: prints the mantra.md file on SessionStart, matcher startup|resume|compact ONLY (no other per-turn injection). Separately auto-loads the full danxbot:plan-workflow skill body on every SessionStart source (unchanged — not mantra text), runs the plan event bridge (relays a connected Plan's dashboard events into the session inbox) plus its watchdog, a plan-link auto-connect hook (fires only when the prompt contains a plan URL), and captures the plan tab id on connect. Each script's own header comment documents its exact trigger and behavior.",
   "hooks": {
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/zero-context-mandate.sh UserPromptSubmit"
-          },
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plan-workflow-autoload.sh UserPromptSubmit"
-          },
-          {
-            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-link-connect.mjs\""
-          },
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-tab-watch.mjs\" check"
           }
         ]
       }
@@ -28,15 +16,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/zero-context-mandate.sh SessionStart"
-          },
-          {
-            "type": "command",
-            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/danxbot-skill-mandate.sh SessionStart"
-          },
-          {
-            "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/plan-workflow-autoload.sh SessionStart"
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/mantra.sh SessionStart"
           }
         ]
       },
@@ -65,15 +54,6 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-tab-watch.mjs\" capture"
-          }
-        ]
-      },
-      {
-        "matcher": "^(mcp__danx_dashboard__issue_transition|mcp__danx-dashboard__issue_transition|mcp__danx_dashboard__plan_add_record|mcp__danx-dashboard__plan_add_record|mcp__danx_dashboard__plan_update_record|mcp__danx-dashboard__plan_update_record|mcp__danx_dashboard__plan_add_architecture_section|mcp__danx-dashboard__plan_add_architecture_section|mcp__danx_dashboard__plan_update_architecture_section|mcp__danx-dashboard__plan_update_architecture_section)$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-note-reminder.mjs\""
           }
         ]
       },

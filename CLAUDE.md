@@ -2,19 +2,20 @@
 
 Source of truth for the `newms-plugins` marketplace. Every plugin here is consumed by every Claude Code session on this machine — the operator's main sessions, host-mode dispatched workers, and container workers.
 
-## The OPERATING CONTRACT is canon — exactly one copy, and this is where it lives
+## The mantra is canon — exactly one copy, and this is where it lives
 
-`base/scripts/operating-contract.sh` holds the operator's four standing principles — orchestrate
-by default / never act without verified evidence / validate a proposal by experiment / never
-assume when answering the operator. It is wired in `base/hooks/hooks.json` on `SessionStart`
-with **no matcher**, so it fires on every source including `compact`, putting the full text back
-in context after each compaction. `UserPromptSubmit` gets a one-line pointer, not a second copy.
+`danxbot/mantra.md` holds the operating contract's four standing principles, the craft bar, and
+the danxbot zero-context rule — orchestrate by default / never act without verified evidence /
+validate a proposal by experiment / never assume when answering the operator; build the ideal
+version not the fast one; nothing lives only in a session. It is printed verbatim by
+`danxbot/scripts/mantra.sh`, wired in `danxbot/hooks/hooks.json` on `SessionStart` with
+**matcher `startup|resume|compact`** (DX-3347) — no other event, and no per-turn pointer.
 
-**Nothing else may restate those four principles** — not a `CLAUDE.md`, not a rule file, not a
-`SKILL.md`, not another hook. A skill may only POINT at the contract or EXPAND it with concrete
-situation-specific procedure (a mechanical checklist, a worked incident, named commands/tables).
-To change a principle, edit that one script and publish `base`. If you find a second copy, delete
-it and leave a pointer.
+**Nothing else may restate this text** — not a `CLAUDE.md`, not a rule file, not a `SKILL.md`, not
+another hook. A skill may only POINT at the mantra or EXPAND it with concrete situation-specific
+procedure (a mechanical checklist, a worked incident, named commands/tables). To change a
+principle, edit `danxbot/mantra.md` and publish `danxbot`. If you find a second copy, delete it
+and leave a pointer.
 
 ## Hook scripts must never depend on `jq` — it is not installed
 

@@ -143,9 +143,9 @@ Create via `danxbot:issue-card-workflow` (load before choosing type). Follow its
 **Delegate card work by card id, not by hand-written brief.** Each `danxbot:worker-*` agent already
 loads `danxbot:issue-card-workflow` and works the card end to end (claim, load context, TDD build,
 AC/gates, complete) on its own — `Agent({subagent_type: "worker-<tier>", prompt: "<CARD-ID>"})` is
-the whole brief. Add the zero-context mandate item 1 (worktree location, ownership, cleanup proof)
-only when the card's own instructions wouldn't already cover it — sub-agents never see session-start
-text.
+the whole brief. Add the mantra's worktree paragraph (`danxbot/mantra.md`: location, ownership,
+cleanup proof) only when the card's own instructions wouldn't already cover it — sub-agents never
+see session-start text.
 
 - Set card `effort_level` first, dispatch matching agent. Never `general-purpose` or unspecified (inherits session model).
 
@@ -170,6 +170,14 @@ text.
   touching the same suite.
 - **Stop a dispatch once you've consumed its final report** (unless you expect a same-conversation
   follow-up) — a "completed" `Agent()` spawn otherwise stays resumable and visible as still running.
+- **Verify before you repeat a sub-agent's report as fact: read the diff, confirm the push landed,
+  check the leftovers** (worktrees removed, no stray commits, no pointers to deleted things). What
+  comes back from a sub-agent is a LEAD, not a finding. This check lives here, not in a
+  `SubagentStop` hook, because a `SubagentStop` hook's stdout never reaches this session's
+  context — Claude Code's hooks docs name exactly four events whose stdout is shown to the model
+  (`UserPromptSubmit`, `UserPromptExpansion`, `SessionStart`, `PostModelSwitch`); `SubagentStop` is
+  not among them, so any text it printed would go to the debug log only (DX-3347, verified against
+  https://code.claude.com/docs/en/hooks).
 
 ## Liveness
 

@@ -15,6 +15,14 @@
 # State is per-session, keyed by session_id from the hook stdin JSON, so
 # concurrent sessions keep independent deltas.
 #
+# KEPT AFTER DX-3347's per-message injection sweep — this is the one
+# UserPromptSubmit/PostToolUse hook that survived the cut. Judgment: it is a
+# clock reading the model has no other way to get (no ambient wall-clock
+# sense between tool calls, and calling `date -u` itself costs a real tool
+# round-trip current-time-mandate.sh already tells the agent to make before
+# any date comparison) — not a restated reminder, and at 33/13 bytes it costs
+# nothing like the ~3.7 KB the deleted mandates did.
+#
 # NOT wired on Stop: a Stop hook that emits additionalContext re-wakes the
 # turn ("conversation continues so Claude can act on the feedback"), which
 # loops forever with no user input. UserPromptSubmit covers turn-end timing

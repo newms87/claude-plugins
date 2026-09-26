@@ -1,13 +1,15 @@
-// danxbot plan-tab-watch hook — PostToolUse(plan_connect) `capture` +
-// UserPromptSubmit `check`. DX-2995. Run with `npm test` (node --test).
+// danxbot plan-tab-watch hook — PostToolUse(plan_connect) `capture` only.
+// DX-2995, trimmed DX-3347: the `check` mode (a once-per-turn UserPromptSubmit
+// poll, 282 bytes/message whenever it fired) is deleted — R-12 restricted
+// every per-message reminder to the mantra. Run with `npm test` (node --test).
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildNudge, isValidSessionId } from "../scripts/plan-tab-watch.mjs";
+import { isValidSessionId } from "../scripts/plan-tab-watch.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(here, "..", "scripts", "plan-tab-watch.mjs");
@@ -28,10 +30,8 @@ function run(mode, payload) {
   });
 }
 
-function writeConnection(sessionId, dashboardUrl = "https://danxbot.sageus.ai") {
-  const dir = path.join(home, ".config", "danxbot", "plan-sessions");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, `${sessionId}.json`), JSON.stringify({ dashboardUrl }));
+function watchStateFile(sessionId) {
+  return path.join(home, ".config", "danxbot", "plan-tab-watch", `${sessionId}.json`);
 }
 
 describe("isValidSessionId", () => {
@@ -46,20 +46,8 @@ describe("isValidSessionId", () => {
   });
 });
 
-describe("buildNudge", () => {
-  test("names the exact plan URL and both open tools, never asks the operator", () => {
-    const text = buildNudge("https://danxbot.sageus.ai/plans/2");
-    assert.match(text, /tabs_context/);
-    assert.match(text, /https:\/\/danxbot\.sageus\.ai\/plans\/2/);
-    assert.match(text, /navigate/);
-    assert.match(text, /preview_start/);
-    assert.doesNotMatch(text, /ask the operator first$/m);
-    assert.match(text, /Never ask the operator first/);
-  });
-});
-
 describe("capture — caches the plan id from the plan_connect call", () => {
-  test("valid plan_connect call writes state; a later check then fires", () => {
+  test("valid plan_connect call writes state", () => {
     const sessionId = "sess-capture-1";
     const c = run("capture", {
       session_id: sessionId,
@@ -67,22 +55,16 @@ describe("capture — caches the plan id from the plan_connect call", () => {
       tool_input: { plan_id: 2, title: "test session" },
     });
     assert.equal(c.status, 0);
-
-    writeConnection(sessionId);
-    const chk = run("check", { session_id: sessionId });
-    assert.equal(chk.status, 0);
-    const out = JSON.parse(chk.stdout);
-    assert.match(out.hookSpecificOutput.additionalContext, /\/plans\/2/);
+    assert.equal(c.stdout, "");
+    const state = JSON.parse(readFileSync(watchStateFile(sessionId), "utf8"));
+    assert.equal(state.planId, 2);
   });
 
-  test("missing plan_id in tool_input never crashes and writes nothing usable", () => {
+  test("missing plan_id in tool_input never crashes and writes nothing", () => {
     const sessionId = "sess-capture-2";
     const c = run("capture", { session_id: sessionId, tool_input: {} });
     assert.equal(c.status, 0);
-    writeConnection(sessionId);
-    const chk = run("check", { session_id: sessionId });
-    assert.equal(chk.status, 0);
-    assert.equal(chk.stdout, "");
+    assert.throws(() => readFileSync(watchStateFile(sessionId), "utf8"));
   });
 
   test("invalid session id is refused, not path-joined", () => {
@@ -93,55 +75,28 @@ describe("capture — caches the plan id from the plan_connect call", () => {
     assert.equal(c.status, 0);
     assert.equal(c.stdout, "");
   });
-});
-
-describe("check — silent by default, fires once, then suppresses", () => {
-  test("silent: not connected at all (no session-connection record)", () => {
-    const sessionId = "sess-check-1";
-    run("capture", { session_id: sessionId, tool_input: { plan_id: 3 } });
-    // No writeConnection() call — session-connection record absent.
-    const chk = run("check", { session_id: sessionId });
-    assert.equal(chk.status, 0);
-    assert.equal(chk.stdout, "");
-  });
-
-  test("silent: connected, but capture never ran this session (no plan id known)", () => {
-    const sessionId = "sess-check-2";
-    writeConnection(sessionId);
-    const chk = run("check", { session_id: sessionId });
-    assert.equal(chk.status, 0);
-    assert.equal(chk.stdout, "");
-  });
-
-  test("fires exactly once, then silent on an immediate second check (suppression window)", () => {
-    const sessionId = "sess-check-3";
-    writeConnection(sessionId);
-    run("capture", { session_id: sessionId, tool_input: { plan_id: 9 } });
-
-    const first = run("check", { session_id: sessionId });
-    assert.equal(first.status, 0);
-    assert.match(JSON.parse(first.stdout).hookSpecificOutput.additionalContext, /\/plans\/9/);
-
-    const second = run("check", { session_id: sessionId });
-    assert.equal(second.status, 0);
-    assert.equal(second.stdout, "", "second check within the suppression window must stay silent");
-  });
 
   test("never exits non-zero and never blocks on malformed JSON input", () => {
-    const r = run("check", "{not valid json");
+    const r = run("capture", "{not valid json");
     assert.equal(r.status, 0);
     assert.equal(r.stdout, "");
   });
 
   test("never exits non-zero on empty stdin", () => {
-    const r = run("check", "");
+    const r = run("capture", "");
     assert.equal(r.status, 0);
     assert.equal(r.stdout, "");
   });
+});
 
-  test("unknown mode arg is silent, not an error", () => {
-    const r = run("bogus-mode", { session_id: "sess-x" });
+describe("removed mode", () => {
+  test("`check` (DX-3347: deleted) and any other unknown mode arg are silent, not an error", () => {
+    const r = run("check", { session_id: "sess-x" });
     assert.equal(r.status, 0);
     assert.equal(r.stdout, "");
+
+    const r2 = run("bogus-mode", { session_id: "sess-x" });
+    assert.equal(r2.status, 0);
+    assert.equal(r2.stdout, "");
   });
 });

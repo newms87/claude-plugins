@@ -5,8 +5,17 @@
 # hooks.json entry carries "matcher": "compact"; SessionStart matchers are
 # matched against the source string, valid values: startup, resume, clear,
 # compact, fork). Because it fires on exactly one source, it can be short
-# and blunt instead of competing for attention with the ~40 lines of the
-# generic startup mandate in plugin-skill-mandate.sh.
+# and blunt instead of competing for attention with a long startup mandate.
+#
+# KEPT AFTER DX-3347 — JUSTIFICATION. DX-3347 folded the operating contract,
+# craft mandate and danxbot mantra into one file (danxbot/mantra.md) that is
+# now RE-PRINTED IN FULL at compaction, which could look like it makes this
+# gate redundant. It does not: the mantra reload restores that one short
+# file's own text, but it does nothing about the OTHER skill bodies already
+# sitting in context (issue-card-workflow, plan-workflow, etc.) — those stay
+# truncated fragments regardless of the mantra reprinting itself. This gate's
+# job is exactly that different problem: forcing a fresh Skill() call for
+# every OTHER truncated skill, which the mantra reload cannot substitute for.
 #
 # WHY THIS EXISTS
 # ---------------
