@@ -49,13 +49,13 @@ test("measure-injection reports the three cadence totals, never summed together"
 
 test("measure-injection distinguishes conditional from unconditional UserPromptSubmit hooks", () => {
   const { rows } = run();
-  const investigationGate = rows.find(
-    (r) => r.event === "UserPromptSubmit" && r.command.includes("investigation-gate.sh")
+  const debuggingGate = rows.find(
+    (r) => r.event === "UserPromptSubmit" && r.command.includes("debugging-gate.sh")
   );
-  assert.ok(investigationGate, "expected investigation-gate.sh to be measured");
-  assert.equal(investigationGate.kind, "conditional");
-  assert.equal(investigationGate.bytes, 0, "a conditional gate must not count toward the unconditional total on a plain prompt");
-  assert.ok(investigationGate.triggerBytes > 0, "a conditional gate must show a non-zero trigger figure separately");
+  assert.ok(debuggingGate, "expected debugging-gate.sh to be measured");
+  assert.equal(debuggingGate.kind, "conditional");
+  assert.equal(debuggingGate.bytes, 0, "a conditional gate must not count toward the unconditional total on a plain prompt");
+  assert.ok(debuggingGate.triggerBytes > 0, "a conditional gate must show a non-zero trigger figure separately");
 });
 
 test("reproduces the DX-3049 baseline (4438 / 46369) at the exact commit those figures were measured against", () => {

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Investigation gate hook (ships with the `investigate` plugin).
+# Debugging gate hook (ships with the `dev` plugin; DX-3331 moved this here
+# from the retired `investigate` plugin, repointed at the merged
+# `dev:debugging` skill's read-only-by-default mode).
 #
 # Detects diagnostic triggers in the user prompt and injects a mandatory
-# pre-response gate forcing Skill(investigate) before any tool call.
+# pre-response gate forcing Skill(dev:debugging) before any tool call.
 
 set -euo pipefail
 
@@ -35,7 +37,7 @@ fi
 # in this plugin, so it stays inline rather than a single-consumer "shared" file
 # (see base/scripts/lib/prompt-guard.sh for the two-consumer case). Do not delete
 # this as dead code — it is load-bearing for every relayed event and every task
-# notification.
+# notification. (DX-3331: guard logic unchanged by the investigate→dev move.)
 RELAY_MARKER='[danxbot-relayed-event]'
 TASK_NOTIFICATION_MARKER='<task-notification>'
 if printf '%s' "$PROMPT" | grep -qF -- "$RELAY_MARKER"; then
@@ -48,7 +50,7 @@ fi
 PATTERN='(^|[^a-z])(investigate|look into|dig into|figure out|root cause|why (is|does|did|isn.?t|doesn.?t)|is the [a-z]+ running)([^a-z]|$)'
 
 if echo "$PROMPT" | grep -qE "$PATTERN"; then
-    GATE="INVESTIGATION TRIGGER: before any tool call, invoke Skill(investigate). Forbidden until loaded: 'Suspect:'/'Likely:'/'Probably:', OR-separated causes, paraphrased causation."
+    GATE="DEBUGGING TRIGGER: invoke Skill(dev:debugging) before any tool call — starts read-only by default."
 
     # UserPromptSubmit adds plain stdout to the model's context — no JSON envelope.
     printf '%s\n' "$GATE"

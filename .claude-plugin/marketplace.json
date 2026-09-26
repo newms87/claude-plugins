@@ -12,14 +12,9 @@
       "description": "Universal discipline: bash exit capture, sub-agent delegation, tool usage, process kill, monitor polling. Install everywhere."
     },
     {
-      "name": "investigate",
-      "source": "./investigate",
-      "description": "Read-only investigation methodology. Hypothesis → evidence → findings → options. NEVER applies fixes. For diagnostic agents (slack, dashboards, dev sessions before fix-writing)."
-    },
-    {
       "name": "dev",
       "source": "./dev",
-      "description": "Code-writing discipline: TDD, debugging-with-fix, code quality, git safety. Install on instances that write code."
+      "description": "Code-writing discipline: TDD, read-only-by-default debugging/investigation with a fix-mode switch, code quality, git safety. Install on instances that write code."
     },
     {
       "name": "pipeline",

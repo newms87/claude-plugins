@@ -40,6 +40,10 @@ Every commit → `git push` same flow. Exceptions:
 
 Force-push requires explicit user auth.
 
+## Stage a New File Right After Creating It (dispatched worker, own worktree only)
+
+In a dispatched agent's own worktree (not a shared-index checkout — see the shared-index rule below), `git add` a newly-created file (`Write`, or any tool creating a new path) in the same turn, right after the create — don't defer staging to a later cleanup pass. The worktree-only periodic autosave (`commitWipIfDirty`) stages via `git add -u`, which only covers already-tracked files' modifications/deletions, deliberately never `git add -A` (so it never sweeps up scratch/temp files nobody meant to commit). A newly-created file that isn't staged yet is invisible to both autosave layers (the periodic timer and the SIGTERM-drain commit) — if the session is killed before it's staged, that file's contents are lost even with autosave running.
+
 ## Check for Other Agents' Staged Work
 
 Before commit: `git status` → check already-staged you didn't create. Found → another agent mid-commit. Poll every 5s up to 30s. Persists → ask user. Never commit on top, never unstage theirs.

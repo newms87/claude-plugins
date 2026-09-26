@@ -1,5 +1,5 @@
 {
-  "description": "Ideal-solution-mindset mandate (SessionStart only). Surfaces the four core dev principles + self-trigger gates for debugging / testing / git-discipline so the agent loads the full skill at the right moment.",
+  "description": "Ideal-solution-mindset mandate (SessionStart) + debugging-trigger gate (UserPromptSubmit, DX-3331: moved from the retired `investigate` plugin). Surfaces the four core dev principles + self-trigger gates for debugging / testing / git-discipline, and forces Skill(dev:debugging) on diagnostic language in the prompt.",
   "hooks": {
     "SessionStart": [
       {
@@ -7,6 +7,16 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ideal-solution-mandate.sh SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/debugging-gate.sh"
           }
         ]
       }

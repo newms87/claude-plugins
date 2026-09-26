@@ -199,7 +199,6 @@ This skill owns the decision/principle; these own the mechanics — when in doub
 
 - `dev:git-discipline` — mechanics of destructive git ops (#2b: imperfect work is never a removal candidate, so how-to-remove-safely never arises).
 - `dev:code-quality` — file-level execution of these principles (refactor first, comments-are-authoritative).
-- `dev:debugging` — bug-fix root-cause workflow; this skill adds "delete obsolete code in the same commit."
-- `investigate:investigate` — read-only diagnostics; still applies the #4 reuse audit when surfacing findings.
+- `dev:debugging` — read-only-by-default investigation and bug-fix root-cause workflow (single merged skill, DX-3331); this skill adds "delete obsolete code in the same commit," and still applies the #4 reuse audit when surfacing read-only findings.
 - `danxbot:plan-workflow` — where a plan is recorded; this skill is what the plan must satisfy before leaving plan mode.
 - `human-collaboration:human-loop` — when/whether to surface a decision to a human; this skill is silent on that and applies regardless.

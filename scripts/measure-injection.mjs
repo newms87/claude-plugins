@@ -25,8 +25,10 @@
 // prompt, and once with a single composite prompt built to trip every known
 // conditional gate at once (contains "?", "why", "investigate", "audit" —
 // the union of every UserPromptSubmit hook's own trigger vocabulary in this
-// repo, read directly out of investigation-gate.sh and human-loop-mandate.sh
-// above). A hook whose plain-prompt byte count is 0 and whose trigger-prompt
+// repo, read directly out of debugging-gate.sh (dev plugin, DX-3331 — moved
+// from the retired investigate plugin's investigation-gate.sh) and
+// human-loop-mandate.sh above). A hook whose plain-prompt byte count is 0
+// and whose trigger-prompt
 // count is >0 is conditional; its plain-prompt (0) count is what's added to
 // the unconditional per-turn total, and its trigger count is reported
 // alongside, never summed into the unconditional total (AC 32509).
@@ -60,7 +62,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const JSON_MODE = process.argv.includes("--json");
 
 // Composite trigger prompt: union of every UserPromptSubmit conditional
-// hook's trigger vocabulary in this repo (investigation-gate.sh's regex,
+// hook's trigger vocabulary in this repo (debugging-gate.sh's regex,
 // human-loop-mandate.sh's "?" check). Read from those files' own patterns,
 // not guessed.
 const TRIGGER_PROMPT =

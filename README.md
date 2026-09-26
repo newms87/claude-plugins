@@ -7,8 +7,7 @@ Personal Claude Code plugin set. Discipline, dev pipeline, danxbot orchestration
 | Plugin | Purpose |
 |---|---|
 | `base` | Universal discipline. Install everywhere. |
-| `investigate` | Read-only diagnostic methodology. No fix-writing. |
-| `dev` | Code-writing: TDD, debugging-with-fix, code quality, git safety. |
+| `dev` | Code-writing: TDD, read-only-by-default debugging/investigation with a fix-mode switch, code quality, git safety. |
 | `pipeline` | Human-in-loop dev: flow-* skills, plan mode, collaboration. |
 | `issues` | Issue card workflow + tracker contract. |
 | `danxbot` | Danxbot orchestrator domain knowledge. |
@@ -27,7 +26,7 @@ claude plugin marketplace add github:newms87/claude-plugins
 
 # Install plugins
 claude plugin install base@newms-plugins
-claude plugin install investigate@newms-plugins
+claude plugin install dev@newms-plugins
 # etc
 ```
 
@@ -35,19 +34,19 @@ Or declare in a project's `.claude/settings.json`:
 
 ```json
 {
-  "plugins": ["base@newms-plugins", "investigate@newms-plugins", "dev@newms-plugins"]
+  "plugins": ["base@newms-plugins", "dev@newms-plugins"]
 }
 ```
 
 ## Install matrix
 
-| Env | base | investigate | dev | pipeline | issues | danxbot | issue-worker |
-|---|---|---|---|---|---|---|---|
-| Global default | ✓ | | | | | | |
-| Repo dev session | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | |
-| issue-worker workspace | ✓ | ✓ | ✓ | | ✓ | ✓ | ✓ |
-| slack-worker workspace | ✓ | ✓ | | | ✓ | ✓ | |
-| system-test workspace | ✓ | | | | | ✓ | |
+| Env | base | dev | pipeline | issues | danxbot | issue-worker |
+|---|---|---|---|---|---|---|
+| Global default | ✓ | | | | | |
+| Repo dev session | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| issue-worker workspace | ✓ | ✓ | | ✓ | ✓ | ✓ |
+| slack-worker workspace | ✓ | | | ✓ | ✓ | |
+| system-test workspace | ✓ | | | | ✓ | |
 
 ## Editing a plugin — MANDATORY version bump
 

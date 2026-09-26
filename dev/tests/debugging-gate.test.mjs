@@ -1,5 +1,7 @@
-// investigation-gate.sh — diagnostic-trigger gate, and its DX-3051 relay + DX-3235
+// debugging-gate.sh — diagnostic-trigger gate, and its DX-3051 relay + DX-3235
 // task-notification suppression. Run with `npm test` (node --test, no dependencies).
+// DX-3331: moved here from the retired `investigate` plugin's investigation-gate.sh;
+// gate logic unchanged, repointed at Skill(dev:debugging).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -8,7 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = path.join(here, "..");
-const SCRIPT = path.join(PLUGIN_ROOT, "scripts", "investigation-gate.sh");
+const SCRIPT = path.join(PLUGIN_ROOT, "scripts", "debugging-gate.sh");
 
 /**
  * Fixture mirroring the SHAPE of a danxbot-relayed dashboard event (RELAY_MARKER +
@@ -64,7 +66,7 @@ function runHook(prompt) {
   return result.stdout;
 }
 
-describe("investigation-gate.sh", () => {
+describe("debugging-gate.sh", () => {
   test("stays silent on a relayed card title containing a trigger word (DX-3051 repro)", () => {
     // Real DX-3051 repro body: DX-2973's real title, verbatim.
     const relayed = RELAY_PREFIX + "\ndan moved DX-2973 Prompt surface audit: trim every skill to ToDo";
@@ -81,7 +83,7 @@ describe("investigation-gate.sh", () => {
 
   test("still fires on a typed operator prompt with a trigger word", () => {
     const out = runHook("can you investigate why the worker keeps crashing");
-    assert.match(out, /INVESTIGATION TRIGGER/);
+    assert.match(out, /DEBUGGING TRIGGER/);
   });
 
   test("stays silent on a typed operator prompt with no trigger word", () => {
@@ -98,7 +100,7 @@ describe("investigation-gate.sh", () => {
     // ONLY in the absence of the task-notification wrapper — proves the gate reads the
     // wrapper, not the body text, to decide.
     const out = runHook(TASK_NOTIFICATION_BODY);
-    assert.match(out, /INVESTIGATION TRIGGER/);
+    assert.match(out, /DEBUGGING TRIGGER/);
   });
 
   test("stays silent on the real notification shape: tag alone on the first line, no preamble", () => {
@@ -112,6 +114,6 @@ describe("investigation-gate.sh", () => {
 
   test("still fires when an operator prompt mentions the tag inline (whole-line match, not substring)", () => {
     const out = runHook("why does the hook treat <task-notification> as machine text? audit it");
-    assert.match(out, /INVESTIGATION TRIGGER/);
+    assert.match(out, /DEBUGGING TRIGGER/);
   });
 });
